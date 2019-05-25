@@ -8,16 +8,29 @@ defmodule Bitcoinex.Base58 do
   @type byte_list :: list(byte())
   import Bitcoinex.Utils, only: [replicate: 2]
 
+  @spec int_to_bin(integer()) :: binary
+  def int_to_bin(x), do: do_int_to_bin(x, [])
+
+  @spec bin_to_int(binary()) :: integer
+  def bin_to_int(bin) when bin != "" do
+    do_bin_to_int(bin |> to_charlist, 0)
+  end
+
   @spec str_to_bin(String.t()) :: binary()
+  def str_to_bin(""), do: <<>>
+
   def str_to_bin(base58_str) do
-    base58_bin = :binary.encode_unsigned(decode(base58_str))
+    base58_bin = :binary.encode_unsigned(bin_to_int(base58_str))
     pad_zero(base58_str, base58_bin)
   end
 
   @spec bin_to_str(binary | list(byte)) :: String.t()
+  def bin_to_str(<<>>), do: ""
+
   def bin_to_str(base58_bin) when is_binary(base58_bin) do
-    base58_str = encode(:binary.decode_unsigned(base58_bin))
-    pad_binary(:erlang.binary_to_list(base58_bin), base58_str)
+    base58_str = int_to_bin(:binary.decode_unsigned(base58_bin))
+    # Bitcoin Base58 converts every byte of zeros (0x00) at the start of a number to a 1.
+    pad_one(:erlang.binary_to_list(base58_bin), base58_str)
   end
 
   def bin_to_str(base58_bytes_list) when is_list(base58_bytes_list) do
@@ -96,21 +109,17 @@ defmodule Bitcoinex.Base58 do
     :binary.bin_to_list(:crypto.hash(:sha256, hash))
   end
 
-  @spec encode(integer()) :: String.t()
-  def encode(x), do: do_encode(x, [])
-  def decode(enc), do: do_decode(enc |> to_charlist, 0)
+  defp do_int_to_bin(0, []), do: [@base58_alphabets |> hd] |> to_string
+  defp do_int_to_bin(0, acc), do: acc |> to_string
 
-  defp do_encode(0, []), do: [@base58_alphabets |> hd] |> to_string
-  defp do_encode(0, acc), do: acc |> to_string
-
-  defp do_encode(x, acc) do
-    do_encode(div(x, 58), [Enum.at(@base58_alphabets, rem(x, 58)) | acc])
+  defp do_int_to_bin(x, acc) do
+    do_int_to_bin(div(x, 58), [Enum.at(@base58_alphabets, rem(x, 58)) | acc])
   end
 
-  defp do_decode([], acc), do: acc
+  defp do_bin_to_int([], acc), do: acc
 
-  defp do_decode([c | cs], acc) do
-    do_decode(cs, acc * 58 + Enum.find_index(@base58_alphabets, &(&1 == c)))
+  defp do_bin_to_int([c | cs], acc) do
+    do_bin_to_int(cs, acc * 58 + Enum.find_index(@base58_alphabets, &(&1 == c)))
   end
 
   defp pad_zero(<<?1, rest::binary>>, base58_bin) do
@@ -121,11 +130,11 @@ defmodule Bitcoinex.Base58 do
     base58_bin
   end
 
-  defp pad_binary([0 | rest], base58_bin) do
-    pad_binary(rest, "1" <> base58_bin)
+  defp pad_one([0 | rest], base58_bin) do
+    pad_one(rest, "1" <> base58_bin)
   end
 
-  defp pad_binary(_, base58_bin) do
+  defp pad_one(_, base58_bin) do
     base58_bin
   end
 end

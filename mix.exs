@@ -27,6 +27,7 @@ defmodule Bitcoinex.MixProject do
       {:dialyxir, "~> 1.0.0-rc.6", only: [:dev, :test], runtime: false},
       {:excoveralls, "~> 0.10", only: :test},
       {:mix_test_watch, "~> 0.8", only: :dev, runtime: false},
+      {:stream_data, "~> 0.1", only: :test},
       {:libsecp256k1,
        [github: "AltoFinancial/libsecp256k1", manager: :rebar, branch: "add-spec"]},
       {:timex, "~> 3.1"},
