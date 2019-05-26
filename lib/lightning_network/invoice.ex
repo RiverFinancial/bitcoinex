@@ -392,7 +392,7 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
           {:ok, pubKeyHash} ->
             {:ok,
              Bitcoinex.Address.encode(
-               pubKeyHash,
+               pubKeyHash |> :binary.list_to_bin(),
                network,
                :p2pkh
              )}
@@ -406,7 +406,7 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
           {:ok, scriptHash} ->
             {:ok,
              Bitcoinex.Address.encode(
-               scriptHash,
+               scriptHash |> :binary.list_to_bin(),
                network,
                :p2sh
              )}

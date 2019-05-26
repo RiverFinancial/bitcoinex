@@ -4,17 +4,23 @@ defmodule Bitcoinex.Address do
   Bitcoin Address Validation
   reference of p2sh p2pkh validation: https://rosettacode.org/wiki/Bitcoin/address_validation#Erlang
   """
-  alias Bitcoinex.{Segwit, Base58Check}
+  alias Bitcoinex.{Segwit, Base58Check, Network}
   @type address_type :: :p2pkh | :p2sh | :p2wpkh | :p2wsh
   @address_type ~w(p2pkh p2sh p2wpkh p2wsh)a
 
+  # TODO: write tests
+  def encode(pubkey, network_name, :p2pkh) do
+    network = Network.get_network(network_name)
+    decimal_prefix = network.p2pkh_version_decimal_prefix
 
-  def encode(_pubkey, _network_name, :p2pkh) do
-    # TODO
+    Base58Check.encode(<<decimal_prefix>> <> pubkey)
   end
 
-  def encode(_script_hash, _network_name, :p2sh) do
-    # TODO
+  # TODO: write tests
+  def encode(script_hash, network_name, :p2sh) do
+    network = Network.get_network(network_name)
+    decimal_prefix = network.p2sh_version_decimal_prefix
+    Base58Check.encode(<<decimal_prefix>> <> script_hash)
   end
 
   @spec is_valid?(String.t(), Bitcoinex.Network.network_name()) :: boolean
@@ -47,16 +53,15 @@ defmodule Bitcoinex.Address do
     end
   end
 
-
   def supported_address_types() do
     @address_type
   end
 
   defp is_valid_base58_check_address?(address, valid_prefix) do
-    IO.inspect address
     case Base58Check.decode(address) do
       {:ok, <<^valid_prefix::8, _::binary>>} ->
         true
+
       _ ->
         false
     end
