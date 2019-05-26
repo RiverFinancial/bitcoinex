@@ -32,6 +32,10 @@ defmodule Bitcoinex.Bech32Test do
     "1qzzfhee"
   ]
 
+  @invalid_bech32_checksum [
+    "A12UEL5A"
+  ]
+
   @invalid_bech32_invalid_data_character [
     "x1b4n0q5v"
   ]
@@ -102,6 +106,13 @@ defmodule Bitcoinex.Bech32Test do
       for bech <- @invalid_bech32_invalid_character_in_checksum do
         assert {:error, msg} = Bech32.decode(bech)
         assert msg == :contain_invalid_data_char
+      end
+    end
+
+    test "fail to decode with invalid checksum" do
+      for bech <- @invalid_bech32_checksum do
+        assert {:error, msg} = Bech32.decode(bech)
+        assert msg == :invalid_checksum
       end
     end
   end
