@@ -1,0 +1,27 @@
+language: elixir
+
+elixir:
+  - 1.8
+
+otp_release:
+  - 21.3
+
+matrix:
+  exclude:
+    - elixir: 1.7
+      otp_release: 19.3
+    - elixir: 1.7
+      otp_release: 20.3
+    - elixir: 1.8
+      otp_release: 19.3
+    - elixir: 1.8
+      otp_release: 20.3
+    - elixir: 1.8
+      otp_release: 21.3
+
+before_script:
+  - mix deps.get
+
+script:
+  - mix lint.all
+  - mix test
