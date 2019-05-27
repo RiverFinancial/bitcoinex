@@ -391,8 +391,8 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
         case Bech32.convert_bits(rest, 5, 8, false) do
           {:ok, pubKeyHash} ->
             {:ok,
-             Bitcoinex.Base58.bin_to_base58check(
-               pubKeyHash,
+             Bitcoinex.Address.encode(
+               pubKeyHash |> :binary.list_to_bin(),
                network,
                :p2pkh
              )}
@@ -405,8 +405,8 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
         case Bech32.convert_bits(rest, 5, 8, false) do
           {:ok, scriptHash} ->
             {:ok,
-             Bitcoinex.Base58.bin_to_base58check(
-               scriptHash,
+             Bitcoinex.Address.encode(
+               scriptHash |> :binary.list_to_bin(),
                network,
                :p2sh
              )}

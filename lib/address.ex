@@ -4,9 +4,24 @@ defmodule Bitcoinex.Address do
   Bitcoin Address Validation
   reference of p2sh p2pkh validation: https://rosettacode.org/wiki/Bitcoin/address_validation#Erlang
   """
-  alias Bitcoinex.Segwit
+  alias Bitcoinex.{Segwit, Base58Check, Network}
   @type address_type :: :p2pkh | :p2sh | :p2wpkh | :p2wsh
   @address_type ~w(p2pkh p2sh p2wpkh p2wsh)a
+
+  # TODO: write tests
+  def encode(pubkey, network_name, :p2pkh) do
+    network = Network.get_network(network_name)
+    decimal_prefix = network.p2pkh_version_decimal_prefix
+
+    Base58Check.encode(<<decimal_prefix>> <> pubkey)
+  end
+
+  # TODO: write tests
+  def encode(script_hash, network_name, :p2sh) do
+    network = Network.get_network(network_name)
+    decimal_prefix = network.p2sh_version_decimal_prefix
+    Base58Check.encode(<<decimal_prefix>> <> script_hash)
+  end
 
   @spec is_valid?(String.t(), Bitcoinex.Network.network_name()) :: boolean
   def is_valid?(address, network_name) do
@@ -43,23 +58,12 @@ defmodule Bitcoinex.Address do
   end
 
   defp is_valid_base58_check_address?(address, valid_prefix) do
-    with {:ok, <<address::bytes-size(21), checksum::bytes-size(4)>>} <-
-           safe_base58_to_binary(address),
-         <<^valid_prefix::8, _::binary>> <-
-           address,
-         <<four_bytes::bytes-size(4), _::binary>> <-
-           :crypto.hash(:sha256, :crypto.hash(:sha256, address)) do
-      checksum == four_bytes
-    else
+    case Base58Check.decode(address) do
+      {:ok, <<^valid_prefix::8, _::binary>>} ->
+        true
+
       _ ->
         false
     end
-  end
-
-  defp safe_base58_to_binary(base58) do
-    {:ok, Bitcoinex.Base58.str_to_bin(base58)}
-  rescue
-    e ->
-      {:error, e}
   end
 end
