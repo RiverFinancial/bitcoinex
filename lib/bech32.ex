@@ -24,20 +24,50 @@ defmodule Bitcoinex.Bech32 do
 
   @type error :: atom()
 
+  # Inspired by Ecto.Changeset. more descriptive than result tuple
+  defmodule DecodeResult do
+    @type t() :: %__MODULE__{
+            encoded_str: String.t(),
+            hrp: String.t() | nil,
+            data: String.t() | nil,
+            error: atom() | nil
+          }
+    defstruct [:encoded_str, :hrp, :data, :error]
+
+    @spec add_error(t(), atom()) :: t()
+    def add_error(%DecodeResult{} = decode_result, error) do
+      %{
+        decode_result
+        | error: error
+      }
+    end
+
+    @doc """
+    This naming is taken from Haskell. we will treat DecodeResult a bit like an Monad
+    And bind function will take a function that take DecodeResult that's only without error and return DecodeResult
+    And we can skip handling same error case for all function
+    """
+    @spec bind(t(), (t -> t())) :: t()
+    def bind(%DecodeResult{error: error} = decode_result, _fun) when not is_nil(error) do
+      decode_result
+    end
+
+    def bind(%DecodeResult{} = decode_result, fun) do
+      fun.(decode_result)
+    end
+  end
+
   @spec decode(String.t(), max_encoded_length()) :: {:ok, {hrp, data}} | {:error, error}
   def decode(bech32_str, max_encoded_length \\ @max_overall_encoded_length)
       when is_binary(bech32_str) do
-    with {:check_bech32_length, :ok} <-
-           {:check_bech32_length, check_bech32_length(bech32_str, max_encoded_length)},
-         {:check_bech32_case, :ok} <- {:check_bech32_case, check_bech32_case(bech32_str)},
-         {:split_bech32_str, {:ok, {hrp, data}}} <-
-           {:split_bech32_str, bech32_str |> String.downcase() |> split_bech32_str()},
-         {:verify_checksum, :ok} <- {:verify_checksum, verify_checksum(hrp, data)} do
-      {:ok, {to_string(hrp), Enum.drop(data, -6)}}
-    else
-      {_, {:error, error}} ->
-        {:error, error}
-    end
+    %DecodeResult{
+      encoded_str: bech32_str
+    }
+    |> DecodeResult.bind(&validate_bech32_length(&1, max_encoded_length))
+    |> DecodeResult.bind(&validate_bech32_case/1)
+    |> DecodeResult.bind(&split_bech32_str/1)
+    |> DecodeResult.bind(&validate_checksum/1)
+    |> format_bech32_decoding_result
   end
 
   @spec encode(hrp, data | String.t(), max_encoded_length()) ::
@@ -52,7 +82,7 @@ defmodule Bitcoinex.Bech32 do
       dp = Enum.map(checksummed, &Enum.at(@data_charset_list, &1)) |> List.to_string()
       encoded_result = <<hrp::binary, @separator, dp::binary>>
 
-      case check_bech32_length(encoded_result, max_encoded_length) do
+      case validate_bech32_length(encoded_result, max_encoded_length) do
         :ok ->
           {:ok, String.downcase(encoded_result)}
 
@@ -78,6 +108,7 @@ defmodule Bitcoinex.Bech32 do
   end
 
   # Big endian conversion of a list of integer from base 2^frombits to base 2^tobits.
+  # ref https://github.com/sipa/bech32/blob/master/ref/python/segwit_addr.py#L80
 
   @spec convert_bits(list(integer), integer(), integer(), boolean()) ::
           {:error, :invalid_data} | {:ok, list(integer)}
@@ -124,13 +155,18 @@ defmodule Bitcoinex.Bech32 do
     end
   end
 
-  defp verify_checksum(hrp, data) do
+  defp validate_checksum(
+         %DecodeResult{
+           data: data,
+           hrp: hrp
+         } = decode_result
+       ) do
     case bech32_polymod(bech32_hrp_expand(hrp) ++ data) do
       1 ->
-        :ok
+        decode_result
 
       _ ->
-        {:error, :incorrect_checksum}
+        DecodeResult.add_error(decode_result, :invalid_checksum)
     end
   end
 
@@ -164,12 +200,34 @@ defmodule Bitcoinex.Bech32 do
     Enum.map(chars, &(&1 >>> 5)) ++ [0 | Enum.map(chars, &(&1 &&& 31))]
   end
 
-  defp split_bech32_str(str) do
+  defp format_bech32_decoding_result(%DecodeResult{
+         error: nil,
+         hrp: hrp,
+         data: data
+       })
+       when not is_nil(hrp) and not is_nil(data) do
+    {:ok, {to_string(hrp), Enum.drop(data, -6)}}
+  end
+
+  defp format_bech32_decoding_result(%DecodeResult{
+         error: error
+       }) do
+    {:error, error}
+  end
+
+  defp split_bech32_str(
+         %DecodeResult{
+           encoded_str: encoded_str
+         } = decode_result
+       ) do
     # the bech 32 is at most 90 chars
     # so it's ok to do 3 time reverse here
     # otherwise we can use binary pattern matching with index for better performance
+    downcase_encoded_str = encoded_str |> String.downcase()
+
     with {_, [data, hrp]} when hrp != "" and data != "" <-
-           {:split_by_separator, str |> String.reverse() |> String.split(@separator, parts: 2)},
+           {:split_by_separator,
+            downcase_encoded_str |> String.reverse() |> String.split(@separator, parts: 2)},
          hrp = hrp |> String.reverse() |> String.to_charlist(),
          {_, true} <- {:check_hrp_validity, is_valid_hrp?(hrp)},
          data <-
@@ -178,44 +236,75 @@ defmodule Bitcoinex.Bech32 do
            |> String.to_charlist()
            |> Enum.map(&Map.get(@data_charset_map, &1)),
          {_, :ok} <- {:check_data_validity, check_data_charlist_validity(data)} do
-      {:ok, {hrp, data}}
+      %DecodeResult{
+        decode_result
+        | hrp: hrp,
+          data: data
+      }
     else
       {:split_by_separator, [_]} ->
-        {:error, :no_separator_character}
+        DecodeResult.add_error(decode_result, :no_separator_character)
 
       {:split_by_separator, ["", _]} ->
-        {:error, :empty_data}
+        DecodeResult.add_error(decode_result, :empty_data)
 
       {:split_by_separator, [_, ""]} ->
-        {:error, :empty_hrp}
+        DecodeResult.add_error(decode_result, :empty_hrp)
 
       {:check_hrp_validity, false} ->
-        {:error, :hrp_char_out_opf_range}
+        DecodeResult.add_error(decode_result, :hrp_char_out_opf_range)
 
       {:check_data_validity, {:error, error}} ->
-        {:error, error}
+        DecodeResult.add_error(decode_result, error)
     end
   end
 
-  defp check_bech32_length(_, :infinity) do
+  defp validate_bech32_length(
+         %DecodeResult{
+           encoded_str: encoded_str
+         } = decode_result,
+         max_length
+       ) do
+    case validate_bech32_length(encoded_str, max_length) do
+      :ok ->
+        decode_result
+
+      {:error, error} ->
+        DecodeResult.add_error(decode_result, error)
+    end
+  end
+
+  defp validate_bech32_length(encoded_str, :infinity) when is_binary(encoded_str) do
     :ok
   end
 
-  defp check_bech32_length(bech32_str, max_length) when byte_size(bech32_str) > max_length do
+  defp validate_bech32_length(
+         encoded_str,
+         max_length
+       )
+       when is_binary(encoded_str) and byte_size(encoded_str) > max_length do
     {:error, :overall_max_length_exceeded}
   end
 
-  defp check_bech32_length(_, _) do
+  defp validate_bech32_length(
+         encoded_str,
+         _max_length
+       )
+       when is_binary(encoded_str) do
     :ok
   end
 
-  defp check_bech32_case(bech32_str) do
-    case String.upcase(bech32_str) == bech32_str or String.downcase(bech32_str) == bech32_str do
+  defp validate_bech32_case(
+         %DecodeResult{
+           encoded_str: encoded_str
+         } = decode_result
+       ) do
+    case String.upcase(encoded_str) == encoded_str or String.downcase(encoded_str) == encoded_str do
       true ->
-        :ok
+        decode_result
 
       false ->
-        {:error, :mixed_case}
+        DecodeResult.add_error(decode_result, :mixed_case)
     end
   end
 
