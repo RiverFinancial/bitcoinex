@@ -1,8 +1,8 @@
-defmodule Bitcoinex.SegwitTest do
+defmodule Bitcoinex.Address.SegwitTest do
   use ExUnit.Case
-  doctest Bitcoinex.Segwit
+  doctest Bitcoinex.Address.Segwit
 
-  alias Bitcoinex.Segwit
+  alias Bitcoinex.Address.Segwit
   import Bitcoinex.Utils, only: [replicate: 2]
 
   @valid_segwit_address_hexscript_pairs_mainnet [
@@ -88,23 +88,6 @@ defmodule Bitcoinex.SegwitTest do
       assert {:ok, _address} = Segwit.encode_address(:mainnet, 0, replicate(1, 32))
       assert {:error, _error} = Segwit.encode_address(:mainnet, 0, replicate(1, 21))
       assert {:error, _error} = Segwit.encode_address(:mainnet, 0, replicate(1, 33))
-    end
-  end
-
-  describe "is_valid_segswit_address?/1" do
-    test "return true given valid address" do
-      for {address, _hexscript} <-
-            @valid_segwit_address_hexscript_pairs_mainnet ++
-              @valid_segwit_address_hexscript_pairs_testnet ++
-              @valid_segwit_address_hexscript_pairs_regtest do
-        assert Segwit.is_valid_segswit_address?(address)
-      end
-    end
-
-    test "return false given invalid address" do
-      for address <- @invalid_segwit_addresses do
-        refute Segwit.is_valid_segswit_address?(address)
-      end
     end
   end
 

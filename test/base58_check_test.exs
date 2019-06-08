@@ -191,7 +191,7 @@ defmodule Bitcoinex.Base58Test do
         assert base58check_str == Base58Check.encode(base16_bin)
 
         # double check
-        {:ok, _decoded} = Base58Check.decode(base58check_str)
+        assert {:ok, ^base16_bin} = Base58Check.decode(base58check_str)
       end
     end
   end

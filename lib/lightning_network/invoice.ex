@@ -1,5 +1,6 @@
 defmodule Bitcoinex.LightningNetwork.Invoice do
-  alias Bitcoinex.{Bech32, Network, Segwit}
+  alias Bitcoinex.{Bech32, Network}
+  alias Bitcoinex.Address.Segwit
   alias Bitcoinex.LightningNetwork.HopHint
   alias Decimal, as: D
 

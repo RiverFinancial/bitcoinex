@@ -4,7 +4,9 @@ defmodule Bitcoinex.Address do
   Bitcoin Address Validation
   reference of p2sh p2pkh validation: https://rosettacode.org/wiki/Bitcoin/address_validation#Erlang
   """
-  alias Bitcoinex.{Segwit, Base58Check, Network}
+  alias Bitcoinex.{Base58Check, Network}
+  alias Bitcoinex.Address.Segwit
+
   @type address_type :: :p2pkh | :p2sh | :p2wpkh | :p2wsh
   @address_type ~w(p2pkh p2sh p2wpkh p2wsh)a
 
