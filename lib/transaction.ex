@@ -39,16 +39,12 @@ defmodule Bitcoinex.Transaction do
     <<version::little-size(32), remaining::binary>> = tx_bytes
 
     {is_segwit, remaining} =
-      try do
-        <<segwit_flag::size(16), segwit_remaining::binary>> = remaining
-
-        if segwit_flag == 1 do
+      case remaining do
+        <<1::size(16), segwit_remaining::binary>> ->
           {:segwit, segwit_remaining}
-        else
+
+        _ ->
           {:not_segwit, remaining}
-        end
-      rescue
-        _ -> {:not_segwit, remaining}
       end
 
     # Inputs.
