@@ -7,6 +7,7 @@ defmodule Bitcoinex.Transaction do
   alias Bitcoinex.Transaction.In
   alias Bitcoinex.Transaction.Out
   alias Bitcoinex.Transaction.Witness
+  alias Bitcoinex.Utils
   alias Bitcoinex.Transaction.Utils, as: TxUtils
 
   defstruct [
@@ -16,6 +17,17 @@ defmodule Bitcoinex.Transaction do
     :witnesses,
     :lock_time
   ]
+
+  def transaction_id(txn) do
+    # txid is the double sha256 of [nVersion][txins][txouts][nLockTime]
+    legacy_txn = TxUtils.serialize_legacy(txn)
+    {:ok, legacy_txn} = Base.decode16(legacy_txn, case: :lower)
+
+    Base.encode16(
+      <<:binary.decode_unsigned(Utils.sha256(Utils.sha256(legacy_txn)), :big)::little-size(256)>>,
+      case: :lower
+    )
+  end
 
   # @spec decode(String.t()) :: {:ok, t} | {:error, error}
   def decode(tx_hex) when is_binary(tx_hex) do
@@ -84,6 +96,9 @@ defmodule Bitcoinex.Transaction.Utils do
   @moduledoc """
   Utilities for when dealing with transaction objects.
   """
+  alias Bitcoinex.Transaction.In
+  alias Bitcoinex.Transaction.Out
+
   # https://en.bitcoin.it/wiki/Protocol_documentation#Variable_length_integer
   @spec get_counter(binary) :: {non_neg_integer(), binary()}
   def get_counter(<<counter::little-size(8), vec::binary>>) do
@@ -105,6 +120,42 @@ defmodule Bitcoinex.Transaction.Utils do
 
       _ ->
         {counter, vec}
+    end
+  end
+
+  # serialize returns the transaction in a serialized format without witnesses
+  def serialize_legacy(txn) do
+    version = <<txn.version::little-size(32)>>
+    tx_in_count = serialize_compact_size_unsigned_int(length(txn.inputs))
+    inputs = In.serialize_inputs(txn.inputs)
+    tx_out_count = serialize_compact_size_unsigned_int(length(txn.outputs))
+    outputs = Out.serialize_outputs(txn.outputs)
+    lock_time = <<txn.lock_time::little-size(32)>>
+
+    Base.encode16(
+      version <>
+        tx_in_count <>
+        inputs <>
+        tx_out_count <>
+        outputs <>
+        lock_time,
+      case: :lower
+    )
+  end
+
+  def serialize_compact_size_unsigned_int(compact_size) do
+    cond do
+      compact_size >= 0 and compact_size <= 0xFC ->
+        <<compact_size::little-size(8)>>
+
+      compact_size <= 0xFFFF ->
+        <<0xFD>> <> <<compact_size::little-size(16)>>
+
+      compact_size <= 0xFFFFFFFF ->
+        <<0xFE>> <> <<compact_size::little-size(32)>>
+
+      compact_size <= 0xFF ->
+        <<0xFF>> <> <<compact_size::little-size(64)>>
     end
   end
 end
@@ -185,6 +236,31 @@ defmodule Bitcoinex.Transaction.In do
     :sequence_no
   ]
 
+  def serialize_inputs(inputs) do
+    serialize_input(inputs, <<""::binary>>)
+  end
+
+  defp serialize_input([], serialized_inputs), do: serialized_inputs
+
+  defp serialize_input(inputs, serialized_inputs) do
+    [input | inputs] = inputs
+
+    {:ok, prev_txid} = Base.decode16(input.prev_txid, case: :lower)
+    prev_txid = prev_txid |> :binary.decode_unsigned(:big) |> :binary.encode_unsigned(:little)
+
+    {:ok, script_sig} = Base.decode16(input.script_sig, case: :lower)
+
+    script_len = TxUtils.serialize_compact_size_unsigned_int(byte_size(script_sig))
+    # script_sig = script_sig |> :binary.decode_unsigned() |> :binary.encode_unsigned(:little)
+
+    serialized_input =
+      prev_txid <>
+        <<input.prev_vout::little-size(32)>> <>
+        script_len <> script_sig <> <<input.sequence_no::little-size(32)>>
+
+    serialize_input(inputs, <<serialized_inputs::binary>> <> serialized_input)
+  end
+
   def parse_inputs(counter, inputs) do
     parse(inputs, [], counter)
   end
@@ -224,6 +300,23 @@ defmodule Bitcoinex.Transaction.Out do
     :value,
     :script_pub_key
   ]
+
+  def serialize_outputs(outputs) do
+    serialize_output(outputs, <<""::binary>>)
+  end
+
+  defp serialize_output([], serialized_outputs), do: serialized_outputs
+
+  defp serialize_output(outputs, serialized_outputs) do
+    [output | outputs] = outputs
+
+    {:ok, script_pub_key} = Base.decode16(output.script_pub_key, case: :lower)
+
+    script_len = TxUtils.serialize_compact_size_unsigned_int(byte_size(script_pub_key))
+
+    serialized_output = <<output.value::little-size(64)>> <> script_len <> script_pub_key
+    serialize_output(outputs, <<serialized_outputs::binary>> <> serialized_output)
+  end
 
   def output(out_bytes) do
     <<value::little-size(64), out_bytes::binary>> = out_bytes

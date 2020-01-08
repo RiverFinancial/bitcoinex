@@ -39,6 +39,9 @@ defmodule Bitcoinex.TransactionTest do
       assert nil == txn.witnesses
       assert 0 == txn.lock_time
 
+      assert "b020bdec4e92cb69db93557dcbbfcc73076fc01f6828e41eb3ef5f628414ee62" ==
+               Transaction.transaction_id(txn)
+
       in_1 = Enum.at(txn.inputs, 0)
 
       assert "7bff92f5853eb1c06112f8c532ddda687e95bfe55ad7982f88f0c09d13c37004" == in_1.prev_txid
@@ -63,6 +66,9 @@ defmodule Bitcoinex.TransactionTest do
       assert 1 == txn.version
       assert 2 == length(txn.witnesses)
       assert 17 == txn.lock_time
+
+      assert "e8151a2af31c368a35053ddd4bdb285a8595c769a3ad83e0fa02314a602d4609" ==
+               Transaction.transaction_id(txn)
 
       in_1 = Enum.at(txn.inputs, 0)
 
@@ -109,6 +115,9 @@ defmodule Bitcoinex.TransactionTest do
       assert 2 == length(txn.witnesses)
       assert 0 == txn.lock_time
 
+      assert "570e3730deeea7bd8bc92c836ccdeb4dd4556f2c33f2a1f7b889a4cb4e48d3ab" ==
+               Transaction.transaction_id(txn)
+
       in_0 = Enum.at(txn.inputs, 0)
 
       assert "6eb316926b1c5d567cd6f5e6a84fec606fc53d7b474526d1fff3948020c93dfe" == in_0.prev_txid
@@ -151,6 +160,9 @@ defmodule Bitcoinex.TransactionTest do
       assert 1 == length(txn.witnesses)
       assert 1170 == txn.lock_time
 
+      assert "ef48d9d0f595052e0f8cdcf825f7a5e50b6a388a81f206f3f4846e5ecd7a0c23" ==
+               Transaction.transaction_id(txn)
+
       in_0 = Enum.at(txn.inputs, 0)
 
       assert "77541aeb3c4dac9260b68f74f44c973081a9d4cb2ebe8038b2d70faa201b6bdb" == in_0.prev_txid
@@ -185,6 +197,9 @@ defmodule Bitcoinex.TransactionTest do
       assert 1 == txn.version
       assert 1 == length(txn.witnesses)
       assert 0 == txn.lock_time
+
+      assert "27eae69aff1dd4388c0fa05cbbfe9a3983d1b0b5811ebcd4199b86f299370aac" ==
+               Transaction.transaction_id(txn)
 
       in_0 = Enum.at(txn.inputs, 0)
 
