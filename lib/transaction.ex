@@ -120,6 +120,20 @@ defmodule Bitcoinex.Transaction.Witness do
     :txinwitness
   ]
 
+  def witness(witness_bytes) do
+    {stack_size, witness_bytes} = TxUtils.get_counter(witness_bytes)
+
+    {witness, _} =
+      if stack_size == 0 do
+        {%Witness{txinwitness: 0}, witness_bytes}
+      else
+        {stack_items, witness_bytes} = parse_stack(witness_bytes, [], stack_size)
+        {%Witness{txinwitness: stack_items}, witness_bytes}
+      end
+
+    witness
+  end
+
   def parse_witness(0, remaining), do: {nil, remaining}
 
   def parse_witness(counter, witnesses) do
@@ -210,6 +224,13 @@ defmodule Bitcoinex.Transaction.Out do
     :value,
     :script_pub_key
   ]
+
+  def output(out_bytes) do
+    <<value::little-size(64), out_bytes::binary>> = out_bytes
+    {script_len, out_bytes} = TxUtils.get_counter(out_bytes)
+    <<script_pub_key::binary-size(script_len), _::binary>> = out_bytes
+    %Out{value: value, script_pub_key: Base.encode16(script_pub_key, case: :lower)}
+  end
 
   def parse_outputs(counter, outputs) do
     parse(outputs, [], counter)
