@@ -3,7 +3,6 @@ defmodule Bitcoinex.TransactionTest do
   doctest Bitcoinex.Transaction
 
   alias Bitcoinex.Transaction
-  require Logger
 
   @txn_serialization_1 %{
     tx_hex:
