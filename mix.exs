@@ -29,7 +29,7 @@ defmodule Bitcoinex.MixProject do
       {:mix_test_watch, "~> 0.8", only: :dev, runtime: false},
       {:stream_data, "~> 0.1", only: :test},
       {:libsecp256k1,
-       [github: "AltoFinancial/libsecp256k1", manager: :rebar, branch: "add-spec"]},
+       [github: "RiverFinancial/libsecp256k1", manager: :rebar, branch: "add-spec"]},
       {:timex, "~> 3.1"},
       {:decimal, "~> 1.0"}
       # {:dep_from_hexpm, "~> 0.3.0"},
