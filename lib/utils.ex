@@ -12,4 +12,12 @@ defmodule Bitcoinex.Utils do
   def replicate(x, num) when x > 0 do
     for _ <- 1..num, do: x
   end
+
+  @spec bin_double_sha256(binary) :: binary
+  def bin_double_sha256(preimage) do
+    :crypto.hash(
+      :sha256,
+      :crypto.hash(:sha256, preimage)
+    )
+  end
 end

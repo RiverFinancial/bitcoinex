@@ -21,15 +21,13 @@ defmodule Bitcoinex.PSBT do
 
   def separator, do: @separator
 
+  @spec decode(String.t()) :: {:ok, %Bitcoinex.PSBT{}} | {:error, term()}
   def decode(psbt_b64) when is_binary(psbt_b64) do
     case Base.decode64(psbt_b64, case: :lower) do
       {:ok, psbt_b64} ->
         case parse(psbt_b64) do
           {:ok, txn} ->
             {:ok, txn}
-
-          :error ->
-            {:error, :parse_error}
         end
 
       :error ->
@@ -122,7 +120,7 @@ defmodule Bitcoinex.PSBT.Global do
       {:ok, txn} ->
         {%Global{global | unsigned_tx: txn}, psbt}
 
-      {:errror, error_msg} ->
+      {:error, error_msg} ->
         {:error, error_msg}
     end
   end
@@ -297,7 +295,7 @@ defmodule Bitcoinex.PSBT.In do
   defp parse(<<@psbt_in_final_scriptwitness::big-size(8)>>, psbt, input) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
     value = Witness.witness(value)
-    input = %In{input | final_scriptwitness: Base.encode16(value, case: :lower)}
+    input = %In{input | final_scriptwitness: value}
     {input, psbt}
   end
 end
@@ -376,9 +374,7 @@ defmodule Bitcoinex.PSBT.Out do
 
     output = %Out{
       output
-      | bip32_derivation: [
-          bip32_derivation
-        ]
+      | bip32_derivation: bip32_derivation
     }
 
     {output, psbt}
