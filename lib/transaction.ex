@@ -24,7 +24,10 @@ defmodule Bitcoinex.Transaction do
     {:ok, legacy_txn} = Base.decode16(legacy_txn, case: :lower)
 
     Base.encode16(
-      <<:binary.decode_unsigned(Utils.sha256(Utils.sha256(legacy_txn)), :big)::little-size(256)>>,
+      <<:binary.decode_unsigned(
+          Utils.bin_double_sha256(legacy_txn),
+          :big
+        )::little-size(256)>>,
       case: :lower
     )
   end
@@ -171,6 +174,9 @@ defmodule Bitcoinex.Transaction.Witness do
     :txinwitness
   ]
 
+  @spec witness(binary) :: %Bitcoinex.Transaction.Witness{
+          :txinwitness => [any()] | 0
+        }
   def witness(witness_bytes) do
     {stack_size, witness_bytes} = TxUtils.get_counter(witness_bytes)
 

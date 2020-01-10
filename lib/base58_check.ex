@@ -3,6 +3,7 @@ defmodule Bitcoinex.Base58Check do
     Some code inspired by:
     https://github.com/comboy/bitcoin-elixir/blob/develop/lib/bitcoin/base58_check.ex
   """
+  alias Bitcoinex.Utils
 
   @type address_type :: :p2sh | :p2pkh
   @base58_encode_list ~c(123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz)
@@ -60,7 +61,7 @@ defmodule Bitcoinex.Base58Check do
       |> Tuple.to_list()
       |> Enum.map(&:binary.list_to_bin(&1))
 
-    case checksum == binary_slice(bin_double_sha256(decoded_body), 0..3) do
+    case checksum == binary_slice(Utils.bin_double_sha256(decoded_body), 0..3) do
       false -> {:error, :invalid_checksum}
       true -> {:ok, decoded_body}
     end
@@ -109,16 +110,8 @@ defmodule Bitcoinex.Base58Check do
   @spec checksum(binary) :: binary
   defp checksum(body) do
     body
-    |> bin_double_sha256()
+    |> Utils.bin_double_sha256()
     |> binary_slice(0..3)
-  end
-
-  @spec bin_double_sha256(binary) :: binary
-  defp bin_double_sha256(preimage) do
-    :crypto.hash(
-      :sha256,
-      :crypto.hash(:sha256, preimage)
-    )
   end
 
   @spec binary_slice(binary, Range.t()) :: binary
