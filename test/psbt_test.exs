@@ -188,11 +188,11 @@ defmodule Bitcoinex.PSBTTest do
             %{
               derivation: "d90c6a4fae0000800000008000000000",
               public_key: "029da12cdb5b235692b91536afefe5c91c3ab9473d8e43b533836ab456299c8871"
+            },
+            %{
+              derivation: "d90c6a4fae0000800100008000000000",
+              public_key: "03372b34234ed7cf9c1fea5d05d441557927be9542b162eb02e1ab2ce80224c00b"
             }
-            | %{
-                derivation: "d90c6a4fae0000800100008000000000",
-                public_key: "03372b34234ed7cf9c1fea5d05d441557927be9542b162eb02e1ab2ce80224c00b"
-              }
           ],
           final_scriptsig: nil,
           final_scriptwitness: nil,
@@ -258,11 +258,11 @@ defmodule Bitcoinex.PSBTTest do
             %{
               derivation: "b4a6ba67000000800000008004000080",
               public_key: "03b1341ccba7683b6af4f1238cd6e97e7167d569fac47f1e48d47541844355bd46"
+            },
+            %{
+              derivation: "b4a6ba67000000800000008005000080",
+              public_key: "03de55d1e1dac805e3f8a58c1fbf9b94c02f3dbaafe127fefca4995f26f82083bd"
             }
-            | %{
-                derivation: "b4a6ba67000000800000008005000080",
-                public_key: "03de55d1e1dac805e3f8a58c1fbf9b94c02f3dbaafe127fefca4995f26f82083bd"
-              }
           ],
           final_scriptsig: nil,
           final_scriptwitness: nil,
@@ -325,7 +325,7 @@ defmodule Bitcoinex.PSBTTest do
         version: nil,
         xpub: nil
       },
-      expected_inputs: [
+      expected_in: [
         %Bitcoinex.PSBT.In{
           bip32_derivation: nil,
           final_scriptsig: nil,
@@ -375,23 +375,21 @@ defmodule Bitcoinex.PSBTTest do
           }
         }
       ],
-      expected_outputs: [
+      expected_out: [
         %Bitcoinex.PSBT.Out{
           bip32_derivation: [
-            [
-              %{
-                derivation: "000000000000008002000080020000000000000000000000010000000d000000",
-                public_key: "023e1a92f74483a4c12a196d6c0253ac589cfadd5964ff3e6c63aef5d577051ed4"
-              }
-              | %{
-                  derivation: "000000000000008002000080020000000000000000000000010000000d000000",
-                  public_key: "024d0e39b33ab57782a98fd06a7d0653385e509ee3b74dc45559e6db6391d31378"
-                }
-            ]
-            | %{
-                derivation: "000000000000008002000080020000000000000000000000010000000d000000",
-                public_key: "036c0bae6bcb02e47c857c480ed1d23888c8ad6a66b83ab111cb6b9242afb1c725"
-              }
+            %{
+              derivation: "000000000000008002000080020000000000000000000000010000000d000000",
+              public_key: "023e1a92f74483a4c12a196d6c0253ac589cfadd5964ff3e6c63aef5d577051ed4"
+            },
+            %{
+              derivation: "000000000000008002000080020000000000000000000000010000000d000000",
+              public_key: "024d0e39b33ab57782a98fd06a7d0653385e509ee3b74dc45559e6db6391d31378"
+            },
+            %{
+              derivation: "000000000000008002000080020000000000000000000000010000000d000000",
+              public_key: "036c0bae6bcb02e47c857c480ed1d23888c8ad6a66b83ab111cb6b9242afb1c725"
+            }
           ],
           proprietary: nil,
           redeem_script: nil,
