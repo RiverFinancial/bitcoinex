@@ -188,7 +188,8 @@ defmodule Bitcoinex.PSBT.In do
   @psbt_in_proprietary 0xFC
 
   def parse_inputs(psbt, num_inputs) do
-    parse_input(psbt, [], num_inputs)
+    psbt
+    |> parse_input([], num_inputs)
   end
 
   defp parse_input(psbt, inputs, 0), do: {Enum.reverse(inputs), psbt}
@@ -199,6 +200,15 @@ defmodule Bitcoinex.PSBT.In do
         parse_input(psbt, inputs, num_inputs - 1)
 
       {input, psbt} ->
+        input =
+          case input do
+            %{bip32_derivation: bip32_derivation} when is_list(bip32_derivation) ->
+              %{input | bip32_derivation: Enum.reverse(bip32_derivation)}
+
+            _ ->
+              input
+          end
+
         parse_input(psbt, [input | inputs], num_inputs - 1)
     end
   end
@@ -255,18 +265,20 @@ defmodule Bitcoinex.PSBT.In do
     bip32_derivation =
       case input.bip32_derivation do
         nil ->
-          %{
-            public_key: Base.encode16(public_key, case: :lower),
-            derivation: Base.encode16(value, case: :lower)
-          }
+          [
+            %{
+              public_key: Base.encode16(public_key, case: :lower),
+              derivation: Base.encode16(value, case: :lower)
+            }
+          ]
 
         _ ->
           [
-            input.bip32_derivation
-            | %{
-                public_key: Base.encode16(public_key, case: :lower),
-                derivation: Base.encode16(value, case: :lower)
-              }
+            %{
+              public_key: Base.encode16(public_key, case: :lower),
+              derivation: Base.encode16(value, case: :lower)
+            }
+            | input.bip32_derivation
           ]
       end
 
@@ -331,6 +343,15 @@ defmodule Bitcoinex.PSBT.Out do
         parse_output(psbt, outputs, num_outputs - 1)
 
       {output, psbt} ->
+        output =
+          case output do
+            %{bip32_derivation: bip32_derivation} when is_list(bip32_derivation) ->
+              %{output | bip32_derivation: Enum.reverse(bip32_derivation)}
+
+            _ ->
+              output
+          end
+
         parse_output(psbt, [output | outputs], num_outputs - 1)
     end
   end
@@ -357,18 +378,20 @@ defmodule Bitcoinex.PSBT.Out do
     bip32_derivation =
       case output.bip32_derivation do
         nil ->
-          %{
-            public_key: Base.encode16(public_key, case: :lower),
-            derivation: Base.encode16(value, case: :lower)
-          }
+          [
+            %{
+              public_key: Base.encode16(public_key, case: :lower),
+              derivation: Base.encode16(value, case: :lower)
+            }
+          ]
 
         _ ->
           [
-            output.bip32_derivation
-            | %{
-                public_key: Base.encode16(public_key, case: :lower),
-                derivation: Base.encode16(value, case: :lower)
-              }
+            %{
+              public_key: Base.encode16(public_key, case: :lower),
+              derivation: Base.encode16(value, case: :lower)
+            }
+            | output.bip32_derivation
           ]
       end
 
