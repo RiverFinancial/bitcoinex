@@ -1,6 +1,6 @@
-defmodule Bitcoin.LightningNetwork do
+defmodule Bitcoinex.LightningNetwork do
   alias Bitcoinex.LightningNetwork.Invoice
 
   # defdelegate encode_invoice(invoice), to: Invoice, as: :encode
-  defdelegate encode_decode(invoice), to: Invoice, as: :decode
+  defdelegate decode_invoice(invoice), to: Invoice, as: :decode
 end
