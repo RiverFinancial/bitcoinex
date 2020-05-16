@@ -581,9 +581,15 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
     case result do
       {:ok, amount_in_bitcoin} ->
         amount_msat_dec = D.mult(amount_in_bitcoin, @milli_satoshi_per_bitcoin)
-        amount_msat = D.to_integer(amount_msat_dec)
+        rounded_amount_msat_dec = D.round(amount_msat_dec)
 
-        {:ok, amount_msat}
+        case Decimal.equal?(rounded_amount_msat_dec, amount_msat_dec) do
+          true ->
+            {:ok, D.to_integer(rounded_amount_msat_dec)}
+
+          false ->
+            {:error, :sub_msat_precision_amount}
+        end
 
       {:error, error} ->
         {:error, error}
