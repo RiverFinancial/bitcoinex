@@ -306,8 +306,8 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
           network: :mainnet,
           destination: test_pubkey,
           payment_hash: "0001020304050607080900010203040506070809000102030405060708090102",
-          amount_msat: 2500000000,
-          timestamp: 1496314658,
+          amount_msat: 2_500_000_000,
+          timestamp: 1_496_314_658,
           description: "coffee beans",
           min_final_cltv_expiry: 9
         }
@@ -319,8 +319,21 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
           network: :mainnet,
           destination: test_pubkey,
           payment_hash: "0001020304050607080900010203040506070809000102030405060708090102",
-          amount_msat: 2500000000,
-          timestamp: 1496314658,
+          amount_msat: 2_500_000_000,
+          timestamp: 1_496_314_658,
+          description: "coffee beans",
+          min_final_cltv_expiry: 9
+        }
+      },
+      # Same, but including fields which must be ignored.
+      {
+        "lnbc25m1pvjluezpp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqdq5vdhkven9v5sxyetpdeessp5zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zygs9q5sqqqqqqqqqqqqqqqpqsq2qrqqqfppnqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqppnqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqpp4qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqhpnqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqhp4qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqspnqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqsp4qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqnp5qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqnpkqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq2jxxfsnucm4jf4zwtznpaxphce606fvhvje5x7d4gw7n73994hgs7nteqvenq8a4ml8aqtchv5d9pf7l558889hp4yyrqv6a7zpq9fgpskqhza",
+        %Invoice{
+          network: :mainnet,
+          destination: test_pubkey,
+          payment_hash: "0001020304050607080900010203040506070809000102030405060708090102",
+          amount_msat: 2_500_000_000,
+          timestamp: 1_496_314_658,
           description: "coffee beans",
           min_final_cltv_expiry: 9
         }
