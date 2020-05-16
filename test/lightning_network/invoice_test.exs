@@ -299,6 +299,32 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
           ]
         }
       },
+      # TODO parsing payment secret
+      {
+        "lnbc25m1pvjluezpp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqdq5vdhkven9v5sxyetpdeessp5zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zygs9q5sqqqqqqqqqqqqqqqpqsq67gye39hfg3zd8rgc80k32tvy9xk2xunwm5lzexnvpx6fd77en8qaq424dxgt56cag2dpt359k3ssyhetktkpqh24jqnjyw6uqd08sgptq44qu",
+        %Invoice{
+          network: :mainnet,
+          destination: test_pubkey,
+          payment_hash: "0001020304050607080900010203040506070809000102030405060708090102",
+          amount_msat: 2500000000,
+          timestamp: 1496314658,
+          description: "coffee beans",
+          min_final_cltv_expiry: 9
+        }
+      },
+      # Same, but all upper case
+      {
+        "LNBC25M1PVJLUEZPP5QQQSYQCYQ5RQWZQFQQQSYQCYQ5RQWZQFQQQSYQCYQ5RQWZQFQYPQDQ5VDHKVEN9V5SXYETPDEESSP5ZYG3ZYG3ZYG3ZYG3ZYG3ZYG3ZYG3ZYG3ZYG3ZYG3ZYG3ZYG3ZYGS9Q5SQQQQQQQQQQQQQQQPQSQ67GYE39HFG3ZD8RGC80K32TVY9XK2XUNWM5LZEXNVPX6FD77EN8QAQ424DXGT56CAG2DPT359K3SSYHETKTKPQH24JQNJYW6UQD08SGPTQ44QU",
+        %Invoice{
+          network: :mainnet,
+          destination: test_pubkey,
+          payment_hash: "0001020304050607080900010203040506070809000102030405060708090102",
+          amount_msat: 2500000000,
+          timestamp: 1496314658,
+          description: "coffee beans",
+          min_final_cltv_expiry: 9
+        }
+      },
       {
         "lnbcrt320u1pwt8mp3pp57xs8x6cs28zedru0r0hurkz6932e86dvlrzhwvm09azv57qcekxsdqlv9k8gmeqw3jhxarfdenjqumfd4cxcegcqzpgctyyv3qkvr6khzlnd7de95hrxkw8ewfhmyzuu9dh4sgauukpk5mryaex2qs39ksupm8sxj5jsh3hw3fa0gwdjchh7ga8cx7l652g5dgqzp2ddj",
         %Invoice{
