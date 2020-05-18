@@ -68,12 +68,12 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
       __MODULE__
       |> struct(
         Map.merge(
+          parsed_data,
           %{
             network: network,
             amount_msat: amount_msat,
             destination: destination
-          },
-          parsed_data
+          }
         )
       )
       |> validate_invoice()
@@ -177,7 +177,7 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
     else
       {data, new_rest} = split_at(rest, data_length)
 
-      case parse_tagged_field(type, data, acc, network) do
+      case(parse_tagged_field(type, data, acc, network)) do
         {:ok, acc} ->
           do_parse_tagged_fields(new_rest, acc, network)
 
@@ -259,16 +259,18 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
 
       # n field destination
       19 ->
-        if Map.has_key?(acc, :destination) do
-          {:ok, acc}
-        else
-          case parse_destination(data) do
-            {:ok, destination} ->
-              {:ok, Map.put(acc, :destination, destination)}
+        case acc do
+          %{destination: destination} when destination != nil ->
+            {:ok, acc}
 
-            {:error, error} ->
-              {:error, error}
-          end
+          _ ->
+            case parse_destination(data) do
+              {:ok, destination} ->
+                {:ok, Map.put(acc, :destination, destination)}
+
+              {:error, error} ->
+                {:error, error}
+            end
         end
 
       # h field description hash
@@ -348,7 +350,7 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
           {:error, error}
       end
     else
-      {:error, :invalid_destination_pubkey_length}
+      {:ok, nil}
     end
   end
 
@@ -362,7 +364,7 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
           {:error, error}
       end
     else
-      {:error, :invalid_destination_pubkey_length}
+      {:ok, nil}
     end
   end
 
@@ -581,9 +583,15 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
     case result do
       {:ok, amount_in_bitcoin} ->
         amount_msat_dec = D.mult(amount_in_bitcoin, @milli_satoshi_per_bitcoin)
-        amount_msat = D.to_integer(amount_msat_dec)
+        rounded_amount_msat_dec = D.round(amount_msat_dec)
 
-        {:ok, amount_msat}
+        case D.equal?(rounded_amount_msat_dec, amount_msat_dec) do
+          true ->
+            {:ok, D.to_integer(rounded_amount_msat_dec)}
+
+          false ->
+            {:error, :sub_msat_precision_amount}
+        end
 
       {:error, error} ->
         {:error, error}

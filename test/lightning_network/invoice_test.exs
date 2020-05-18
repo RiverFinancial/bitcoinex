@@ -16,9 +16,13 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
     test_description_coffee = "1 cup coffee"
     test_description_coffee_japanese = "ナンセンス 1杯"
 
+    test_description_blockstream_ledger =
+      "Blockstream Store: 88.85 USD for Blockstream Ledger Nano S x 1, \"Back In My Day\" Sticker x 2, \"I Got Lightning Working\" Sticker x 2 and 1 more items"
+
     # testHopHintPubkeyBytes1 = Base.decode64!("")
     testHopHintPubkey1 = "029e03a901b85534ff1e92c43c74431f7ce72046060fcf7a95c37e148f78c77255"
     testHopHintPubkey2 = "039e03a901b85534ff1e92c43c74431f7ce72046060fcf7a95c37e148f78c77255"
+    testHopHintPubkey3 = "03d06758583bb5154774a6eb221b1276c9e82d65bbaceca806d90e20c108f4b1c7"
 
     testSingleHop = [
       %HopHint{
@@ -274,6 +278,67 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
         }
       },
       {
+        "lnbc9678785340p1pwmna7lpp5gc3xfm08u9qy06djf8dfflhugl6p7lgza6dsjxq454gxhj9t7a0sd8dgfkx7cmtwd68yetpd5s9xar0wfjn5gpc8qhrsdfq24f5ggrxdaezqsnvda3kkum5wfjkzmfqf3jkgem9wgsyuctwdus9xgrcyqcjcgpzgfskx6eqf9hzqnteypzxz7fzypfhg6trddjhygrcyqezcgpzfysywmm5ypxxjemgw3hxjmn8yptk7untd9hxwg3q2d6xjcmtv4ezq7pqxgsxzmnyyqcjqmt0wfjjq6t5v4khxxqyjw5qcqp2rzjq0gxwkzc8w6323m55m4jyxcjwmy7stt9hwkwe2qxmy8zpsgg7jcuwz87fcqqeuqqqyqqqqlgqqqqn3qq9qn07ytgrxxzad9hc4xt3mawjjt8znfv8xzscs7007v9gh9j569lencxa8xeujzkxs0uamak9aln6ez02uunw6rd2ht2sqe4hz8thcdagpleym0j",
+        %Invoice{
+          network: :mainnet,
+          destination: test_pubkey,
+          payment_hash: "462264ede7e14047e9b249da94fefc47f41f7d02ee9b091815a5506bc8abf75f",
+          amount_msat: 967_878_534,
+          timestamp: 1_572_468_703,
+          description: test_description_blockstream_ledger,
+          min_final_cltv_expiry: 10,
+          expiry: 604_800,
+          route_hints: [
+            %HopHint{
+              node_id: testHopHintPubkey3,
+              channel_id: 0x08FE4E000CF00001,
+              fee_base_m_sat: 1000,
+              fee_proportional_millionths: 2500,
+              cltv_expiry_delta: 40
+            }
+          ]
+        }
+      },
+      # TODO parsing payment secret
+      {
+        "lnbc25m1pvjluezpp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqdq5vdhkven9v5sxyetpdeessp5zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zygs9q5sqqqqqqqqqqqqqqqpqsq67gye39hfg3zd8rgc80k32tvy9xk2xunwm5lzexnvpx6fd77en8qaq424dxgt56cag2dpt359k3ssyhetktkpqh24jqnjyw6uqd08sgptq44qu",
+        %Invoice{
+          network: :mainnet,
+          destination: test_pubkey,
+          payment_hash: "0001020304050607080900010203040506070809000102030405060708090102",
+          amount_msat: 2_500_000_000,
+          timestamp: 1_496_314_658,
+          description: "coffee beans",
+          min_final_cltv_expiry: 9
+        }
+      },
+      # Same, but all upper case
+      {
+        "LNBC25M1PVJLUEZPP5QQQSYQCYQ5RQWZQFQQQSYQCYQ5RQWZQFQQQSYQCYQ5RQWZQFQYPQDQ5VDHKVEN9V5SXYETPDEESSP5ZYG3ZYG3ZYG3ZYG3ZYG3ZYG3ZYG3ZYG3ZYG3ZYG3ZYG3ZYG3ZYGS9Q5SQQQQQQQQQQQQQQQPQSQ67GYE39HFG3ZD8RGC80K32TVY9XK2XUNWM5LZEXNVPX6FD77EN8QAQ424DXGT56CAG2DPT359K3SSYHETKTKPQH24JQNJYW6UQD08SGPTQ44QU",
+        %Invoice{
+          network: :mainnet,
+          destination: test_pubkey,
+          payment_hash: "0001020304050607080900010203040506070809000102030405060708090102",
+          amount_msat: 2_500_000_000,
+          timestamp: 1_496_314_658,
+          description: "coffee beans",
+          min_final_cltv_expiry: 9
+        }
+      },
+      # Same, but including fields which must be ignored.
+      {
+        "lnbc25m1pvjluezpp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqdq5vdhkven9v5sxyetpdeessp5zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zygs9q5sqqqqqqqqqqqqqqqpqsq2qrqqqfppnqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqppnqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqpp4qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqhpnqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqhp4qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqspnqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqsp4qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqnp5qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqnpkqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq2jxxfsnucm4jf4zwtznpaxphce606fvhvje5x7d4gw7n73994hgs7nteqvenq8a4ml8aqtchv5d9pf7l558889hp4yyrqv6a7zpq9fgpskqhza",
+        %Invoice{
+          network: :mainnet,
+          destination: test_pubkey,
+          payment_hash: "0001020304050607080900010203040506070809000102030405060708090102",
+          amount_msat: 2_500_000_000,
+          timestamp: 1_496_314_658,
+          description: "coffee beans",
+          min_final_cltv_expiry: 9
+        }
+      },
+      {
         "lnbcrt320u1pwt8mp3pp57xs8x6cs28zedru0r0hurkz6932e86dvlrzhwvm09azv57qcekxsdqlv9k8gmeqw3jhxarfdenjqumfd4cxcegcqzpgctyyv3qkvr6khzlnd7de95hrxkw8ewfhmyzuu9dh4sgauukpk5mryaex2qs39ksupm8sxj5jsh3hw3fa0gwdjchh7ga8cx7l652g5dgqzp2ddj",
         %Invoice{
           network: :regtest,
@@ -382,7 +447,21 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
       # mixed case
       "lnbc2500u1PvJlUeZpP5QqQsYqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqdq5xysxxatsyp3k7enxv4jsxqzpuaztrnwngzn3kdzw5hydlzf03qdgm2hdq27cqv3agm2awhz5se903vruatfhq77w3ls4evs3ch9zw97j25emudupq63nyw24cg27h2rspfj9srp",
       # Lightning Payment Request signature pubkey does not match payee pubkey
-      "lnbc1pvjluezpp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqdpl2pkx2ctnv5sxxmmwwd5kgetjypeh2ursdae8g6twvus8g6rfwvs8qun0dfjkxaqnp4q0n326hr8v9zprg8gsvezcch06gfaqqhde2aj730yg0durllllll72gy6kphxuhh4a2ffwf9344ytfw98tyhvslsp9y5vt2uxdfhpucph83eqms28dyde9yxgu5ehln4zkwv04nvurxhst77vnng5s0ar9mqpm3cg0l"
+      "lnbc1pvjluezpp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqdpl2pkx2ctnv5sxxmmwwd5kgetjypeh2ursdae8g6twvus8g6rfwvs8qun0dfjkxaqnp4q0n326hr8v9zprg8gsvezcch06gfaqqhde2aj730yg0durllllll72gy6kphxuhh4a2ffwf9344ytfw98tyhvslsp9y5vt2uxdfhpucph83eqms28dyde9yxgu5ehln4zkwv04nvurxhst77vnng5s0ar9mqpm3cg0l",
+      # Bech32 checksum is invalid
+      "lnbc2500u1pvjluezpp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqdpquwpc4curk03c9wlrswe78q4eyqc7d8d0xqzpuyk0sg5g70me25alkluzd2x62aysf2pyy8edtjeevuv4p2d5p76r4zkmneet7uvyakky2zr4cusd45tftc9c5fh0nnqpnl2jfll544esqchsrnt",
+      # Malformed bech32 string (no 1)
+      "pvjluezpp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqdpquwpc4curk03c9wlrswe78q4eyqc7d8d0xqzpuyk0sg5g70me25alkluzd2x62aysf2pyy8edtjeevuv4p2d5p76r4zkmneet7uvyakky2zr4cusd45tftc9c5fh0nnqpnl2jfll544esqchsrny",
+      # Malformed bech32 string (mixed case)
+      "LNBC2500u1pvjluezpp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqdpquwpc4curk03c9wlrswe78q4eyqc7d8d0xqzpuyk0sg5g70me25alkluzd2x62aysf2pyy8edtjeevuv4p2d5p76r4zkmneet7uvyakky2zr4cusd45tftc9c5fh0nnqpnl2jfll544esqchsrny",
+      # Signature is not recoverable.
+      "lnbc2500u1pvjluezpp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqdq5xysxxatsyp3k7enxv4jsxqzpuaxtrnwngzn3kdzw5hydlzf03qdgm2hdq27cqv3agm2awhz5se903vruatfhq77w3ls4evs3ch9zw97j25emudupq63nyw24cg27h2rspk28uwq",
+      # String is too short.
+      "lnbc1pvjluezpp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqdpl2pkx2ctnv5sxxmmwwd5kgetjypeh2ursdae8g6na6hlh",
+      # Invalid multiplier
+      "lnbc2500x1pvjluezpp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqdq5xysxxatsyp3k7enxv4jsxqzpujr6jxr9gq9pv6g46y7d20jfkegkg4gljz2ea2a3m9lmvvr95tq2s0kvu70u3axgelz3kyvtp2ywwt0y8hkx2869zq5dll9nelr83zzqqpgl2zg",
+      # Invalid sub-millisatoshi precision.
+      "lnbc2500000001p1pvjluezpp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqdq5xysxxatsyp3k7enxv4jsxqzpu7hqtk93pkf7sw55rdv4k9z2vj050rxdr6za9ekfs3nlt5lr89jqpdmxsmlj9urqumg0h9wzpqecw7th56tdms40p2ny9q4ddvjsedzcplva53s"
     ]
 
     [
