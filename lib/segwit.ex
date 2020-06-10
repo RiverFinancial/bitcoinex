@@ -10,7 +10,7 @@ defmodule Bitcoinex.Segwit do
 
   @valid_witness_program_length_range 2..40
   @valid_witness_version 0..16
-  @suuported_network [:mainnet, :testnet, :regtest]
+  @supported_network [:mainnet, :testnet, :regtest]
 
   @type hrp :: String.t()
   @type data :: list(integer)
@@ -37,7 +37,7 @@ defmodule Bitcoinex.Segwit do
 
   @spec encode_address(network, witness_version, witness_program) ::
           {:ok, String.t()} | {:error, error}
-  def encode_address(network, _, _) when not (network in @suuported_network) do
+  def encode_address(network, _, _) when not (network in @supported_network) do
     {:error, :invalid_network}
   end
 
