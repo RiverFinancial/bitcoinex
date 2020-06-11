@@ -41,12 +41,8 @@ defmodule Bitcoinex.Address do
 
   def is_valid?(address, network_name, :p2wpkh) do
     case Segwit.decode_address(address) do
-      {:ok, {^network_name, witness_version, witness_program}} ->
-        if witness_version == 0 and length(witness_program) == 20 do
-            true
-        else
-            false
-        end
+      {:ok, {^network_name, witness_version, witness_program}} when witness_version == 0 and length(witness_program) == 20 ->
+        true
       # network is not same as network set in config
       {:ok, {_network_name, _, _}} ->
         false
@@ -58,12 +54,8 @@ defmodule Bitcoinex.Address do
 
   def is_valid?(address, network_name, :p2wsh) do
     case Segwit.decode_address(address) do
-      {:ok, {^network_name, witness_version, witness_program}} ->
-        if witness_version == 0 and length(witness_program) == 32 do
-            true
-        else
-            false
-        end
+      {:ok, {^network_name, witness_version, witness_program}} when witness_version == 0 and length(witness_program) == 32 ->
+        true
       # network is not same as network set in config
       {:ok, {_network_name, _, _}} ->
         false
@@ -88,7 +80,7 @@ defmodule Bitcoinex.Address do
   end
 
   @spec decode_type(String.t(), Bitcoinex.Network.network_name()) ::
-          {:ok, address_type} | {:error, term()}
+          {:ok, address_type} | {:error, :decode_error}
   def decode_type(address, network_name) do
     case Enum.find(@address_types, &is_valid?(address, network_name, &1)) do
       nil -> {:error, :decode_error}
