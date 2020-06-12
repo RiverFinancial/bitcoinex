@@ -6,7 +6,7 @@ defmodule Bitcoinex.Address do
   """
   alias Bitcoinex.{Segwit, Base58Check, Network}
   @type address_type :: :p2pkh | :p2sh | :p2wpkh | :p2wsh
-  @address_type ~w(p2pkh p2sh p2wpkh p2wsh)a
+  @address_types ~w(p2pkh p2sh p2wpkh p2wsh)a
 
   # TODO: write tests
   def encode(pubkey, network_name, :p2pkh) do
@@ -25,7 +25,7 @@ defmodule Bitcoinex.Address do
 
   @spec is_valid?(String.t(), Bitcoinex.Network.network_name()) :: boolean
   def is_valid?(address, network_name) do
-    Enum.any?(@address_type, &is_valid?(address, network_name, &1))
+    Enum.any?(@address_types, &is_valid?(address, network_name, &1))
   end
 
   @spec is_valid?(String.t(), Bitcoinex.Network.network_name(), address_type) :: boolean
@@ -39,11 +39,23 @@ defmodule Bitcoinex.Address do
     is_valid_base58_check_address?(address, network.p2sh_version_decimal_prefix)
   end
 
-  def is_valid?(address, network_name, address_type) when address_type in [:p2wpkh, :p2wsh] do
+  def is_valid?(address, network_name, :p2wpkh) do
     case Segwit.decode_address(address) do
-      {:ok, {^network_name, _, _}} ->
+      {:ok, {^network_name, witness_version, witness_program}} when witness_version == 0 and length(witness_program) == 20 ->
         true
+      # network is not same as network set in config
+      {:ok, {_network_name, _, _}} ->
+        false
 
+      {:error, _error} ->
+        false
+    end
+  end
+
+  def is_valid?(address, network_name, :p2wsh) do
+    case Segwit.decode_address(address) do
+      {:ok, {^network_name, witness_version, witness_program}} when witness_version == 0 and length(witness_program) == 32 ->
+        true
       # network is not same as network set in config
       {:ok, {_network_name, _, _}} ->
         false
@@ -54,7 +66,7 @@ defmodule Bitcoinex.Address do
   end
 
   def supported_address_types() do
-    @address_type
+    @address_types
   end
 
   defp is_valid_base58_check_address?(address, valid_prefix) do
@@ -64,6 +76,15 @@ defmodule Bitcoinex.Address do
 
       _ ->
         false
+    end
+  end
+
+  @spec decode_type(String.t(), Bitcoinex.Network.network_name()) ::
+          {:ok, address_type} | {:error, :decode_error}
+  def decode_type(address, network_name) do
+    case Enum.find(@address_types, &is_valid?(address, network_name, &1)) do
+      nil -> {:error, :decode_error}
+      type -> {:ok, type}
     end
   end
 end

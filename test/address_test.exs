@@ -28,9 +28,6 @@ defmodule Bitcoinex.AddressTest do
 
       valid_mainnet_segwit_addresses = [
         "BC1QW508D6QEJXTDG4Y5R3ZARVARY0C5XW7KV8F3T4",
-        "bc1pw508d6qejxtdg4y5r3zarvary0c5xw7kw508d6qejxtdg4y5r3zarvary0c5xw7k7grplx",
-        "BC1SW50QA3JX3S",
-        "bc1zw508d6qejxtdg4y5r3zarvaryvg6kdaj"
       ]
 
       valid_testnet_segwit_addresses = [
@@ -43,19 +40,44 @@ defmodule Bitcoinex.AddressTest do
         "bcrt1qqqqqp399et2xygdj5xreqhjjvcmzhxw4aywxecjdzew6hylgvseswlauz7"
       ]
 
+      valid_mainnet_p2wpkh_addresses = [
+        "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4",
+      ]
+
+      valid_testnet_p2wpkh_addresses = [
+        "tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx"
+      ]
+
+      valid_mainnet_p2wsh_addresses = [
+        "bc1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3qccfmv3"
+      ]
+
+      valid_testnet_p2wsh_addresses = [
+        "tb1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3q0sl5k7"
+      ]
+
       valid_mainnet_addresses =
         valid_mainnet_p2pkh_addresses ++
-          valid_mainnet_p2sh_addresses ++ valid_mainnet_segwit_addresses
+          valid_mainnet_p2sh_addresses ++ 
+            valid_mainnet_segwit_addresses ++
+              valid_mainnet_p2wpkh_addresses ++
+                valid_mainnet_p2wsh_addresses
 
       valid_testnet_addresses =
         valid_testnet_p2pkh_addresses ++
-          valid_testnet_p2sh_addresses ++ valid_testnet_segwit_addresses
+          valid_testnet_p2sh_addresses ++ 
+            valid_testnet_segwit_addresses ++
+              valid_testnet_p2wpkh_addresses ++
+                valid_testnet_p2wsh_addresses
 
       valid_regtest_addresses =
         valid_testnet_p2pkh_addresses ++
           valid_testnet_p2sh_addresses ++ valid_regtest_segwit_addresses
 
       invalid_addresses = [
+        "bc1pw508d6qejxtdg4y5r3zarvary0c5xw7kw508d6qejxtdg4y5r3zarvary0c5xw7k7grplx", # witness v1 address
+        "BC1SW50QA3JX3S",
+        "bc1zw508d6qejxtdg4y5r3zarvaryvg6kdaj",
         "",
         "rrRmhfXzGBKbV4YHtbpxfA1ftEcry8AJaX",
         "LSxNsEQekEpXMS4B7tUYstMEdMyH321ZQ1",
@@ -83,6 +105,10 @@ defmodule Bitcoinex.AddressTest do
        valid_mainnet_segwit_addresses: valid_mainnet_segwit_addresses,
        valid_testnet_segwit_addresses: valid_testnet_segwit_addresses,
        valid_regtest_segwit_addresses: valid_regtest_segwit_addresses,
+       valid_mainnet_p2wpkh_addresses: valid_mainnet_p2wpkh_addresses,
+       valid_testnet_p2wpkh_addresses: valid_testnet_p2wpkh_addresses,
+       valid_mainnet_p2wsh_addresses: valid_mainnet_p2wsh_addresses,
+       valid_testnet_p2wsh_addresses: valid_testnet_p2wsh_addresses,
        invalid_addresses: invalid_addresses}
     end
 
@@ -128,6 +154,49 @@ defmodule Bitcoinex.AddressTest do
             refute Address.is_valid?(invalid_address, network_name, address_type)
           end
         end
+      end
+    end
+
+    test "check that the address decodes to the correct address type", %{
+      valid_mainnet_p2pkh_addresses: valid_mainnet_p2pkh_addresses,
+      valid_testnet_p2pkh_addresses: valid_testnet_p2pkh_addresses,
+      valid_mainnet_p2sh_addresses: valid_mainnet_p2sh_addresses,
+      valid_testnet_p2sh_addresses: valid_testnet_p2sh_addresses,
+      valid_mainnet_p2wpkh_addresses: valid_mainnet_p2wpkh_addresses,
+      valid_testnet_p2wpkh_addresses: valid_testnet_p2wpkh_addresses,
+      valid_mainnet_p2wsh_addresses: valid_mainnet_p2wsh_addresses,
+      valid_testnet_p2wsh_addresses: valid_testnet_p2wsh_addresses
+    } do
+      for mainnet_p2pkh <- valid_mainnet_p2pkh_addresses do
+        assert Address.decode_type(mainnet_p2pkh, :mainnet) == {:ok, :p2pkh}
+      end
+
+      for testnet_p2pkh <- valid_testnet_p2pkh_addresses do
+        assert Address.decode_type(testnet_p2pkh, :testnet) == {:ok, :p2pkh}
+      end
+
+      for mainnet_p2sh <- valid_mainnet_p2sh_addresses do
+        assert Address.decode_type(mainnet_p2sh, :mainnet) == {:ok, :p2sh}
+      end
+
+      for testnet_p2sh <- valid_testnet_p2sh_addresses do
+        assert Address.decode_type(testnet_p2sh, :testnet) == {:ok, :p2sh}
+      end
+
+      for mainnet_p2wpkh <- valid_mainnet_p2wpkh_addresses do
+        assert Address.decode_type(mainnet_p2wpkh, :mainnet) == {:ok, :p2wpkh}
+      end
+
+      for testnet_p2wpkh <- valid_testnet_p2wpkh_addresses do
+        assert Address.decode_type(testnet_p2wpkh, :testnet) == {:ok, :p2wpkh}
+      end
+
+      for mainnet_p2wsh <- valid_mainnet_p2wsh_addresses do
+        assert Address.decode_type(mainnet_p2wsh, :mainnet) == {:ok, :p2wsh}
+      end
+
+      for testnet_p2wsh <- valid_testnet_p2wsh_addresses do
+        assert Address.decode_type(testnet_p2wsh, :testnet) == {:ok, :p2wsh}
       end
     end
   end
