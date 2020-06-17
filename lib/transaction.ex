@@ -25,7 +25,7 @@ defmodule Bitcoinex.Transaction do
 
     Base.encode16(
       <<:binary.decode_unsigned(
-          Utils.bin_double_sha256(legacy_txn),
+          Utils.double_sha256(legacy_txn),
           :big
         )::little-size(256)>>,
       case: :lower
