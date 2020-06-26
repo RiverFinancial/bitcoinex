@@ -61,7 +61,7 @@ defmodule Bitcoinex.Base58Check do
       |> Tuple.to_list()
       |> Enum.map(&:binary.list_to_bin(&1))
 
-    case checksum == binary_slice(Utils.bin_double_sha256(decoded_body), 0..3) do
+    case checksum == binary_slice(Utils.double_sha256(decoded_body), 0..3) do
       false -> {:error, :invalid_checksum}
       true -> {:ok, decoded_body}
     end
@@ -110,7 +110,7 @@ defmodule Bitcoinex.Base58Check do
   @spec checksum(binary) :: binary
   defp checksum(body) do
     body
-    |> Utils.bin_double_sha256()
+    |> Utils.double_sha256()
     |> binary_slice(0..3)
   end
 
