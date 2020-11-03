@@ -6,7 +6,7 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
   use Bitwise
   # consider using https://github.com/ejpcmac/typed_struct
 
-  @default_min_final_cltv_expiry 9
+  @default_min_final_cltv_expiry 18
   @default_expiry 3600
 
   @enforce_keys [:network, :destination, :payment_hash, :timestamp]
