@@ -71,7 +71,7 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
           timestamp: 1_496_314_658,
           description: test_description_coffee,
           expiry: 60,
-          min_final_cltv_expiry: 9
+          min_final_cltv_expiry: 18
         }
       },
       # pubkey set in 'n' field.
@@ -84,7 +84,7 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
           amount_msat: 2_400_000_000_000,
           timestamp: 1_503_429_093,
           description: "",
-          min_final_cltv_expiry: 9
+          min_final_cltv_expiry: 18
         }
       },
       # Please make a donation of any amount using payment_hash 0001020304050607080900010203040506070809000102030405060708090102 to me @03e7156ae33b0a208d0744199163177e909e80176e55d97a2f221ede0f934dd9ad
@@ -96,7 +96,7 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
           description: "Please consider supporting this project",
           payment_hash: test_payment_hash,
           timestamp: 1_496_314_658,
-          min_final_cltv_expiry: 9
+          min_final_cltv_expiry: 18
         }
       },
       # Has a few unknown fields, should just be ignored.
@@ -109,7 +109,7 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
           payment_hash: test_payment_hash,
           amount_msat: 2_000_000_000,
           timestamp: 1_496_314_658,
-          min_final_cltv_expiry: 9
+          min_final_cltv_expiry: 18
         }
       },
       # Please send 0.0025 BTC for a cup of nonsense (ナンセンス 1杯) to the same peer, within one minute
@@ -123,7 +123,7 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
           timestamp: 1_496_314_658,
           description: test_description_coffee_japanese,
           expiry: 60,
-          min_final_cltv_expiry: 9
+          min_final_cltv_expiry: 18
         }
       },
       # Now send $24 for an entire list of things (hashed)
@@ -136,7 +136,7 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
           amount_msat: 2_000_000_000,
           timestamp: 1_496_314_658,
           description_hash: test_description_hash_slice,
-          min_final_cltv_expiry: 9
+          min_final_cltv_expiry: 18
         }
       },
       # The same, on testnet, with a fallback address mk2QpYatsKicvFVuTAQLBryyccRXMUaGHP
@@ -150,7 +150,7 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
           timestamp: 1_496_314_658,
           description_hash: test_description_hash_slice,
           fallback_address: test_address_testnet_P2PKH,
-          min_final_cltv_expiry: 9
+          min_final_cltv_expiry: 18
         }
       },
       # 1 sat with chinese description in testnet
@@ -178,7 +178,7 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
           description_hash: test_description_hash_slice,
           fallback_address: test_address_mainnet_P2PKH,
           route_hints: testSingleHop,
-          min_final_cltv_expiry: 9
+          min_final_cltv_expiry: 18
         }
       },
       # two hophint
@@ -193,7 +193,7 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
           description_hash: test_description_hash_slice,
           fallback_address: test_address_mainnet_P2PKH,
           route_hints: testDoubleHop,
-          min_final_cltv_expiry: 9
+          min_final_cltv_expiry: 18
         }
       },
       # On mainnet, with fallback (p2sh) address 3EktnHQD7RiAE6uzMj2ZifT9YgRrkSgzQX
@@ -207,7 +207,7 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
           timestamp: 1_496_314_658,
           description_hash: test_description_hash_slice,
           fallback_address: test_address_mainnet_P2SH,
-          min_final_cltv_expiry: 9
+          min_final_cltv_expiry: 18
         }
       },
       # # On mainnet, with fallback (p2wpkh) address bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4
@@ -221,7 +221,7 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
           timestamp: 1_496_314_658,
           description_hash: test_description_hash_slice,
           fallback_address: test_address_mainnet_P2WPKH,
-          min_final_cltv_expiry: 9
+          min_final_cltv_expiry: 18
         }
       },
       # On mainnet, with fallback (p2wsh) address bc1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3qccfmv3
@@ -235,7 +235,7 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
           timestamp: 1_496_314_658,
           description_hash: test_description_hash_slice,
           fallback_address: test_address_mainnet_P2WSH,
-          min_final_cltv_expiry: 9
+          min_final_cltv_expiry: 18
         }
       },
       # Ignore unknown witness version in fallback address.
@@ -248,7 +248,7 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
           amount_msat: 2_000_000_000,
           timestamp: 1_496_314_658,
           description_hash: test_description_hash_slice,
-          min_final_cltv_expiry: 9
+          min_final_cltv_expiry: 18
         }
       },
       # Ignore fields with unknown lengths.
@@ -261,7 +261,7 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
           amount_msat: 2_400_000_000_000,
           timestamp: 1_503_429_093,
           description_hash: test_description_hash_slice,
-          min_final_cltv_expiry: 9
+          min_final_cltv_expiry: 18
         }
       },
       # # Send 2500uBTC for a cup of coffee with a custom CLTV expiry value.
@@ -309,7 +309,7 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
           amount_msat: 2_500_000_000,
           timestamp: 1_496_314_658,
           description: "coffee beans",
-          min_final_cltv_expiry: 9
+          min_final_cltv_expiry: 18
         }
       },
       # Same, but all upper case
@@ -322,7 +322,7 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
           amount_msat: 2_500_000_000,
           timestamp: 1_496_314_658,
           description: "coffee beans",
-          min_final_cltv_expiry: 9
+          min_final_cltv_expiry: 18
         }
       },
       # Same, but including fields which must be ignored.
@@ -335,7 +335,7 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
           amount_msat: 2_500_000_000,
           timestamp: 1_496_314_658,
           description: "coffee beans",
-          min_final_cltv_expiry: 9
+          min_final_cltv_expiry: 18
         }
       },
       {
@@ -360,7 +360,7 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
           amount_msat: 2_000_000_000,
           timestamp: 1_496_314_658,
           description_hash: "3925b6f67e2c340036ed12093dd44e0368df1b6ea26c53dbe4811f58fd5db8c1",
-          min_final_cltv_expiry: 9,
+          min_final_cltv_expiry: 18,
           fallback_address: "3EktnHQD7RiAE6uzMj2ZifT9YgRrkSgzQX"
         }
       },
@@ -373,7 +373,7 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
           amount_msat: 2_000_000_000,
           timestamp: 1_496_314_658,
           description_hash: "3925b6f67e2c340036ed12093dd44e0368df1b6ea26c53dbe4811f58fd5db8c1",
-          min_final_cltv_expiry: 9,
+          min_final_cltv_expiry: 18,
           fallback_address: "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"
         }
       },
@@ -386,7 +386,7 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
           amount_msat: 2_000_000_000,
           timestamp: 1_496_314_658,
           description_hash: "3925b6f67e2c340036ed12093dd44e0368df1b6ea26c53dbe4811f58fd5db8c1",
-          min_final_cltv_expiry: 9,
+          min_final_cltv_expiry: 18,
           fallback_address: "bc1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3qccfmv3"
         }
       },
