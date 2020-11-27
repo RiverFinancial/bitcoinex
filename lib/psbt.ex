@@ -97,7 +97,7 @@ defmodule Bitcoinex.PSBT.Global do
   alias Bitcoinex.Transaction
   alias Bitcoinex.Transaction.Utils, as: TxUtils
   alias Bitcoinex.PSBT.Utils, as: PsbtUtils
-  alias BitcoinEx.Base58
+  alias Bitcoinex.Base58
 
   defstruct [
     :unsigned_tx,

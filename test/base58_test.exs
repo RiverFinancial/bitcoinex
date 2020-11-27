@@ -1,9 +1,9 @@
 defmodule Bitcoinex.Base58Test do
   use ExUnit.Case
   use ExUnitProperties
-  doctest BitcoinEx.Base58
+  doctest Bitcoinex.Base58
 
-  alias BitcoinEx.Base58
+  alias Bitcoinex.Base58
 
   # From
   @base58_encode_decode [
@@ -185,13 +185,13 @@ defmodule Bitcoinex.Base58Test do
   describe "encode/1" do
     test "properly encodes Base58" do
       for pair <- @valid_base58_strings do
-        [Base58_str, base16_str] = pair
+        [base58_str, base16_str] = pair
 
         base16_bin = Base.decode16!(base16_str, case: :lower)
-        assert Base58_str == Base58.encode(base16_bin)
+        assert base58_str == Base58.encode(base16_bin)
 
         # double check
-        {:ok, _decoded} = Base58.decode(Base58_str)
+        {:ok, _decoded} = Base58.decode(base58_str)
       end
     end
   end
@@ -199,17 +199,17 @@ defmodule Bitcoinex.Base58Test do
   describe "decode/1" do
     test "properly decodes Base58" do
       for pair <- @valid_base58_strings do
-        [Base58_str, base16_str] = pair
+        [base58_str, base16_str] = pair
         base16_bin = Base.decode16!(base16_str, case: :lower)
-        {:ok, decoded} = Base58.decode(Base58_str)
+        {:ok, decoded} = Base58.decode(base58_str)
         assert base16_bin == decoded
       end
     end
 
     test "catches invalid checksums" do
       for pair <- @invalid_base58_strings do
-        [Base58_str, _base16_str] = pair
-        assert {:error, :invalid_checksum} = Base58.decode(Base58_str)
+        [base58_str, _base16_str] = pair
+        assert {:error, :invalid_checksum} = Base58.decode(base58_str)
       end
     end
   end

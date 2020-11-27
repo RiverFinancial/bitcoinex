@@ -1,4 +1,4 @@
-defmodule BitcoinEx.Base58 do
+defmodule Bitcoinex.Base58 do
   @moduledoc """
     Includes Base58 serialization and validation.
 
