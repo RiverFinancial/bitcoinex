@@ -1,4 +1,10 @@
 defmodule Bitcoinex.LightningNetwork.HopHint do
+  @moduledoc """
+   A hop hint is used to help the payer route a payment to the receiver.
+
+   A hint is included in BOLT#11 Invoices.
+  """
+
   @enforce_keys [
     :node_id,
     :channel_id,

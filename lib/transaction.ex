@@ -1,7 +1,7 @@
 defmodule Bitcoinex.Transaction do
   @moduledoc """
   Bitcoin on-chain transaction structure.
-  Serialization and Deserialization of bitcoin on-chain transaction structure.
+  Supports serialization of transactions.
   """
   alias Bitcoinex.Transaction
   alias Bitcoinex.Transaction.In
@@ -18,8 +18,12 @@ defmodule Bitcoinex.Transaction do
     :lock_time
   ]
 
+  @doc """
+    Returns the TxID of the given tranasction.
+
+    TxID is sha256(sha256(nVersion | txins | txouts | nLockTime))
+  """
   def transaction_id(txn) do
-    # txid is the double sha256 of [nVersion][txins][txouts][nLockTime]
     legacy_txn = TxUtils.serialize_legacy(txn)
     {:ok, legacy_txn} = Base.decode16(legacy_txn, case: :lower)
 
@@ -32,7 +36,9 @@ defmodule Bitcoinex.Transaction do
     )
   end
 
-  # @spec decode(String.t()) :: {:ok, t} | {:error, error}
+  @doc """
+    Decodes a transaction in a hex encoded string into binary.
+  """
   def decode(tx_hex) when is_binary(tx_hex) do
     case Base.decode16(tx_hex, case: :lower) do
       {:ok, tx_bytes} ->
@@ -102,7 +108,11 @@ defmodule Bitcoinex.Transaction.Utils do
   alias Bitcoinex.Transaction.In
   alias Bitcoinex.Transaction.Out
 
-  # https://en.bitcoin.it/wiki/Protocol_documentation#Variable_length_integer
+  @doc """
+    Returns the Variable Length Integer used in serialization.
+
+    Reference: https://en.bitcoin.it/wiki/Protocol_documentation#Variable_length_integer
+  """
   @spec get_counter(binary) :: {non_neg_integer(), binary()}
   def get_counter(<<counter::little-size(8), vec::binary>>) do
     case counter do
@@ -126,7 +136,9 @@ defmodule Bitcoinex.Transaction.Utils do
     end
   end
 
-  # serialize returns the transaction in a serialized format without witnesses
+  @doc """
+    Serializes a transaction without the witness structure.
+  """
   def serialize_legacy(txn) do
     version = <<txn.version::little-size(32)>>
     tx_in_count = serialize_compact_size_unsigned_int(length(txn.inputs))
@@ -146,6 +158,9 @@ defmodule Bitcoinex.Transaction.Utils do
     )
   end
 
+  @doc """
+    Returns the serialized variable length integer.
+  """
   def serialize_compact_size_unsigned_int(compact_size) do
     cond do
       compact_size >= 0 and compact_size <= 0xFC ->
@@ -174,6 +189,9 @@ defmodule Bitcoinex.Transaction.Witness do
     :txinwitness
   ]
 
+  @doc """
+    Wtiness accepts a binary and deserializes it.
+  """
   @spec witness(binary) :: %Bitcoinex.Transaction.Witness{
           :txinwitness => [any()] | 0
         }

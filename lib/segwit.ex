@@ -1,9 +1,8 @@
 defmodule Bitcoinex.Segwit do
   @moduledoc """
-  Decode and Encode segwit address
+  SegWit address serialization.
   """
 
-  # TODO Alex Review
   alias Bitcoinex.Bech32
 
   use Bitwise
@@ -22,6 +21,9 @@ defmodule Bitcoinex.Segwit do
 
   @type error :: atom()
 
+  @doc """
+    Decodes an address and returns its network, witness version, and witness program.
+  """
   @spec decode_address(String.t()) ::
           {:ok, {network, witness_version, witness_program}} | {:error, error}
   def decode_address(address) when is_binary(address) do
@@ -35,6 +37,9 @@ defmodule Bitcoinex.Segwit do
     end
   end
 
+  @doc """
+    Encodes an address string.
+  """
   @spec encode_address(network, witness_version, witness_program) ::
           {:ok, String.t()} | {:error, error}
   def encode_address(network, _, _) when not (network in @supported_network) do

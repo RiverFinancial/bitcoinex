@@ -1,33 +1,53 @@
 defmodule Bitcoinex.Address do
   @moduledoc """
-  Base58, Bech32 address support.
-  Bitcoin Address Validation
-  reference of p2sh p2pkh validation: https://rosettacode.org/wiki/Bitcoin/address_validation#Erlang
+  Bitcoinex.Address supports Base58 and Bech32 address encoding and validation.
   """
-  alias Bitcoinex.{Segwit, Base58Check, Network}
+
+  alias Bitcoinex.{Segwit, Base58, Network}
+
+  @typedoc """
+    The address_type describes the address type to use.
+
+    Four address types are supported:
+    * p2pkh: Pay-to-Public-Key-Hash
+    * p2sh: Pay-to-Script-Hash
+    * p2wpkh: Pay-to-Witness-Public-Key-Hash
+    * p2wsh: Pay-To-Witness-Script-Hash
+  """
   @type address_type :: :p2pkh | :p2sh | :p2wpkh | :p2wsh
   @address_types ~w(p2pkh p2sh p2wpkh p2wsh)a
 
   # TODO: write tests
+  @doc """
+  Accepts a public key, network, and address_type and returns its address.
+  """
   def encode(pubkey, network_name, :p2pkh) do
     network = Network.get_network(network_name)
     decimal_prefix = network.p2pkh_version_decimal_prefix
 
-    Base58Check.encode(<<decimal_prefix>> <> pubkey)
+    Base58.encode(<<decimal_prefix>> <> pubkey)
   end
 
   # TODO: write tests
   def encode(script_hash, network_name, :p2sh) do
     network = Network.get_network(network_name)
     decimal_prefix = network.p2sh_version_decimal_prefix
-    Base58Check.encode(<<decimal_prefix>> <> script_hash)
+    Base58.encode(<<decimal_prefix>> <> script_hash)
   end
 
+  @doc """
+  Checks if the address is valid.
+  Both encoding and network is checked.
+  """
   @spec is_valid?(String.t(), Bitcoinex.Network.network_name()) :: boolean
   def is_valid?(address, network_name) do
     Enum.any?(@address_types, &is_valid?(address, network_name, &1))
   end
 
+  @doc """
+  Checks if the address is valid and matches the given address_type.
+  Both encoding and network is checked.
+  """
   @spec is_valid?(String.t(), Bitcoinex.Network.network_name(), address_type) :: boolean
   def is_valid?(address, network_name, :p2pkh) do
     network = apply(Bitcoinex.Network, network_name, [])
@@ -69,12 +89,15 @@ defmodule Bitcoinex.Address do
     end
   end
 
+  @doc """
+  Returns a list of supported address types.
+  """
   def supported_address_types() do
     @address_types
   end
 
   defp is_valid_base58_check_address?(address, valid_prefix) do
-    case Base58Check.decode(address) do
+    case Base58.decode(address) do
       {:ok, <<^valid_prefix::8, _::binary>>} ->
         true
 
@@ -83,6 +106,9 @@ defmodule Bitcoinex.Address do
     end
   end
 
+  @doc """
+  Decodes an address and returns the address_type.
+  """
   @spec decode_type(String.t(), Bitcoinex.Network.network_name()) ::
           {:ok, address_type} | {:error, :decode_error}
   def decode_type(address, network_name) do
