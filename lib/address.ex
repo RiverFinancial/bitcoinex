@@ -17,18 +17,17 @@ defmodule Bitcoinex.Address do
   @type address_type :: :p2pkh | :p2sh | :p2wpkh | :p2wsh
   @address_types ~w(p2pkh p2sh p2wpkh p2wsh)a
 
-  # TODO: write tests
   @doc """
-  Accepts a public key, network, and address_type and returns its address.
+  Accepts a public key hash, network, and address_type and returns its address.
   """
-  def encode(pubkey, network_name, :p2pkh) do
+  @spec encode(binary, Bitcoinex.Network.network_name(), address_type) :: String.t()
+  def encode(pubkey_hash, network_name, :p2pkh) do
     network = Network.get_network(network_name)
     decimal_prefix = network.p2pkh_version_decimal_prefix
 
-    Base58.encode(<<decimal_prefix>> <> pubkey)
+    Base58.encode(<<decimal_prefix>> <> pubkey_hash)
   end
 
-  # TODO: write tests
   def encode(script_hash, network_name, :p2sh) do
     network = Network.get_network(network_name)
     decimal_prefix = network.p2sh_version_decimal_prefix
