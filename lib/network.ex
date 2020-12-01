@@ -1,4 +1,10 @@
 defmodule Bitcoinex.Network do
+   @moduledoc """
+    Includes network-specific paramater options.
+
+    Supported networks include mainnet, testnet3, and regtest.
+  """
+
   @enforce_keys [
     :name,
     :hrp_segwit_prefix,
@@ -21,6 +27,9 @@ defmodule Bitcoinex.Network do
 
   @type network_name :: :mainnet | :testnet | :regtest
 
+  @doc """
+    Returns a list of supported networks.
+  """
   def supported_networks() do
     [
       mainnet(),

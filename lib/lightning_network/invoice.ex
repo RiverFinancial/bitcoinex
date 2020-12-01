@@ -1,4 +1,10 @@
 defmodule Bitcoinex.LightningNetwork.Invoice do
+  @moduledoc """
+  Includes BOLT#11 Invoice serialization.
+
+  Reference: https://github.com/lightningnetwork/lightning-rfc/blob/master/11-payment-encoding.md
+  """
+
   alias Bitcoinex.{Bech32, Network, Segwit}
   alias Bitcoinex.LightningNetwork.HopHint
   alias Decimal, as: D
@@ -51,6 +57,9 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
   @hop_hint_length 51
   @type error :: atom
 
+  @doc """
+   Decode accepts a Bech32 encoded string invoice and deserializes it.
+  """
   @spec decode(String.t()) :: {:ok, t} | {:error, error}
   def decode(invoice) when is_binary(invoice) do
     with {:ok, {hrp, data}} <- Bech32.decode(invoice, :infinity),
@@ -84,6 +93,9 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
     {:error, :no_ln_prefix}
   end
 
+  @doc """
+   Returns the expiry of the invoice.
+  """
   @spec expires_at(Bitcoinex.LightningNetwork.Invoice.t()) :: DateTime.t()
   def expires_at(%__MODULE__{} = invoice) do
     expiry = invoice.expiry
@@ -329,7 +341,7 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
     end
   end
 
-  def parse_expiry(data) do
+  defp parse_expiry(data) do
     base32_to_integer(data)
   end
 
@@ -626,11 +638,11 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
   end
 
   @spec split_at(Enum.t(), integer()) :: {list(Enum.t()), list(Enum.t())}
-  def split_at(xs, index) when index >= 0 do
+  defp split_at(xs, index) when index >= 0 do
     {Enum.take(xs, index), Enum.drop(xs, index)}
   end
 
-  def split_at(xs, index) when index < 0 do
+  defp split_at(xs, index) when index < 0 do
     {Enum.drop(xs, index), Enum.take(xs, index)}
   end
 end

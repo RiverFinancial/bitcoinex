@@ -1,9 +1,9 @@
 defmodule Bitcoinex.Base58Test do
   use ExUnit.Case
   use ExUnitProperties
-  doctest Bitcoinex.Base58Check
+  doctest Bitcoinex.Base58
 
-  alias Bitcoinex.Base58Check
+  alias Bitcoinex.Base58
 
   # From
   @base58_encode_decode [
@@ -30,7 +30,7 @@ defmodule Bitcoinex.Base58Test do
   ]
 
   # From https://github.com/bitcoinjs/bs58check/blob/master/test/fixtures.json
-  @valid_base58check_strings [
+  @valid_base58_strings [
     ["1AGNa15ZQXAZUgFiqJ2i7Z2DPU2J6hW62i", "0065a16059864a2fdbc7c99a4723a8395bc6f188eb"],
     ["3CMNFxN1oHBc4R1EpboAL5yzHGgE611Xou", "0574f209f6ea907e2ea48f74fae05782ae8a665257"],
     ["mo9ncXisMeAoXwqcV5EWuyncbmCcQN4rVs", "6f53c0307d6851aa0ce7825ba883c6bd9ad242b486"],
@@ -155,7 +155,7 @@ defmodule Bitcoinex.Base58Test do
     ["3ALJH9Y951VCGcVZYAdpA3KchoP9McEj1G", "055ece0cadddc415b1980f001785947120acdb36fc"]
   ]
 
-  @invalid_base58check_strings [
+  @invalid_base58_strings [
     ["Z9inZq4e2HGQRZQezDjFMmqgUE8NwMRok", "Invalid checksum"],
     ["3HK7MezAm6qEZQUMPRf8jX7wDv6zig6Ky8", "Invalid checksum"],
     ["3AW8j12DUk8mgA7kkfZ1BrrzCVFuH1LsXS", "Invalid checksum"]
@@ -167,7 +167,7 @@ defmodule Bitcoinex.Base58Test do
       for pair <- @base58_encode_decode do
         [base16_str, base58_str] = pair
         base16_bin = Base.decode16!(base16_str, case: :lower)
-        assert base16_bin == Base58Check.decode_base!(base58_str)
+        assert base16_bin == Base58.decode_base!(base58_str)
       end
     end
   end
@@ -177,39 +177,39 @@ defmodule Bitcoinex.Base58Test do
       for pair <- @base58_encode_decode do
         [base16_str, base58_str] = pair
         base16_bin = Base.decode16!(base16_str, case: :lower)
-        assert base58_str == Base58Check.encode_base(base16_bin)
+        assert base58_str == Base58.encode_base(base16_bin)
       end
     end
   end
 
   describe "encode/1" do
-    test "properly encodes base58check" do
-      for pair <- @valid_base58check_strings do
-        [base58check_str, base16_str] = pair
+    test "properly encodes Base58" do
+      for pair <- @valid_base58_strings do
+        [base58_str, base16_str] = pair
 
         base16_bin = Base.decode16!(base16_str, case: :lower)
-        assert base58check_str == Base58Check.encode(base16_bin)
+        assert base58_str == Base58.encode(base16_bin)
 
         # double check
-        {:ok, _decoded} = Base58Check.decode(base58check_str)
+        {:ok, _decoded} = Base58.decode(base58_str)
       end
     end
   end
 
   describe "decode/1" do
-    test "properly decodes base58check" do
-      for pair <- @valid_base58check_strings do
-        [base58check_str, base16_str] = pair
+    test "properly decodes Base58" do
+      for pair <- @valid_base58_strings do
+        [base58_str, base16_str] = pair
         base16_bin = Base.decode16!(base16_str, case: :lower)
-        {:ok, decoded} = Base58Check.decode(base58check_str)
+        {:ok, decoded} = Base58.decode(base58_str)
         assert base16_bin == decoded
       end
     end
 
     test "catches invalid checksums" do
-      for pair <- @invalid_base58check_strings do
-        [base58check_str, _base16_str] = pair
-        assert {:error, :invalid_checksum} = Base58Check.decode(base58check_str)
+      for pair <- @invalid_base58_strings do
+        [base58_str, _base16_str] = pair
+        assert {:error, :invalid_checksum} = Base58.decode(base58_str)
       end
     end
   end

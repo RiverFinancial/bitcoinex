@@ -1,4 +1,8 @@
 defmodule Bitcoinex.Utils do
+  @moduledoc """
+  Contains useful utility functions used in Bitcoinex.
+  """
+
   @spec sha256(iodata()) :: binary
   def sha256(str) do
     :crypto.hash(:sha256, str)

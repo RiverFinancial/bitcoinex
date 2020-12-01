@@ -1,14 +1,16 @@
 defmodule Bitcoinex.PSBT do
   @moduledoc """
-  Partially signed bitcoin transaction.
-  The format consists of key-value maps. Each map consists of a sequence of key-value records, terminated by a 0x00 byte.
+  Support for Partially Signed Bitcoin Transactions (PSBT).
+
+  The format consists of key-value maps.
+  Each map consists of a sequence of key-value records, terminated by a 0x00 byte.
+
+  Reference: https://github.com/bitcoin/bips/blob/master/bip-0174.mediawiki
   """
   alias Bitcoinex.PSBT
   alias Bitcoinex.PSBT.Global
   alias Bitcoinex.PSBT.In
   alias Bitcoinex.PSBT.Out
-
-  require Logger
 
   defstruct [
     :global,
@@ -21,6 +23,9 @@ defmodule Bitcoinex.PSBT do
 
   def separator, do: @separator
 
+  @doc """
+  Decodes a base64 encoded string into a PSBT.
+  """
   @spec decode(String.t()) :: {:ok, %Bitcoinex.PSBT{}} | {:error, term()}
   def decode(psbt_b64) when is_binary(psbt_b64) do
     case Base.decode64(psbt_b64, case: :lower) do
@@ -53,6 +58,9 @@ defmodule Bitcoinex.PSBT do
 end
 
 defmodule Bitcoinex.PSBT.Utils do
+  @moduledoc """
+  Contains utility functions used throughout PSBT serialization.
+  """
   alias Bitcoinex.Transaction.Utils, as: TxUtils
 
   def parse_compact_size_value(key_value) do
@@ -85,14 +93,11 @@ defmodule Bitcoinex.PSBT.Global do
   @moduledoc """
   Global properties of a partially signed bitcoin transaction.
   """
-  # alias Bitcoinex.PSBT
   alias Bitcoinex.PSBT.Global
   alias Bitcoinex.Transaction
   alias Bitcoinex.Transaction.Utils, as: TxUtils
   alias Bitcoinex.PSBT.Utils, as: PsbtUtils
-  alias Bitcoinex.Base58Check
-
-  require Logger
+  alias Bitcoinex.Base58
 
   defstruct [
     :unsigned_tx,
@@ -130,7 +135,7 @@ defmodule Bitcoinex.PSBT.Global do
 
     global = %Global{
       global
-      | xpub: %{xpub: Base58Check.encode(xpub), derivation: Base.encode16(value, case: :lower)}
+      | xpub: %{xpub: Base58.encode(xpub), derivation: Base.encode16(value, case: :lower)}
     }
 
     {global, psbt}
@@ -158,8 +163,6 @@ defmodule Bitcoinex.PSBT.In do
   alias Bitcoinex.Transaction.Out
   alias Bitcoinex.PSBT.In
   alias Bitcoinex.PSBT.Utils, as: PsbtUtils
-
-  require Logger
 
   defstruct [
     :non_witness_utxo,

@@ -1,6 +1,8 @@
 defmodule Bitcoinex.Bech32 do
   @moduledoc """
-  https://github.com/bitcoin/bips/blob/master/bip-0173.mediawiki#bech32
+  Includes Bech32 serialization and validation.
+
+  Reference: https://github.com/bitcoin/bips/blob/master/bip-0173.mediawiki#bech32
   """
 
   use Bitwise

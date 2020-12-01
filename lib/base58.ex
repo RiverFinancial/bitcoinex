@@ -1,10 +1,15 @@
-defmodule Bitcoinex.Base58Check do
+defmodule Bitcoinex.Base58 do
   @moduledoc """
-    Some code inspired by:
+    Includes Base58 serialization and validation.
+
+    Some code is inspired by:
     https://github.com/comboy/bitcoin-elixir/blob/develop/lib/bitcoin/base58_check.ex
   """
   alias Bitcoinex.Utils
 
+  @typedoc """
+    Base58 encoding is only supported for p2sh and p2pkh address types.  
+  """
   @type address_type :: :p2sh | :p2pkh
   @base58_encode_list ~c(123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz)
   @base58_decode_map @base58_encode_list |> Enum.with_index() |> Enum.into(%{})
@@ -13,7 +18,7 @@ defmodule Bitcoinex.Base58Check do
   @type byte_list :: list(byte())
 
   @doc """
-    Decode a base58 check encoded string into a byte array and validate checksum
+    Decodes a Base58 encoded string into a byte array and validates checksum.
   """
   @spec decode(binary) :: {:ok, binary} | {:error, atom}
   def decode(binary)
@@ -31,7 +36,7 @@ defmodule Bitcoinex.Base58Check do
   end
 
   @doc """
-    Decode a base58 encoded string into a byte array
+    Decodes a Base58 encoded string into a byte array.
   """
   @spec decode_base!(binary) :: binary
   def decode_base!(binary)
@@ -52,6 +57,9 @@ defmodule Bitcoinex.Base58Check do
     |> :binary.encode_unsigned()
   end
 
+  @doc """
+    Validates a Base58 checksum.
+  """
   @spec validate_checksum(binary) :: {:ok, binary} | {:error, atom}
   def validate_checksum(data) do
     [decoded_body, checksum] =
@@ -73,7 +81,7 @@ defmodule Bitcoinex.Base58Check do
     do: char in @base58_encode_list && valid_charset?(string)
 
   @doc """
-    Encode a binary into a base58check encoded string
+    Encodes binary into a Base58 encoded string.
   """
   @spec encode(binary) :: String.t()
   def encode(bin) do
@@ -92,7 +100,7 @@ defmodule Bitcoinex.Base58Check do
   end
 
   @doc """
-    Encode a binary into a base58 encoded string
+    Encodes a binary into a Base58 encoded string.
   """
   def encode_base(bin) do
     bin
