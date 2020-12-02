@@ -13,6 +13,12 @@ Documentation is available on [hexdocs.pm](https://hexdocs.pm/bitcoinex/api-refe
 
 ## Usage
 
+With [Hex](https://hex.pm/packages/bitcoinex):
+
+    {:bitcoinex, "~> 0.1.0"}
+
+Local:
+
     $ mix deps.get
     $ mix compile
 
