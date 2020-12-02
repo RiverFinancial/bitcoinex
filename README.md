@@ -1,6 +1,6 @@
 # Bitcoinex
 
-Bitcoinex is striving to be the best and up-to-date Bitcoin Library for Elixir.
+Bitcoinex is striving to be the best and most up-to-date Bitcoin Library for Elixir.
 
 ## Documentation
 Documentation is available on [hexdocs.pm](https://hexdocs.pm/bitcoinex/api-reference.html).
