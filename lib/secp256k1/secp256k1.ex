@@ -58,9 +58,6 @@ defmodule Bitcoinex.Secp256k1 do
               # Point R(x,y) using the signature.
               point_r = %Point{x: r_x, y: r_y}
 
-              # Find e using the message hash.
-              e = hash_to_int(msg)
-
               # Q = r^-1(sR-eG) 
               inv_r = Math.inv(sig.r, Params.curve().n)
               inv_r_s = (inv_r * sig.s) |> Math.modulo(Params.curve().n)
@@ -68,8 +65,10 @@ defmodule Bitcoinex.Secp256k1 do
               # s*R
               point_sr = Math.multiply(point_r, inv_r_s)
 
+              # Find e using the message hash.
               e =
-                (e * -1)
+                :binary.decode_unsigned(msg)
+                |> Kernel.*(-1)
                 |> Math.modulo(Params.curve().n)
                 |> Kernel.*(inv_r |> Math.modulo(Params.curve().n))
 
@@ -96,24 +95,6 @@ defmodule Bitcoinex.Secp256k1 do
       {:error, e} ->
         {:error, e}
     end
-  end
-
-  def hash_to_int(h) do
-    ret =
-      if byte_size(h) > 32 do
-        <<ret::binary-size(32), _rest::bytes>> = h
-        ret
-      else
-        h
-      end
-
-    excess = byte_size(h) * 8 - 256
-
-    h = h |> :binary.decode_unsigned()
-
-    if excess > 0,
-      do: h >>> excess |> :binary.decode_unsigned(),
-      else: ret |> :binary.decode_unsigned()
   end
 
   # Returns the y-coordinate of a secp256k1 curve point using the x-coordinate.
