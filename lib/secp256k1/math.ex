@@ -35,14 +35,18 @@ defmodule Bitcoinex.Secp256k1.Math do
   Inv performs the Extended Euclidean Algorithm to to find
   the inverse of a number x mod n.
   """
-  @spec inv(integer, integer) :: integer
-  def inv(x, _n) when x == 0, do: 0
-  def inv(x, n), do: inv(1, 0, modulo(x, n), n) |> modulo(n)
+  @spec inv(integer, pos_integer) :: integer
+  def inv(x, n) when is_integer(x) and is_integer(n) and n >= 1 do
+    do_inv(x, n)
+  end
 
-  defp inv(lm, hm, low, high) when low > 1 do
+  defp do_inv(x, _n) when x == 0, do: 0
+  defp do_inv(x, n), do: do_inv(1, 0, modulo(x, n), n) |> modulo(n)
+
+  defp do_inv(lm, hm, low, high) when low > 1 do
     r = div(high, low)
 
-    inv(
+    do_inv(
       hm - lm * r,
       lm,
       high - low * r,
@@ -50,7 +54,7 @@ defmodule Bitcoinex.Secp256k1.Math do
     )
   end
 
-  defp inv(lm, _hm, _low, _high) do
+  defp do_inv(lm, _hm, _low, _high) do
     lm
   end
 
