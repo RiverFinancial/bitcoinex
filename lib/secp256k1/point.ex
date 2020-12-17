@@ -5,7 +5,10 @@ defmodule Bitcoinex.Secp256k1.Point do
 
   defstruct [:x, :y, z: 0]
 
-  # serialize_public_key serializes a compressed public key
+  @doc """
+  serialize_public_key serializes a compressed public key
+  """
+  @spec serialize_public_key(Point.t()) :: String.t()
   def serialize_public_key(p) do
     case rem(p.y, 2) do
       0 ->
