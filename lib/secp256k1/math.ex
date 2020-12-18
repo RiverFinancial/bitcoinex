@@ -7,28 +7,46 @@ defmodule Bitcoinex.Secp256k1.Math do
   Several of the jacobian multiplication and addition functions are borrowed heavily from https://github.com/starkbank/ecdsa-elixir/.
   """
   alias Bitcoinex.Secp256k1.{Params, Point}
+  use Bitwise, only_operators: true
 
   @doc """
-  ipow performs integer pow,
+  pow performs integer pow,
   where x is raised to the power of y.
   """
-  @spec ipow(integer, integer) :: integer
-  def ipow(x, y, acc \\ 1)
-  def ipow(x, y, acc) when y > 0, do: ipow(x, y - 1, x * acc)
-  def ipow(_x, _y, acc), do: acc
+  # Integer.pow/2 was added since 1.12.0. This function_exported? can be removed when we decide
+  # to only support >= 1.12.0 in the future
+  if function_exported?(Integer, :pow, 2) do
+    defdelegate pow(base, exponent), to: Integer
+  else
+    # copy from https://github.com/elixir-lang/elixir/blob/master/lib/elixir/lib/integer.ex#L104
+    @spec pow(integer, non_neg_integer) :: integer
+    def pow(base, exponent) when is_integer(base) and is_integer(exponent) and exponent >= 0 do
+      guarded_pow(base, exponent)
+    end
+
+    # https://en.wikipedia.org/wiki/Exponentiation_by_squaring
+    defp guarded_pow(_, 0), do: 1
+    defp guarded_pow(b, 1), do: b
+    defp guarded_pow(b, e) when (e &&& 1) == 0, do: guarded_pow(b * b, e >>> 1)
+    defp guarded_pow(b, e), do: b * guarded_pow(b * b, e >>> 1)
+  end
 
   @doc """
   Inv performs the Extended Euclidean Algorithm to to find
   the inverse of a number x mod n.
   """
-  @spec inv(integer, integer) :: integer
-  def inv(x, _n) when x == 0, do: 0
-  def inv(x, n), do: inv(1, 0, modulo(x, n), n) |> modulo(n)
+  @spec inv(integer, pos_integer) :: integer
+  def inv(x, n) when is_integer(x) and is_integer(n) and n >= 1 do
+    do_inv(x, n)
+  end
 
-  defp inv(lm, hm, low, high) when low > 1 do
+  defp do_inv(x, _n) when x == 0, do: 0
+  defp do_inv(x, n), do: do_inv(1, 0, modulo(x, n), n) |> modulo(n)
+
+  defp do_inv(lm, hm, low, high) when low > 1 do
     r = div(high, low)
 
-    inv(
+    do_inv(
       hm - lm * r,
       lm,
       high - low * r,
@@ -36,7 +54,7 @@ defmodule Bitcoinex.Secp256k1.Math do
     )
   end
 
-  defp inv(lm, _hm, _low, _high) do
+  defp do_inv(lm, _hm, _low, _high) do
     lm
   end
 
@@ -78,12 +96,12 @@ defmodule Bitcoinex.Secp256k1.Math do
     %Point{
       x:
         modulo(
-          p.x * ipow(z, 2),
+          p.x * pow(z, 2),
           Params.curve().p
         ),
       y:
         modulo(
-          p.y * ipow(z, 3),
+          p.y * pow(z, 3),
           Params.curve().p
         )
     }
@@ -98,12 +116,12 @@ defmodule Bitcoinex.Secp256k1.Math do
     else
       # XX = X1^2
       xsq =
-        ipow(p.x, 2)
+        pow(p.x, 2)
         |> modulo(Params.curve().p)
 
       # YY = Y1^2
       ysq =
-        ipow(p.y, 2)
+        pow(p.y, 2)
         |> modulo(Params.curve().p)
 
       # S = 4 * X1 * YY
@@ -113,12 +131,12 @@ defmodule Bitcoinex.Secp256k1.Math do
 
       # M = 3 * XX + a * Z1^4
       m =
-        (3 * xsq + Params.curve().a * ipow(p.z, 4))
+        (3 * xsq + Params.curve().a * pow(p.z, 4))
         |> modulo(Params.curve().p)
 
       # T = M^2 - 2 * S
       t =
-        (ipow(m, 2) - 2 * s)
+        (pow(m, 2) - 2 * s)
         |> modulo(Params.curve().p)
 
       # X3 = T
@@ -126,7 +144,7 @@ defmodule Bitcoinex.Secp256k1.Math do
 
       # Y3 = M * (S - T) - 8 * YY^2
       ny =
-        (m * (s - t) - 8 * ipow(ysq, 2))
+        (m * (s - t) - 8 * pow(ysq, 2))
         |> modulo(Params.curve().p)
 
       # Z3 = 2 * Y1 * Z1
@@ -150,22 +168,22 @@ defmodule Bitcoinex.Secp256k1.Math do
       else
         # U1 = X1 * Z2^2
         u1 =
-          (p.x * ipow(q.z, 2))
+          (p.x * pow(q.z, 2))
           |> modulo(Params.curve().p)
 
         # U2 = X2 * Z2^2
         u2 =
-          (q.x * ipow(p.z, 2))
+          (q.x * pow(p.z, 2))
           |> modulo(Params.curve().p)
 
         # S1 = Y1 * Z2^3
         s1 =
-          (p.y * ipow(q.z, 3))
+          (p.y * pow(q.z, 3))
           |> modulo(Params.curve().p)
 
         # S2 = y2 * Z1^3
         s2 =
-          (q.y * ipow(p.z, 3))
+          (q.y * pow(p.z, 3))
           |> modulo(Params.curve().p)
 
         if u1 == u2 do
@@ -198,7 +216,7 @@ defmodule Bitcoinex.Secp256k1.Math do
 
           # X3 = 42 - HHH - 2 * V
           nx =
-            (ipow(r, 2) - h3 - 2 * v)
+            (pow(r, 2) - h3 - 2 * v)
             |> modulo(Params.curve().p)
 
           # Y3 = r * (V - X3) - S1 * HHH

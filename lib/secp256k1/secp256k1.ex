@@ -10,24 +10,34 @@ defmodule Bitcoinex.Secp256k1 do
   use Bitwise, only_operators: true
   alias Bitcoinex.Secp256k1.{Math, Params, Point}
 
+  @generator_point %Point{
+    x: Params.curve().g_x,
+    y: Params.curve().g_y
+  }
+
   defmodule Signature do
     @moduledoc """
     Contains r,s in signature.
     """
+
+    @type t :: %__MODULE__{
+            r: pos_integer(),
+            s: pos_integer()
+          }
+
+    @enforce_keys [
+      :r,
+      :s
+    ]
     defstruct [:r, :s]
 
     @spec parse_signature(binary) ::
-            {:ok, Signature} | {:error, String.t()}
-    def parse_signature(compact_sig) when byte_size(compact_sig) != 64,
-      do: {:error, "invalid signature size"}
-
+            {:ok, t()} | {:error, String.t()}
     @doc """
     accepts a compact signature and returns a Signature containing r,s
     """
-    def parse_signature(compact_sig) do
+    def parse_signature(<<r::binary-size(32), s::binary-size(32)>>) do
       # Get r,s from signature.
-      <<r::binary-size(32), s::binary-size(32)>> = compact_sig
-
       r = :binary.decode_unsigned(r)
       s = :binary.decode_unsigned(s)
 
@@ -49,6 +59,9 @@ defmodule Bitcoinex.Secp256k1 do
           {:ok, %Signature{r: r, s: s}}
       end
     end
+
+    def parse_signature(compact_sig) when is_binary(compact_sig),
+      do: {:error, "invalid signature size"}
   end
 
   @doc """
@@ -91,15 +104,8 @@ defmodule Bitcoinex.Secp256k1 do
                 |> Math.modulo(Params.curve().n)
                 |> Kernel.*(inv_r |> Math.modulo(Params.curve().n))
 
-              # Generator Point.
-              # TODO, move somewhere else.
-              point_g = %Point{
-                x: 0x79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798,
-                y: 0x483ADA7726A3C4655DA4FBFC0E1108A8FD17B448A68554199C47D08FFB10D4B8
-              }
-
               # G*e
-              point_ge = Math.multiply(point_g, e)
+              point_ge = Math.multiply(@generator_point, e)
 
               # R*e * G*e
               point_q = Math.add(point_sr, point_ge)
@@ -121,8 +127,8 @@ defmodule Bitcoinex.Secp256k1 do
   Returns the y-coordinate of a secp256k1 curve point (P) using the x-coordinate.
   To get P(y), we solve for y in this equation: y^2 = x^3 + 7.
   """
-  @spec get_y(integer, boolean) :: integer
-  def get_y(x, y_bit) do
+  @spec get_y(integer, boolean) :: {:ok, integer} | {:error, String.t()}
+  def get_y(x, is_y_odd) do
     # x^3 + 7
     y_sq =
       :crypto.mod_pow(x, 3, Params.curve().p)
@@ -135,10 +141,12 @@ defmodule Bitcoinex.Secp256k1 do
       |> :binary.decode_unsigned()
 
     y =
-      if rem(y, 2) == 1 != y_bit do
-        Params.curve().p - y
-      else
-        y
+      case rem(y, 2) == 1 do
+        ^is_y_odd ->
+          y
+
+        _ ->
+          Params.curve().p - y
       end
 
     # Check.
