@@ -7,6 +7,7 @@ defmodule Bitcoinex.Secp256k1.Math do
   Several of the jacobian multiplication and addition functions are borrowed heavily from https://github.com/starkbank/ecdsa-elixir/.
   """
   alias Bitcoinex.Secp256k1.{Params, Point}
+  import Bitcoinex.Secp256k1.Point
   use Bitwise, only_operators: true
 
   @doc """
@@ -59,7 +60,7 @@ defmodule Bitcoinex.Secp256k1.Math do
   end
 
   @spec modulo(integer, integer) :: integer
-  def modulo(x, n) do
+  def modulo(x, n) when is_integer(x) and is_integer(n) do
     r = rem(x, n)
     if r < 0, do: r + n, else: r
   end
@@ -68,7 +69,7 @@ defmodule Bitcoinex.Secp256k1.Math do
   multiply accepts a point P and scalar n and,
   does jacobian multiplication to return resulting point.
   """
-  def multiply(p, n) do
+  def multiply(p, n) when is_point(p) and is_integer(n) do
     p
     |> toJacobian()
     |> jacobianMultiply(n)
@@ -79,7 +80,7 @@ defmodule Bitcoinex.Secp256k1.Math do
   add accepts points p and q and,
   does jacobian addition to return resulting point.
   """
-  def add(p, q) do
+  def add(p, q) when is_point(p) and is_point(q) do
     jacobianAdd(toJacobian(p), toJacobian(q))
     |> fromJacobian()
   end
