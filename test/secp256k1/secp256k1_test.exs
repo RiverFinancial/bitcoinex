@@ -1,4 +1,4 @@
-defmodule Bitcoinex.Secp256k1Test do
+defmodule Bitcoinex.Secp256k1.Secp256k1Test do
   use ExUnit.Case
   doctest Bitcoinex.Secp256k1
 
@@ -18,6 +18,20 @@ defmodule Bitcoinex.Secp256k1Test do
         ),
       recovery_id: 1,
       pubkey: "02e32df42865e97135acfb65f3bae71bdc86f4d49150ad6a440b6f15878109880a"
+    },
+    %{
+      message_hash:
+        Base.decode16!(
+          "5555555555555555555555555555555555555555555555555555555555555555",
+          case: :upper
+        ),
+      signature:
+        Base.decode16!(
+          "01010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101",
+          case: :upper
+        ),
+      recovery_id: 0,
+      pubkey: "02c1ab1d7b32c1adcdab9d378c2ae75ee27822541c6875beed3255f981f0dea378"
     }
   ]
 
@@ -49,6 +63,20 @@ defmodule Bitcoinex.Secp256k1Test do
           case: :upper
         ),
       recovery_id: 1
+    },
+    %{
+      # invalid signature
+      message_hash:
+        Base.decode16!(
+          "5555555555555555555555555555555555555555555555555555555555555555",
+          case: :upper
+        ),
+      signature:
+        Base.decode16!(
+          "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          case: :upper
+        ),
+      recovery_id: 0
     }
   ]
 
