@@ -6,10 +6,13 @@ defmodule Bitcoinex.MixProject do
       app: :bitcoinex,
       version: "0.1.0",
       elixir: "~> 1.8",
+      package: package(),
       start_permanent: Mix.env() == :prod,
       dialyzer: dialyzer(),
       deps: deps(),
-      aliases: aliases()
+      aliases: aliases(),
+      description: description(),
+      source_url: "https://github.com/RiverFinancial/bitcoinex"
     ]
   end
 
@@ -28,12 +31,8 @@ defmodule Bitcoinex.MixProject do
       {:excoveralls, "~> 0.10", only: :test},
       {:mix_test_watch, "~> 0.8", only: :dev, runtime: false},
       {:stream_data, "~> 0.1", only: :test},
-      {:libsecp256k1,
-       [github: "RiverFinancial/libsecp256k1", manager: :rebar, branch: "add-spec"]},
       {:timex, "~> 3.1"},
       {:decimal, "~> 1.0"}
-      # {:dep_from_hexpm, "~> 0.3.0"},
-      # {:dep_from_git, git: "https://github.com/elixir-lang/my_dep.git", tag: "0.1.0"}
     ]
   end
 
@@ -63,5 +62,17 @@ defmodule Bitcoinex.MixProject do
   # Use a custom PLT directory for CI caching.
   defp plt_file do
     {:no_warn, "_plts/dialyzer.plt"}
+  end
+
+  defp package do
+    [
+      files: ~w(lib test .formatter.exs mix.exs README.md UNLICENSE),
+      licenses: ["Unlicense"],
+      links: %{"GitHub" => "https://github.com/RiverFinancial/bitcoinex"}
+    ]
+  end
+
+  defp description() do
+    "Bitcoinex is a Bitcoin Library for Elixir."
   end
 end

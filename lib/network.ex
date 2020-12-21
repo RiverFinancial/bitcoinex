@@ -1,5 +1,5 @@
 defmodule Bitcoinex.Network do
-   @moduledoc """
+  @moduledoc """
     Includes network-specific paramater options.
 
     Supported networks include mainnet, testnet3, and regtest.
