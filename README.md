@@ -1,3 +1,4 @@
+![Bitcoinex](https://user-images.githubusercontent.com/8378656/102842648-4f671380-43bc-11eb-8e0d-72c2a107e5ed.png)
 # Bitcoinex
 
 Bitcoinex is striving to be the best and most up-to-date Bitcoin Library for Elixir.
