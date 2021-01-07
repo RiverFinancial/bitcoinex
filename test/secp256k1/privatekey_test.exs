@@ -30,9 +30,11 @@ defmodule Bitcoinex.Secp256k1.PrivateKeyTest do
                 r: 51171856268621681203379064931680562348117352680621396833116333722055478120934,
                 s: 17455962327778698045206777017096967323286973535288379967544467291763458630546
             }
+            correct_der = "3044022071223e8822fafbc0b09336d3f2a92fd7970a354d40185d69a297e0500e6c91e602202697b97c52da81a9328fd65a0ad883545f162cc3e5e2c70ea226c0d1cd4ae392"
             z = :binary.decode_unsigned(Bitcoinex.Utils.double_sha256(msg))
             sig = PrivateKey.sign(sk, z)
             assert sig == correct_sig
+            assert Bitcoinex.Secp256k1.der_serialize_signature(sig) == correct_der
         end
     end
 

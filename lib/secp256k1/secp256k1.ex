@@ -123,6 +123,29 @@ defmodule Bitcoinex.Secp256k1 do
     end
   end
 
+  # @spec der_serialize_signature(%Signature) :: :binary
+  def der_serialize_signature(%Signature{r: r, s: s}) do
+    r_bytes = serialize_sig_key(r)
+    s_bytes = serialize_sig_key(s)
+    result = <<0x30>> <> len_as_bytes(r_bytes <> s_bytes) <> r_bytes <> s_bytes
+  end
+
+  defp serialize_sig_key(k) do
+    raw_k_bytes = :binary.encode_unsigned(k)
+    k_bytes = lstrip(raw_k_bytes, <<0x00>>)
+    if :binary.at(k_bytes, 0) &&& 0x80 do
+      k_bytes = <<0x00>> <> k_bytes
+    end
+    <<0x02>> <> len_as_bytes(k_bytes) <> k_bytes
+  end
+
+  defp len_as_bytes(data), do: :binary.encode_unsigned(byte_size(data))
+
+
+  defp lstrip(<<head::binary-size(1)>> <> tail, val) do
+    if head == val, do: lstrip(tail, val), else: head <> tail
+  end
+
   @doc """
   Returns the y-coordinate of a secp256k1 curve point (P) using the x-coordinate.
   To get P(y), we solve for y in this equation: y^2 = x^3 + 7.
