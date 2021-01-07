@@ -99,11 +99,7 @@ defmodule Bitcoinex.Secp256k1.PrivateKey do
 		n = Params.curve().n
 		sig_r = to_point(k).x
 		inv_k = Math.inv(k.s, n)
-		#IO.puts(inv_k)
-		IO.puts((z + sig_r * privkey.s ))
-		IO.puts(Math.modulo(inv_k, n))
 		sig_s = Math.modulo((z + sig_r * privkey.s ) * inv_k, n)
-		IO.puts(sig_s)
 		if sig_s > n/2 do
 			%Signature{r: sig_r, s: n - sig_s}
 		else
