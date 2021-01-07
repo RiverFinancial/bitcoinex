@@ -128,6 +128,7 @@ defmodule Bitcoinex.Secp256k1 do
     r_bytes = serialize_sig_key(r)
     s_bytes = serialize_sig_key(s)
     result = <<0x30>> <> len_as_bytes(r_bytes <> s_bytes) <> r_bytes <> s_bytes
+    Base.encode16(result, case: :lower)
   end
 
   defp serialize_sig_key(k) do
