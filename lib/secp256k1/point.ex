@@ -21,6 +21,24 @@ defmodule Bitcoinex.Secp256k1.Point do
                   :erlang.is_map_key(:z, term)
 
   @doc """
+  parse_public_key parses a public key
+  """
+  @spec parse_public_key(sec) :: %__MODULE__
+  def parse_public_key(<<0x04>> <> <<x::binary-size(32), y::binary-size(32)>>) do
+    %__MODULE__{x: :binary.decode_unsigned(x), y: :binary.decode_unsigned(y)}
+  end
+
+  def parse_public_key(<<prefix::binary-size(1)>> <> <<x_bytes::binary-size(32)) do
+    x = :binary.decode_unsigned(x_bytes)
+    case rem(:binary.decode_unsigned(prefix), 2) do
+      0 -> 
+        %Point{x: x, y: get_y(x, false)} # WILL NOT WORK until get_y is imported
+      1 ->
+        %Point{x: x, y: get_y(x, true)}
+    end
+  end
+
+  @doc """
   serialize_public_key serializes a compressed public key
   """
   @spec serialize_public_key(t()) :: String.t()
