@@ -123,13 +123,53 @@ defmodule Bitcoinex.Secp256k1 do
     end
   end
 
+  @doc """
+  der_parse_signature parses a DER binary to a Signature
+  """
+  #@spec der_parse_signature(binary) :: {:ok, %Signature} | {:error, String.t()}
+  def der_parse_signature(<<0x30>> <> der_sig) when is_binary(der_sig) do
+    sig_len = :binary.at(der_sig, 0)
+    if sig_len + 1 != byte_size(der_sig) do
+      {:error, "invalid signature length"}
+    else
+      case parse_sig_key(der_sig, 1) do
+        {:error, err} -> {:error, err}
+        {r, s_pos} ->
+          case parse_sig_key(der_sig, s_pos) do
+            {:error, err} -> {:error, err}
+            {s, sig_len} ->
+              if sig_len != byte_size(der_sig) do 
+                {:error, "invalid signature: signature is too long"}
+              else
+                {:ok, %Signature{r: r,s: s}}
+              end
+          end
+      end
+    end
+  end
+
+  def der_parse_signature(_), do: {:error, "invalid signature"}
+
+  defp parse_sig_key(data, pos) do
+    if :binary.at(data, pos) != 0x02 do
+      {:error, "invalid signature key marker"}
+    else
+      k_len = :binary.at(data, pos+1)
+      len_k = :binary.part(data, pos+2, k_len)
+      {:binary.decode_unsigned(len_k), pos+2+k_len}
+    end
+  end
+  @doc """
+  der_serialize_signature returns the DER serialization of an ecdsa signature
+  """
   # @spec der_serialize_signature(%Signature) :: :binary
   def der_serialize_signature(%Signature{r: r, s: s}) do
     r_bytes = serialize_sig_key(r)
     s_bytes = serialize_sig_key(s)
-    result = <<0x30>> <> len_as_bytes(r_bytes <> s_bytes) <> r_bytes <> s_bytes
-    Base.encode16(result, case: :lower)
+    <<0x30>> <> len_as_bytes(r_bytes <> s_bytes) <> r_bytes <> s_bytes
   end
+
+  def der_serialize_signature(_), do: {:error, "Signature object required"}
 
   defp serialize_sig_key(k) do
     raw_k_bytes = :binary.encode_unsigned(k)
