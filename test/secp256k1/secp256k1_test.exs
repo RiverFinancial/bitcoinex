@@ -170,16 +170,16 @@ defmodule Bitcoinex.Secp256k1.Secp256k1Test do
   describe "der_parse_signature/1" do
     test "successfully parse valid signature from DER binary" do
       for t <- @valid_der_signatures do
-        {state, parsed_sig} = Secp256k1.der_parse_signature(t.der_signature)
+        {state, parsed_sig} = Secp256k1.Signature.der_parse_signature(t.der_signature)
         assert state == :ok
         assert parsed_sig == t.obj_signature
-        assert Secp256k1.der_serialize_signature(t.obj_signature) == t.der_signature
+        assert Secp256k1.Signature.der_serialize_signature(t.obj_signature) == t.der_signature
       end
     end
 
     test "unsuccessfully parse signature from DER binary" do
       for t <- @invalid_der_signatures do
-        assert {:error, _error} = Secp256k1.der_parse_signature(t.der_signature)
+        assert {:error, _error} = Secp256k1.Signature.der_parse_signature(t.der_signature)
       end 
     end
   end

@@ -34,7 +34,8 @@ defmodule Bitcoinex.Secp256k1.PrivateKeyTest do
             z = :binary.decode_unsigned(Bitcoinex.Utils.double_sha256(msg))
             sig = PrivateKey.sign(sk, z)
             assert sig == correct_sig
-            assert Base.encode16(Bitcoinex.Secp256k1.der_serialize_signature(sig), case: :lower) == correct_der
+            der = Bitcoinex.Secp256k1.Signature.der_serialize_signature(sig)
+            assert Base.encode16(der, case: :lower) == correct_der
         end
     end
 

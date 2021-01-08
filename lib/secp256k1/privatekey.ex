@@ -60,14 +60,11 @@ defmodule Bitcoinex.Secp256k1.PrivateKey do
 	deterministic_k deterministicallly generates a k value from a sighash z and privkey 
 	"""
 	@spec deterministic_k(integer, integer) :: integer
-	def deterministic_k(%__MODULE__{s: s}, z) do
+	def deterministic_k(%__MODULE__{s: s}, raw_z) do
 		k = :binary.list_to_bin(List.duplicate(<<0x00>>, 32))
 		v = :binary.list_to_bin(List.duplicate(<<0x01>>, 32))
 		n = Params.curve().n
-		unless z <= n do
-			z = z - n
-		end
-		# if z > n, do: z = z - n
+		z = lower_z(raw_z, n)
 		sighash = Point.pad(:binary.encode_unsigned(z))
 		secret = Point.pad(:binary.encode_unsigned(s))
 		k = :crypto.hmac(:sha256, k, v <> <<0x00>> <> secret <> sighash)
@@ -87,6 +84,10 @@ defmodule Bitcoinex.Secp256k1.PrivateKey do
 			find_candidate(k, v, n)
 		end
 		candidate
+	end
+
+	defp lower_z(z, n) do
+		if z > n, do: z - n, else: z
 	end
 
 	#@spec sign(t(), integer) :: %Signature
