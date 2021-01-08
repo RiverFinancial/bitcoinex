@@ -97,6 +97,7 @@ defmodule Bitcoinex.Secp256k1.Secp256k1Test do
     },
     %{
       #valid signature from 40352adf6fba255e083c60a21f9f85774ce7c97017f542bf22c63be2ef9f366b:0
+      # no high bits
       der_signature:
         Base.decode16!(
           "30440220363d2376abd4d166ee712210a8b92fc8713b93140103a618eeafd41d1497dca20220175894aee64dbfb35199a351b8fe2742aea529092e0473de3227f848eee162f6",
@@ -108,9 +109,34 @@ defmodule Bitcoinex.Secp256k1.Secp256k1Test do
             s: 10559704232859480938506730553108837258684636748731694899240401738284146975478
           },
         # pubkey: 027246ae6ffc3e4be3a2b3ee7392dc484a1d285f190a0532a514db5be823bcdd81
+    },
+    %{
+      # valid signature from f8f6704f1e80da23d1865627046eaec1f3d1a3288937bf3d12b9a3327aaa91de:0
+      # r high bit
+      der_signature:
+        Base.decode16!(
+          "3045022100974eb42bbc729f95f537cc41d52b6029731a2149cbce8dfb9e335f76a0e8b024022056dbeffa20d7b4231708f110b1789ad5b021fcb235e75099d50b502eabf5cae9",
+          case: :lower
+        ),
+        obj_signature:
+          %Secp256k1.Signature{
+            r: 68438297700591931769061022939284422764636608635142803529940449930283506511908,
+            s: 39287500746169653973150952458317583883135951896192490367558600116141508905705
+          }
+    },
+    %{
+      # valid signature from private_key used in privatekey_test.exs and msg "hello world"
+      der_signature:
+        Base.decode16!(
+          "3044022071223e8822fafbc0b09336d3f2a92fd7970a354d40185d69a297e0500e6c91e602202697b97c52da81a9328fd65a0ad883545f162cc3e5e2c70ea226c0d1cd4ae392",
+          case: :lower
+        ),
+      obj_signature:
+        %Secp256k1.Signature{
+          r: 51171856268621681203379064931680562348117352680621396833116333722055478120934,
+          s: 17455962327778698045206777017096967323286973535288379967544467291763458630546
+        },
     }
-
-
   ]
 
   @invalid_der_signatures [
@@ -148,6 +174,26 @@ defmodule Bitcoinex.Secp256k1.Secp256k1Test do
     }
   ]
 
+  @valid_signature_pubkey_sighash_sets [
+    %{
+      # valid signature from private_key used in privatekey_test.exs and msg "hello world"
+      privkey:
+       %Secp256k1.PrivateKey{s: 123414253234542345423623},
+      # 3044022071223e8822fafbc0b09336d3f2a92fd7970a354d40185d69a297e0500e6c91e602202697b97c52da81a9328fd65a0ad883545f162cc3e5e2c70ea226c0d1cd4ae392
+      signature: 
+        %Secp256k1.Signature{
+          r: 51171856268621681203379064931680562348117352680621396833116333722055478120934,
+          s: 17455962327778698045206777017096967323286973535288379967544467291763458630546
+        },
+      # "033b15e1b8c51bb947a134d17addc3eb6abbda551ad02137699636f907ad7e0f1a"
+      pubkey: 
+        %Secp256k1.Point{
+          x: 26725119729089203965150132282997341343516273140835737223575952640907021258522,
+          y: 35176335436138229778595179837068778482032382451813967420917290469529927283651
+        },
+      msg: "hello world"
+    },
+  ]
 
   describe "ecdsa_recover_compact/3" do
     test "successfully recover a public key from a signature" do
@@ -181,6 +227,17 @@ defmodule Bitcoinex.Secp256k1.Secp256k1Test do
       for t <- @invalid_der_signatures do
         assert {:error, _error} = Secp256k1.Signature.der_parse_signature(t.der_signature)
       end 
+    end
+  end
+
+  describe "verify_signature/3" do
+    test "successfully verify signature with pubkey and message hash" do
+      for t <- @valid_signature_pubkey_sighash_sets do
+        z = :binary.decode_unsigned(Bitcoinex.Utils.double_sha256(t.msg))
+        sig = Secp256k1.PrivateKey.sign(t.privkey, z)
+        assert sig == t.signature
+        assert Secp256k1.verify_signature(t.pubkey, z, sig)
+      end
     end
   end
 end

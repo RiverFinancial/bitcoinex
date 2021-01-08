@@ -112,19 +112,29 @@ defmodule Bitcoinex.Secp256k1 do
     def der_serialize_signature(_), do: {:error, "Signature object required"}
 
     defp serialize_sig_key(k) do
-      raw_k_bytes = :binary.encode_unsigned(k)
-      k_bytes = lstrip(raw_k_bytes, <<0x00>>)
-      if :binary.at(k_bytes, 0) &&& 0x80 do
-        k_bytes = <<0x00>> <> k_bytes
-      end
-      <<0x02>> <> len_as_bytes(k_bytes) <> k_bytes
+      k
+      |> :binary.encode_unsigned()
+      |> lstrip(<<0x00>>)
+      |> add_high_bit()
+      |> prefix_key()
     end
-
+    
     defp len_as_bytes(data), do: :binary.encode_unsigned(byte_size(data))
 
     defp lstrip(<<head::binary-size(1)>> <> tail, val) do
       if head == val, do: lstrip(tail, val), else: head <> tail
     end
+
+    defp add_high_bit(k_bytes) do
+      unless (:binary.at(k_bytes, 0) &&& 0x80) == 0 do
+        <<0x00>> <> k_bytes
+      else
+        k_bytes
+      end
+    end
+
+    defp prefix_key(k_bytes), do: <<0x02>> <> len_as_bytes(k_bytes) <> k_bytes
+
   end
 
   @doc """
@@ -222,7 +232,6 @@ defmodule Bitcoinex.Secp256k1 do
     end
   end
 
-
   @doc """
   verify whether the signature is valid for the given message hash and public key
   """
@@ -233,6 +242,6 @@ defmodule Bitcoinex.Secp256k1 do
     u = Math.modulo(sighash * s_inv, n)
     v = Math.modulo(r * s_inv, n)
     total = Math.add(Math.multiply(@generator_point, u), Math.multiply(pubkey, v))
-    total.x == sighash.r
+    total.x == r
   end
 end
