@@ -89,10 +89,6 @@ defmodule Bitcoinex.Secp256k1.PrivateKey do
 		candidate
 	end
 
-	def test_K(privkey, z) do
-		deterministic_k(privkey, z)
-	end
-
 	#@spec sign(t(), integer) :: %Signature
 	def sign(privkey, z) do
 		k = deterministic_k(privkey, z)
