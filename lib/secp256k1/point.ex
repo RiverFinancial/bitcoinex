@@ -43,6 +43,7 @@ defmodule Bitcoinex.Secp256k1.Point do
     end
   end
 
+<<<<<<< HEAD
   # Allow parse_public_key to parse SEC strings
   def parse_public_key(key) do
     key
@@ -51,6 +52,13 @@ defmodule Bitcoinex.Secp256k1.Point do
     |> parse_public_key()
   end
 
+=======
+<<<<<<< HEAD
+=======
+
+
+>>>>>>> 7c9002e (add parse code-nonfunctional)
+>>>>>>> d637e14 (add parse code-nonfunctional)
   @doc """
   sec serializes a compressed public key to binary
   """
@@ -58,15 +66,23 @@ defmodule Bitcoinex.Secp256k1.Point do
   def sec(%__MODULE__{x: x, y: y}) do
     case rem(y, 2) do
       0 ->
+<<<<<<< HEAD
         <<0x02>> <> Bitcoinex.Utils.pad(:binary.encode_unsigned(x), 32, :leading)
 
       1 ->
         <<0x03>> <> Bitcoinex.Utils.pad(:binary.encode_unsigned(x), 32, :leading)
+=======
+        <<0x02>> <> pad(:binary.encode_unsigned(x))
+      1 ->
+        <<0x03>> <> pad(:binary.encode_unsigned(x))
+>>>>>>> f82d23c (finish pubkey parse)
     end
   end
 
   @doc """
   serialize_public_key serializes a compressed public key to string
+<<<<<<< HEAD
+=======
   """
   @spec serialize_public_key(t()) :: String.t()
   def serialize_public_key(pubkey) do
@@ -74,4 +90,17 @@ defmodule Bitcoinex.Secp256k1.Point do
     |> sec()
     |> Base.encode16(case: :lower)
   end
+
+  @doc """
+  pads binary to 32 bytes
+>>>>>>> f82d23c (finish pubkey parse)
+  """
+  @spec serialize_public_key(t()) :: String.t()
+  def serialize_public_key(pubkey) do
+    pubkey
+    |> sec()
+    |> Base.encode16(case: :lower)
+  end
+
+
 end
