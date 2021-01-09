@@ -16,9 +16,27 @@ defmodule Bitcoinex.Secp256k1.PrivateKeyTest do
         test "successfully return private key wif encoding" do
             sk = %PrivateKey{s: 123414253234542345423623}
             assert "KwDiBf89QgGbjEhKnhXJuH7LrciVrZi4ZxKRdkhWeLbjoGkhRF5E" ==
-                PrivateKey.wif(sk, :mainnet)
+                PrivateKey.wif!(sk, :mainnet)
             assert "cMahea7zqjxrtgAbB7LSGbcQUr1uX1okdzTtkBA29TFk41r74ddm" ==
-                PrivateKey.wif(sk, :testnet)
+                PrivateKey.wif!(sk, :testnet)
+        end
+    end
+
+    describe "parse_wif/1" do
+        test "successfully return private key from wif str" do
+            sk = %PrivateKey{s: 123414253234542345423623}
+            wif = "KwDiBf89QgGbjEhKnhXJuH7LrciVrZi4ZxKRdkhWeLbjoGkhRF5E"
+            assert {:ok, sk, :mainnet, true} == PrivateKey.parse_wif(wif)
+            twif = "cMahea7zqjxrtgAbB7LSGbcQUr1uX1okdzTtkBA29TFk41r74ddm"
+            assert {:ok, sk, :testnet, true} == PrivateKey.parse_wif(twif)
+        end
+    end
+
+    describe "parse & serialize wif" do
+        test "successfully return private key from wif str" do
+            sk = %PrivateKey{s: 123414253234542345423623}
+            wif = PrivateKey.wif!(sk, :mainnet)
+            assert {:ok, sk, :mainnet, true} == PrivateKey.parse_wif(wif)
         end
     end
 

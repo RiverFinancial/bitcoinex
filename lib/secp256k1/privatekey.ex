@@ -35,8 +35,8 @@ defmodule Bitcoinex.Secp256k1.PrivateKey do
 	wif returns the base58check encoded private key as a string
 	assumes all keys are compressed
 	"""
-	@spec wif(t(), Bitcoinex.Network.network_name()) :: String.t()
-	def wif(%__MODULE__{s: s}, network_name) do
+	@spec wif!(t(), Bitcoinex.Network.network_name()) :: String.t()
+	def wif!(%__MODULE__{s: s}, network_name) do
 		:binary.encode_unsigned(s)
 		|> Point.pad()
 		|> wif_prefix(network_name)
@@ -44,17 +44,51 @@ defmodule Bitcoinex.Secp256k1.PrivateKey do
 		|> Base58.encode()
 	end
 
-	defp wif_prefix(binary, :mainnet) do
-		<<0x80>> <> binary
+	@doc """
+	returns the base58check encoded private key as a string
+	assumes all keys are compressed
+	"""
+	#@spec parse_wif(string) :: %__MODULE__
+	def parse_wif(wif_str) do
+		{state, bin} = Base58.decode(wif_str)
+		case state do
+			:error -> {:error, bin}
+			:ok -> parse_wif_bin(bin)
+		end
+	end
+	# parse compressed
+	def parse_wif_bin(<<prefix::binary-size(1), wif::binary-size(32), 0x01>>) do
+		{state, network_name} = wif_prefix(prefix)
+		if state == :error do
+			{:error, network_name}
+		else
+			secret = :binary.decode_unsigned(wif)
+			{:ok, %__MODULE__{s: secret}, network_name, true}
+		end
+	end
+	# parse uncompressed
+	def parse_wif_bin(<<prefix::binary-size(1), wif::binary-size(32)>>) do
+		{state, network_name} = wif_prefix(prefix)
+		if state == :error do
+			{:error, network_name}
+		else
+			secret = :binary.decode_unsigned(wif)
+			{:ok, %__MODULE__{s: secret}, network_name, false}
+		end
 	end
 
-	defp wif_prefix(binary, :testnet) do
-		<<0xef>> <> binary
-	end
 
-	defp compressed_suffix(binary) do
-		binary <> <<0x01>>
-	end
+	defp compressed_suffix(binary), do: binary <> <<0x01>>
+	#encoding
+	defp wif_prefix(binary, :mainnet), do: <<0x80>> <> binary
+	defp wif_prefix(binary, :testnet), do: <<0xef>> <> binary
+	# what is the best way to throw an error if an invalid network name is passed?
+	#defp wif_prefix(binary, _), do: {:error, "networks must be in [:mainnet, :testnet]"}
+	#decoding
+	defp wif_prefix(<<0x80>>), do: {:ok, :mainnet}
+	defp wif_prefix(<<0xef>>), do: {:ok, :testnet}
+	defp wif_prefix(_), do: {:error, "unrecognized network prefix for WIF"}
+
 
 	@doc """
 	deterministic_k deterministicallly generates a k value from a sighash z and privkey 
