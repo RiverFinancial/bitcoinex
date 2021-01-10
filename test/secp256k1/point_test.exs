@@ -17,14 +17,15 @@ defmodule Bitcoinex.Secp256k1.PointTest do
   end
 
   describe "parse_public_key/1" do
-    test "successfully pad public key" do
-      assert Point.parse_public_key("033b15e1b8c51bb947a134d17addc3eb6abbda551ad02137699636f907ad7e0f1a") ==
+    test "successfully parse public key from sec" do
+      sec = Base.decode16!("033b15e1b8c51bb947a134d17addc3eb6abbda551ad02137699636f907ad7e0f1a", case: :lower)
+      assert Point.parse_public_key(sec) ==
                %Point{
                  x:
                  26725119729089203965150132282997341343516273140835737223575952640907021258522,
                  y:
                  35176335436138229778595179837068778482032382451813967420917290469529927283651
-               })
+               }
     end
   end
 
