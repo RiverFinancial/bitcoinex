@@ -47,10 +47,11 @@ defmodule Bitcoinex.Utils do
     pad_len = 8 * byte_len - byte_size(bin) * 8
     bin <> <<0::size(pad_len)>>
   end
+
   @spec hash160(iodata()) :: binary
   def hash160(str) do
-    :crypto.hash(:ripemd160, str)
-    |> :crypto.hash(:sha256)
+    s256 = :crypto.hash(:sha256, str)
+    :crypto.hash(:ripemd160, s256)
   end
 
   # is this efficient? It would be better to use streams
@@ -63,7 +64,7 @@ defmodule Bitcoinex.Utils do
         :binary.part(data, pos+1, 4)
       0xff ->
         :binary.part(data, pos+1, 8)
-      -> :binary.at(data, pos)
+      true -> :binary.at(data, pos)
     end
     |> :binary.decode_unsigned(:little)
   end
@@ -80,5 +81,5 @@ defmodule Bitcoinex.Utils do
       i < 0x10000000000000000 ->
         <<0xff>> <> :binary.encode_unsigned(i, :little)
     end
-
+  end
 end

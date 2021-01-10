@@ -23,36 +23,43 @@ defmodule Bitcoinex.Secp256k1.Point do
   @doc """
   parse_public_key parses a public key
   """
-  @spec parse_public_key(sec) :: %__MODULE__
-  def parse_public_key(<<0x04>> <> <<x::binary-size(32), y::binary-size(32)>>) do
-    %__MODULE__{x: x, y: y}
+  #@spec parse_public_key(sec) :: %__MODULE__
+  def parse_public_key(<<0x04, x::binary-size(32), y::binary-size(32)>>) do
+    %__MODULE__{x: :binary.decode_unsigned(x), y: :binary.decode_unsigned(y)}
   end
 
-  def parse_public_key(<<prefix::binary-size(1)>> <> <<x_bytes::binary-size(32)) do
+  def parse_public_key(<<prefix::binary-size(1), x_bytes::binary-size(32)>>) do
     x = :binary.decode_unsigned(x_bytes)
     case rem(:binary.decode_unsigned(prefix), 2) do
       0 -> 
-        %Point{x: x, y: get_y(x, false)} # WILL NOT WORK until get_y is imported
+        {:ok, y} = Bitcoinex.Secp256k1.get_y(x, false)
+        %__MODULE__{x: x, y: y}
       1 ->
-        %Point{x: x, y: get_y(x, true)}
+        {:ok, y} = Bitcoinex.Secp256k1.get_y(x, true)
+        %__MODULE__{x: x, y: y}
     end
   end
 
   @doc """
-  serialize_public_key serializes a compressed public key
+  serialize_public_key serializes a compressed public key to binary
   """
-  @spec serialize_public_key(t()) :: String.t()
-  def serialize_public_key(%__MODULE__{x: x, y: y}) do
+  @spec sec(t()) :: binary
+  def sec(%__MODULE__{x: x, y: y}) do
     case rem(y, 2) do
       0 ->
-        Base.encode16(<<0x02>> <> Bitcoinex.Utils.pad(:binary.encode_unsigned(x), 32, :leading),
-          case: :lower
-        )
-
+        <<0x02>> <> pad(:binary.encode_unsigned(x), 32, :leading)
       1 ->
-        Base.encode16(<<0x03>> <> Bitcoinex.Utils.pad(:binary.encode_unsigned(x), 32, :leading),
-          case: :lower
-        )
+        <<0x03>> <> pad(:binary.encode_unsigned(x), 32, :leading)
     end
+  end
+
+  @doc """
+  serialize_public_key serializes a compressed public key to string
+  """
+  @spec serialize_public_key(t()) :: String.t()
+  def serialize_public_key(pubkey) do
+    pubkey
+    |> sec()
+    |> Base.encode16(case: :lower)
   end
 end
