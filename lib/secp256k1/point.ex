@@ -27,23 +27,14 @@ defmodule Bitcoinex.Secp256k1.Point do
   def serialize_public_key(%__MODULE__{x: x, y: y}) do
     case rem(y, 2) do
       0 ->
-        Base.encode16(<<0x02>> <> pad(:binary.encode_unsigned(x)), case: :lower)
+        Base.encode16(<<0x02>> <> Bitcoinex.Utils.pad(:binary.encode_unsigned(x), 32, :leading),
+          case: :lower
+        )
 
       1 ->
-        Base.encode16(<<0x03>> <> pad(:binary.encode_unsigned(x)), case: :lower)
+        Base.encode16(<<0x03>> <> Bitcoinex.Utils.pad(:binary.encode_unsigned(x), 32, :leading),
+          case: :lower
+        )
     end
-  end
-
-  @doc """
-  pads binary to 32 bytes
-  """
-  @spec pad(bin :: binary) :: binary
-  def pad(bin) when is_binary(bin) and byte_size(bin) != 32 do
-    pad_len = 256 - byte_size(bin) * 8
-    <<0::size(pad_len)>> <> bin
-  end
-
-  def pad(bin) do
-    bin
   end
 end

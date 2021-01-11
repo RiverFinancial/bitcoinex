@@ -270,12 +270,16 @@ defmodule Bitcoinex.Transaction.In do
     [input | inputs] = inputs
 
     {:ok, prev_txid} = Base.decode16(input.prev_txid, case: :lower)
-    prev_txid = prev_txid |> :binary.decode_unsigned(:big) |> :binary.encode_unsigned(:little)
+
+    prev_txid =
+      prev_txid
+      |> :binary.decode_unsigned(:big)
+      |> :binary.encode_unsigned(:little)
+      |> Bitcoinex.Utils.pad(32, :trailing)
 
     {:ok, script_sig} = Base.decode16(input.script_sig, case: :lower)
 
     script_len = TxUtils.serialize_compact_size_unsigned_int(byte_size(script_sig))
-    # script_sig = script_sig |> :binary.decode_unsigned() |> :binary.encode_unsigned(:little)
 
     serialized_input =
       prev_txid <>
