@@ -57,5 +57,44 @@ defmodule Bitcoinex.Secp256k1.PrivateKeyTest do
         end
     end
 
+    describe "fuzz test signing" do
+        setup do
+            privkey = %PrivateKey{s: 123414253234542345423623}
+            pubkey = PrivateKey.to_point(privkey)
+            {:ok, privkey: privkey, pubkey: pubkey}
+        end
+        test "successfully sign a large number of random sighashes", %{
+            privkey: privkey,
+            pubkey: pubkey
+        } do
+            for _ <- 1..1000 do
+                z = 
+                    32
+                    |> :crypto.strong_rand_bytes()
+                    |> :binary.decode_unsigned()
+                sig = PrivateKey.sign(privkey, z)
+                assert Bitcoinex.Secp256k1.verify_signature(pubkey, z, sig)
+            end
+        end
+
+        test "successfully sign a sighash with a large number of keys" do
+            z = 
+                32
+                |> :crypto.strong_rand_bytes()
+                |> :binary.decode_unsigned()
+            for _ <- 1..1000 do
+                secret = 
+                    32
+                    |> :crypto.strong_rand_bytes()
+                    |> :binary.decode_unsigned()
+                privkey = %PrivateKey{s: secret}
+                pubkey = PrivateKey.to_point(privkey)
+                sig = PrivateKey.sign(privkey, z)
+                assert Bitcoinex.Secp256k1.verify_signature(pubkey, z, sig)
+            end
+        end
+    end
+
+
 
 end

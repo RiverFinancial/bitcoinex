@@ -66,7 +66,7 @@ defmodule Bitcoinex.Secp256k1 do
       @doc """
     der_parse_signature parses a DER binary to a Signature
     """
-    #@spec der_parse_signature(binary) :: {:ok, %Signature} | {:error, String.t()}
+    #@spec der_parse_signature(binary) :: {:ok, Signature.()} | {:error, String.t()}
     def der_parse_signature(<<0x30>> <> der_sig) when is_binary(der_sig) do
       sig_len = :binary.at(der_sig, 0)
       if sig_len + 1 != byte_size(der_sig) do
@@ -102,7 +102,7 @@ defmodule Bitcoinex.Secp256k1 do
     @doc """
     der_serialize_signature returns the DER serialization of an ecdsa signature
     """
-    # @spec der_serialize_signature(%Signature) :: :binary
+    @spec der_serialize_signature(Signature.t()) :: :binary
     def der_serialize_signature(%Signature{r: r, s: s}) do
       r_bytes = serialize_sig_key(r)
       s_bytes = serialize_sig_key(s)
@@ -235,7 +235,7 @@ defmodule Bitcoinex.Secp256k1 do
   @doc """
   verify whether the signature is valid for the given message hash and public key
   """
-  #@spec verify_signature(%Point, integer, %Signature) :: boolean
+  @spec verify_signature(Point.t(), integer, Signature.t()) :: boolean
   def verify_signature(pubkey, sighash, %Signature{r: r, s: s}) do
     n = Params.curve().n
     s_inv = Math.inv(s, n)

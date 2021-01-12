@@ -23,7 +23,7 @@ defmodule Bitcoinex.Secp256k1.Point do
   @doc """
   parse_public_key parses a public key
   """
-  #@spec parse_public_key(sec) :: %__MODULE__
+  #@spec parse_public_key(sec) :: %__MODULE__.t()
   def parse_public_key(<<0x04, x::binary-size(32), y::binary-size(32)>>) do
     %__MODULE__{x: :binary.decode_unsigned(x), y: :binary.decode_unsigned(y)}
   end
@@ -47,9 +47,9 @@ defmodule Bitcoinex.Secp256k1.Point do
   def sec(%__MODULE__{x: x, y: y}) do
     case rem(y, 2) do
       0 ->
-        <<0x02>> <> pad(:binary.encode_unsigned(x), 32, :leading)
+        <<0x02>> <> Bitcoinex.Utils.pad(:binary.encode_unsigned(x), 32, :leading)
       1 ->
-        <<0x03>> <> pad(:binary.encode_unsigned(x), 32, :leading)
+        <<0x03>> <> Bitcoinex.Utils.pad(:binary.encode_unsigned(x), 32, :leading)
     end
   end
 

@@ -17,7 +17,7 @@ defmodule Bitcoinex.Secp256k1.PrivateKey do
 	@doc """
 	calculate Point from private key
 	"""
-	#@spec serialize_private_key(t()) :: %Point
+	@spec serialize_private_key(t()) :: Point.t()
 	def to_point(%__MODULE__{s: s}) do
 		g = %Point{x: Params.curve().g_x, y: Params.curve().g_y, z: 0}
 		Math.multiply(g, s)
@@ -28,7 +28,10 @@ defmodule Bitcoinex.Secp256k1.PrivateKey do
 	"""
   @spec serialize_private_key(t()) :: String.t()
 	def serialize_private_key(%__MODULE__{s: s}) do
-		Base.encode16(Point.pad(:binary.encode_unsigned(s)), case: :lower)
+		s
+		|> :binary.encode_unsigned()
+		|> Bitcoinex.Utils.pad(32, :leading)
+		|> Base.encode16(case: :lower)
 	end
 
 	@doc """
@@ -38,17 +41,23 @@ defmodule Bitcoinex.Secp256k1.PrivateKey do
 	@spec wif!(t(), Bitcoinex.Network.network_name()) :: String.t()
 	def wif!(%__MODULE__{s: s}, network_name) do
 		:binary.encode_unsigned(s)
-		|> Point.pad()
+		|> Bitcoinex.Utils.pad(32, :leading)
 		|> wif_prefix(network_name)
 		|> compressed_suffix()
 		|> Base58.encode()
+	end
+
+	#@spec parse_wif(string) :: %__MODULE__.t()
+	def parse_wif!(wif_str) do
+		{:ok, privkey, _, _} = parse_wif(wif_str)
+		privkey
 	end
 
 	@doc """
 	returns the base58check encoded private key as a string
 	assumes all keys are compressed
 	"""
-	#@spec parse_wif(string) :: %__MODULE__
+	#@spec parse_wif(string) :: {:ok, %__MODULE__.t(), atom, boolean}
 	def parse_wif(wif_str) do
 		{state, bin} = Base58.decode(wif_str)
 		case state do
@@ -57,6 +66,7 @@ defmodule Bitcoinex.Secp256k1.PrivateKey do
 		end
 	end
 	# parse compressed
+	#@spec parse_wif_bin(binary) :: {:ok, %__MODULE__.t(), atom, boolean}
 	def parse_wif_bin(<<prefix::binary-size(1), wif::binary-size(32), 0x01>>) do
 		{state, network_name} = wif_prefix(prefix)
 		if state == :error do
@@ -90,17 +100,15 @@ defmodule Bitcoinex.Secp256k1.PrivateKey do
 	defp wif_prefix(_), do: {:error, "unrecognized network prefix for WIF"}
 
 
-	@doc """
-	deterministic_k deterministicallly generates a k value from a sighash z and privkey 
-	"""
+	
 	@spec deterministic_k(integer, integer) :: integer
-	def deterministic_k(%__MODULE__{s: s}, raw_z) do
+	defp deterministic_k(%__MODULE__{s: s}, raw_z) do
 		k = :binary.list_to_bin(List.duplicate(<<0x00>>, 32))
 		v = :binary.list_to_bin(List.duplicate(<<0x01>>, 32))
 		n = Params.curve().n
 		z = lower_z(raw_z, n)
-		sighash = Point.pad(:binary.encode_unsigned(z))
-		secret = Point.pad(:binary.encode_unsigned(s))
+		sighash = Bitcoinex.Utils.pad(:binary.encode_unsigned(z), 32, :leading)
+		secret = Bitcoinex.Utils.pad(:binary.encode_unsigned(s), 32, :leading)
 		k = :crypto.hmac(:sha256, k, v <> <<0x00>> <> secret <> sighash)
 		v = :crypto.hmac(:sha256, k, v)
 		k = :crypto.hmac(:sha256, k, v <> <<0x01>> <> secret <> sighash)
@@ -124,7 +132,7 @@ defmodule Bitcoinex.Secp256k1.PrivateKey do
 		if z > n, do: z - n, else: z
 	end
 
-	#@spec sign(t(), integer) :: %Signature
+	@spec sign(t(), integer) :: Signature.t()
 	def sign(privkey, z) do
 		k = deterministic_k(privkey, z)
 		n = Params.curve().n
