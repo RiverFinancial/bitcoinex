@@ -27,6 +27,14 @@ defmodule Bitcoinex.Secp256k1.PointTest do
                  35176335436138229778595179837068778482032382451813967420917290469529927283651
                }
     end
+    test "successfully parse uncompressed key from sec" do
+      sec = Base.decode16!("048fdc3d8944cc8d8fe6c666c41a8ed42e60aa399861a756707e127a80b383d178edfbf94dda0487f7910d130f2a37a0647be9335eab5b8d3aa5242445e1604024", case: :lower)
+      assert Point.parse_public_key(sec) == 
+        %Point{
+          x: 0x8fdc3d8944cc8d8fe6c666c41a8ed42e60aa399861a756707e127a80b383d178,
+          y: 0xedfbf94dda0487f7910d130f2a37a0647be9335eab5b8d3aa5242445e1604024
+        }
+    end
   end
 
   describe "sec/1" do
@@ -42,5 +50,4 @@ defmodule Bitcoinex.Secp256k1.PointTest do
       assert correct_hash160 == hash160
     end
   end
-
 end
