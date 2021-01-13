@@ -21,19 +21,19 @@ defmodule Bitcoinex.Seed do
 
 	@type language :: :english | :french | :italian | :chinese_simplified | :chinese_traditional | :japanese | :korean | :spanish
 
-	def valid_len(bits) do
+	defp valid_len(bits) do
 		bits_len = byte_size(bits)
 		entropy_len = bits_len * 8 - div(bits_len, 33)
 		entropy_len in @strengths
 	end
 
 	@spec checksum(binary) :: boolean
-	def checksum(bits) do
+	defp checksum(bits) do
 		byte_size(bits) * 8
 	end
 
 	@spec get_wordlist(language) :: list
-	def get_wordlist(lang) do
+	defp get_wordlist(lang) do
 		@wordlist_dir <> to_string(lang)
 		|> Kernel.<>(".txt")
 		|> File.stream!()
