@@ -28,8 +28,11 @@ defmodule Bitcoinex.Seed do
 	end
 
 	@spec checksum(binary) :: boolean
-	defp checksum(bits) do
-		byte_size(bits) * 8
+	def calculate_checksum(bits) do
+		strength = byte_size(bits)
+		cs_len = div(strength, 32)
+		
+
 	end
 
 	@spec get_wordlist(language) :: list
@@ -41,7 +44,26 @@ defmodule Bitcoinex.Seed do
 		|> Enum.to_list()
 	end
 
-	
+	#@spec to_mnemonic(%__MODULE__.t(), language) :: list(String.t())
+	def to_mnemonic(%__MODULE__{bits: bits}, lang) do
+		case valid_len(bits) do
+			true ->
+				wordlist = get_wordlist(lang)
+				{:ok, wordnums} = 
+					bits
+					|> :binary.bin_to_list()
+					|> Bitcoinex.Bech32. #convert_bits(8, 11, false)
+				Enum.map(wordnums, fn i -> elem(wordlist, i) end)
+			false -> {:error, :invalid_bits}
+		end
+	end
+
+	# for testing only. REMOVE
+	def weak_random(strength \\ 132) do
+		%__MODULE__{
+			bits: :crypto.strong_rand_bytes(div(strength, 8))
+		}
+	end
 
 
 end
