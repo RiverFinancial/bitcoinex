@@ -63,25 +63,30 @@ defmodule Bitcoinex.Secp256k1 do
     def parse_signature(compact_sig) when is_binary(compact_sig),
       do: {:error, "invalid signature size"}
 
-      @doc """
+    @doc """
     der_parse_signature parses a DER binary to a Signature
     """
-    #@spec der_parse_signature(binary) :: {:ok, Signature.()} | {:error, String.t()}
+    # @spec der_parse_signature(binary) :: {:ok, Signature.()} | {:error, String.t()}
     def der_parse_signature(<<0x30>> <> der_sig) when is_binary(der_sig) do
       sig_len = :binary.at(der_sig, 0)
+
       if sig_len + 1 != byte_size(der_sig) do
         {:error, "invalid signature length"}
       else
         case parse_sig_key(der_sig, 1) do
-          {:error, err} -> {:error, err}
+          {:error, err} ->
+            {:error, err}
+
           {r, s_pos} ->
             case parse_sig_key(der_sig, s_pos) do
-              {:error, err} -> {:error, err}
+              {:error, err} ->
+                {:error, err}
+
               {s, sig_len} ->
-                if sig_len != byte_size(der_sig) do 
+                if sig_len != byte_size(der_sig) do
                   {:error, "invalid signature: signature is too long"}
                 else
-                  {:ok, %Signature{r: r,s: s}}
+                  {:ok, %Signature{r: r, s: s}}
                 end
             end
         end
@@ -94,11 +99,12 @@ defmodule Bitcoinex.Secp256k1 do
       if :binary.at(data, pos) != 0x02 do
         {:error, "invalid signature key marker"}
       else
-        k_len = :binary.at(data, pos+1)
-        len_k = :binary.part(data, pos+2, k_len)
-        {:binary.decode_unsigned(len_k), pos+2+k_len}
+        k_len = :binary.at(data, pos + 1)
+        len_k = :binary.part(data, pos + 2, k_len)
+        {:binary.decode_unsigned(len_k), pos + 2 + k_len}
       end
     end
+
     @doc """
     der_serialize_signature returns the DER serialization of an ecdsa signature
     """
@@ -118,7 +124,7 @@ defmodule Bitcoinex.Secp256k1 do
       |> add_high_bit()
       |> prefix_key()
     end
-    
+
     defp len_as_bytes(data), do: :binary.encode_unsigned(byte_size(data))
 
     defp lstrip(<<head::binary-size(1)>> <> tail, val) do
@@ -134,7 +140,6 @@ defmodule Bitcoinex.Secp256k1 do
     end
 
     defp prefix_key(k_bytes), do: <<0x02>> <> len_as_bytes(k_bytes) <> k_bytes
-
   end
 
   @doc """
@@ -195,8 +200,6 @@ defmodule Bitcoinex.Secp256k1 do
         {:error, e}
     end
   end
-
-
 
   @doc """
   Returns the y-coordinate of a secp256k1 curve point (P) using the x-coordinate.
