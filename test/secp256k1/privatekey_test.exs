@@ -6,7 +6,7 @@ defmodule Bitcoinex.Secp256k1.PrivateKeyTest do
 
   describe "serialize_private_key/1" do
     test "successfully pad private key" do
-      sk = %PrivateKey{s: 123_414_253_234_542_345_423_623}
+      sk = %PrivateKey{d: 123_414_253_234_542_345_423_623}
 
       assert "000000000000000000000000000000000000000000001a224cd1a01427f38b07" ==
                PrivateKey.serialize_private_key(sk)
@@ -15,7 +15,7 @@ defmodule Bitcoinex.Secp256k1.PrivateKeyTest do
 
   describe "wif/2" do
     test "successfully return private key wif encoding" do
-      sk = %PrivateKey{s: 123_414_253_234_542_345_423_623}
+      sk = %PrivateKey{d: 123_414_253_234_542_345_423_623}
 
       assert "KwDiBf89QgGbjEhKnhXJuH7LrciVrZi4ZxKRdkhWeLbjoGkhRF5E" ==
                PrivateKey.wif!(sk, :mainnet)
@@ -27,7 +27,7 @@ defmodule Bitcoinex.Secp256k1.PrivateKeyTest do
 
   describe "parse_wif/1" do
     test "successfully return private key from wif str" do
-      sk = %PrivateKey{s: 123_414_253_234_542_345_423_623}
+      sk = %PrivateKey{d: 123_414_253_234_542_345_423_623}
       wif = "KwDiBf89QgGbjEhKnhXJuH7LrciVrZi4ZxKRdkhWeLbjoGkhRF5E"
       assert {:ok, sk, :mainnet, true} == PrivateKey.parse_wif(wif)
       twif = "cMahea7zqjxrtgAbB7LSGbcQUr1uX1okdzTtkBA29TFk41r74ddm"
@@ -37,7 +37,7 @@ defmodule Bitcoinex.Secp256k1.PrivateKeyTest do
 
   describe "parse & serialize wif" do
     test "successfully return private key from wif str" do
-      sk = %PrivateKey{s: 123_414_253_234_542_345_423_623}
+      sk = %PrivateKey{d: 123_414_253_234_542_345_423_623}
       wif = PrivateKey.wif!(sk, :mainnet)
       assert {:ok, sk, :mainnet, true} == PrivateKey.parse_wif(wif)
     end
@@ -45,7 +45,7 @@ defmodule Bitcoinex.Secp256k1.PrivateKeyTest do
 
   describe "sign/2" do
     test "successfully sign message with private key" do
-      sk = %PrivateKey{s: 123_414_253_234_542_345_423_623}
+      sk = %PrivateKey{d: 123_414_253_234_542_345_423_623}
       msg = "hello world"
 
       correct_sig = %Bitcoinex.Secp256k1.Signature{
@@ -68,7 +68,7 @@ defmodule Bitcoinex.Secp256k1.PrivateKeyTest do
 
   describe "fuzz test signing" do
     setup do
-      privkey = %PrivateKey{s: 123_414_253_234_542_345_423_623}
+      privkey = %PrivateKey{d: 123_414_253_234_542_345_423_623}
       pubkey = PrivateKey.to_point(privkey)
       {:ok, privkey: privkey, pubkey: pubkey}
     end
@@ -100,7 +100,7 @@ defmodule Bitcoinex.Secp256k1.PrivateKeyTest do
           |> :crypto.strong_rand_bytes()
           |> :binary.decode_unsigned()
 
-        privkey = %PrivateKey{s: secret}
+        privkey = %PrivateKey{d: secret}
         pubkey = PrivateKey.to_point(privkey)
         sig = PrivateKey.sign(privkey, z)
         assert Bitcoinex.Secp256k1.verify_signature(pubkey, z, sig)

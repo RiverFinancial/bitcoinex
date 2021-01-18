@@ -181,7 +181,7 @@ defmodule Bitcoinex.Secp256k1.Secp256k1Test do
   @valid_signature_pubkey_sighash_sets [
     %{
       # valid signature from private_key used in privatekey_test.exs and msg "hello world"
-      privkey: %Secp256k1.PrivateKey{s: 123_414_253_234_542_345_423_623},
+      privkey: %Secp256k1.PrivateKey{d: 123_414_253_234_542_345_423_623},
       # 3044022071223e8822fafbc0b09336d3f2a92fd7970a354d40185d69a297e0500e6c91e602202697b97c52da81a9328fd65a0ad883545f162cc3e5e2c70ea226c0d1cd4ae392
       signature: %Secp256k1.Signature{
         r:
