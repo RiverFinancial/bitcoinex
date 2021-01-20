@@ -27,6 +27,7 @@ defmodule Bitcoinex.Secp256k1.Point do
   def parse_public_key(<<0x04, x::binary-size(32), y::binary-size(32)>>) do
     %__MODULE__{x: :binary.decode_unsigned(x), y: :binary.decode_unsigned(y)}
   end
+
   # Above matches with uncompressed keys. Below matches with compressed keys
   def parse_public_key(<<prefix::binary-size(1), x_bytes::binary-size(32)>>) do
     x = :binary.decode_unsigned(x_bytes)
