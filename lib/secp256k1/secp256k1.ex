@@ -108,7 +108,7 @@ defmodule Bitcoinex.Secp256k1 do
     @doc """
     der_serialize_signature returns the DER serialization of an ecdsa signature
     """
-    @spec der_serialize_signature(Signature.t()) :: :binary
+    @spec der_serialize_signature(Signature.t()) :: binary
     def der_serialize_signature(%Signature{r: r, s: s}) do
       r_bytes = serialize_sig_key(r)
       s_bytes = serialize_sig_key(s)

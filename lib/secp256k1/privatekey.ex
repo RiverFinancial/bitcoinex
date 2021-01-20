@@ -17,7 +17,7 @@ defmodule Bitcoinex.Secp256k1.PrivateKey do
   @doc """
   calculate Point from private key
   """
-  @spec serialize_private_key(t()) :: Point.t()
+  @spec to_point(t()) :: Point.t()
   def to_point(%__MODULE__{d: d}) do
     g = %Point{x: Params.curve().g_x, y: Params.curve().g_y, z: 0}
     Math.multiply(g, d)
@@ -47,7 +47,7 @@ defmodule Bitcoinex.Secp256k1.PrivateKey do
     |> Base58.encode()
   end
 
-  # @spec parse_wif(string) :: %__MODULE__.t()
+  @spec parse_wif(String.t()) :: t()
   def parse_wif!(wif_str) do
     {:ok, privkey, _, _} = parse_wif(wif_str)
     privkey
@@ -57,7 +57,7 @@ defmodule Bitcoinex.Secp256k1.PrivateKey do
   returns the base58check encoded private key as a string
   assumes all keys are compressed
   """
-  # @spec parse_wif(string) :: {:ok, %__MODULE__.t(), atom, boolean}
+  @spec parse_wif(String.t()) :: {:ok, t(), atom, boolean}
   def parse_wif(wif_str) do
     {state, bin} = Base58.decode(wif_str)
 
@@ -68,7 +68,7 @@ defmodule Bitcoinex.Secp256k1.PrivateKey do
   end
 
   # parse compressed
-  # @spec parse_wif_bin(binary) :: {:ok, %__MODULE__.t(), atom, boolean}
+  @spec parse_wif_bin(binary) :: {:ok, t(), atom, boolean}
   def parse_wif_bin(<<prefix::binary-size(1), wif::binary-size(32), 0x01>>) do
     {state, network_name} = wif_prefix(prefix)
 
@@ -102,7 +102,7 @@ defmodule Bitcoinex.Secp256k1.PrivateKey do
   defp wif_prefix(<<0xEF>>), do: {:ok, :testnet}
   defp wif_prefix(_), do: {:error, "unrecognized network prefix for WIF"}
 
-  def deterministic_k(%__MODULE__{d: d}, raw_z) do
+  defp deterministic_k(%__MODULE__{d: d}, raw_z) do
     # RFC 6979 https://tools.ietf.org/html/rfc6979#section-3.2
     k = :binary.list_to_bin(List.duplicate(<<0x00>>, 32))
     v = :binary.list_to_bin(List.duplicate(<<0x01>>, 32))

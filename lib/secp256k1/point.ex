@@ -23,7 +23,7 @@ defmodule Bitcoinex.Secp256k1.Point do
   @doc """
   parse_public_key parses a public key
   """
-  # @spec parse_public_key(sec) :: %__MODULE__.t()
+  @spec parse_public_key(binary | String.t()) :: t()
   def parse_public_key(<<0x04, x::binary-size(32), y::binary-size(32)>>) do
     %__MODULE__{x: :binary.decode_unsigned(x), y: :binary.decode_unsigned(y)}
   end
