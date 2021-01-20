@@ -47,7 +47,6 @@ defmodule Bitcoinex.Secp256k1.PrivateKey do
     |> Base58.encode()
   end
 
-  @spec parse_wif(String.t()) :: t()
   def parse_wif!(wif_str) do
     {:ok, privkey, _, _} = parse_wif(wif_str)
     privkey
