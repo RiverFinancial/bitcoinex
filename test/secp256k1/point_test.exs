@@ -45,18 +45,22 @@ defmodule Bitcoinex.Secp256k1.PointTest do
                  y: 0xEDFBF94DDA0487F7910D130F2A37A0647BE9335EAB5B8D3AA5242445E1604024
                }
     end
+
     test "successfully parse compressed key from sec hex" do
       sec = "0299d7ff3d96c731e54e75637798cab801fe80827191e280f53427bc8915323e8b"
+
       pk = %Point{
-          x: 69585499557921076123288400932281161043766220600235811505715105664976077078155,
-          y: 102549807389226195103316638704859105787106440500810433784118696258589643376818,
-          z: 0
-        }
+        x:
+          69_585_499_557_921_076_123_288_400_932_281_161_043_766_220_600_235_811_505_715_105_664_976_077_078_155,
+        y:
+          102_549_807_389_226_195_103_316_638_704_859_105_787_106_440_500_810_433_784_118_696_258_589_643_376_818,
+        z: 0
+      }
+
       assert Point.parse_public_key(sec) == pk
       assert Point.serialize_public_key(pk) == sec
     end
   end
-
 
   describe "sec/1" do
     test "successfully calculate SEC encoding and hash160 of public key" do
