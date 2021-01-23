@@ -618,9 +618,9 @@ end
 
     defp script_type_from_prefix(prefix) do
       cond do
-        prefix in bip44 -> :p2pkh
-        prefix in bip49 -> :p2sh_p2wpkh # p2sh or p2sh_p2wpkh? 
-        prefix in bip84 -> :p2wpkh
+        prefix in bip44() -> :p2pkh
+        prefix in bip49() -> :p2sh_p2wpkh # p2sh or p2sh_p2wpkh? 
+        prefix in bip84() -> :p2wpkh
       end
     end
 
@@ -632,7 +632,7 @@ end
 				child_num::binary-size(4),
 				chaincode::binary-size(32),
 				key::binary-size(33),
-				chekcsum::binary-size(4)>>
+				checksum::binary-size(4)>>
     ) do
       if prefix not in all_prefixes() do
         {:error, "invalid prefix"}
@@ -658,13 +658,14 @@ end
     @spec serialize_extended_key(t()) :: binary
     def serialize_extended_key(xkey) do
       xkey.prefix <> xkey.depth <> xkey.parent <> xkey.child_num <> xkey.chaincode <> xkey.key
+      |> Bitcoinex.Base58.append_checksum()
     end
 
     @spec display(t()) :: String.t()
     def display(xkey) do
       xkey
       |> serialize_extended_key()
-      |> Base58.encode()
+      |> Bitcoinex.Base58.encode_base()
     end
 
     @spec to_private_key(t()) :: PrivateKey.t()
@@ -673,7 +674,7 @@ end
         {:error, "key is not a private key."}
       else
         secret = :binary.decode_unsigned(xprv.key, :big)
-        PrivateKey{d: secret}
+        %PrivateKey{d: secret}
       end
     end
 
@@ -691,7 +692,102 @@ end
 
     @spec derive_child_key(t(), non_neg_integer) :: t()
     def derive_child_key(xkey, idx) do
+      xkey # UNFINISHED
+    end
 
+    def derive_child_key(xkey, idx) do
+      child_depth = incr(xkey.depth)
+      i = 
+        idx
+        |> :binary.encode_unsigned()
+        |> pad(4, :leading)
+      if xkey.prefix in prv_prefixes() do
+        key_secret = 
+          xkey.key
+          |> :binary.decode_unsigned()
+        fingerprint = 
+          %PrivateKey{d: key_secret}
+          |> PrivateKey.to_point()
+          |> Utils.hash160()
+          |> :binary.part(0, 4)
+        ent = get_prv_child_entropy(xkey, idx)
+        child_chaincode = :binary.part(ent, byte_size(ent), -32)
+        parent_key = :binary.decode_unsigned(xkey.key)
+        child_key = 
+          ent
+          |> :binary.part(0, 32)
+          |> :binary.decode_unsigned()
+          |> Kernel.+(parent_key)
+        xkey.prefix <> child_depth <> fingerprint <> i <> child_chaincode <> <<0x00>> <> child_key
+        |> Bitcoinex.Base58.append_checksum()
+        |> parse_extended_key()
+      else
+        fingerprint =
+          xkey.key
+          |> Utils.hash160()
+          |> :binary.part(0, 4)
+        ent = get_pub_child_entropy(xkey, idx)
+        child_chaincode = :binary.part(ent, byte_size(ent), -32)
+        key_secret =
+          ent
+          |> :binary.part(0, 32)
+          |> :binary.decode_unsigned()
+        parent_pubkey = Point.parse_public_key(xkey.key)
+        pubkey =
+          %PrivateKey{d: key_secret}
+          |> PrivateKey.to_point()
+          |> Math.add(parent_pubkey)
+        # How to check if pubkey is not infinity?
+        if key_secret >= Params.curve().n do
+          {:error, "invalid key derived. Bad luck!"}
+        else
+          xkey.prefix <> child_depth <> fingerprint <> i <> child_chaincode <> pubkey
+          |> Bitcoinex.Base58.append_checksum()
+          |> parse_extended_key()
+        end
+          
+      end
+    end
+  
+    defp incr(byte) do
+      byte
+      |> :binary.decode_unsigned()
+      |> Kernel.+(1)
+      |> :binary.encode_unsigned()
+    end
+  
+    defp get_prv_child_entropy(xprv, idx) do
+      if idx > @hardcap or idx < 0 do
+        {:error, "idx must be [0,2**32-1]"}
+      else
+        i =
+          idx
+          |> :binary.encode_unsigned()
+          |> pad(4, :leading)
+        if idx >= @softcap do
+          # hardened child from priv key
+          :crypto.hmac(:sha512, xprv.chaincode, xprv.key <> i) 
+        else
+          # unhardened child from privkey
+          pubkey =
+            xprv.key
+            |> PrivateKey.to_point()
+            |> Point.sec()
+          :crypto.hmac(:sha512, xprv.chaincode, pubkey <> i)
+        end
+      end
+    end
+  
+    defp get_pub_child_entropy(xpub, idx) do
+      if idx > @softcap or idx < 0 do
+        {:error, "idx must be [0, 2**31-1]"}
+      else
+        i =
+          idx
+          |> :binary.encode_unsigned()
+          |> pad(4, :leading)
+        :crypto.hmac(:sha512, xpub.chaincode, xpub.key <> i)
+      end
     end
 
 end
