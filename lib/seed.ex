@@ -27,12 +27,10 @@ defmodule Bitcoinex.Seed do
 		entropy_len in @strengths
 	end
 
-	@spec checksum(binary) :: boolean
+	@spec calculate_checksum(binary) :: boolean
 	def calculate_checksum(bits) do
 		strength = byte_size(bits)
-		cs_len = div(strength, 32)
-		
-
+		div(strength, 32) #cs_len = 
 	end
 
 	@spec get_wordlist(language) :: list
@@ -52,8 +50,8 @@ defmodule Bitcoinex.Seed do
 				{:ok, wordnums} = 
 					bits
 					|> :binary.bin_to_list()
-					|> Bitcoinex.Bech32. #convert_bits(8, 11, false)
-				Enum.map(wordnums, fn i -> elem(wordlist, i) end)
+					|> Bitcoinex.Bech32.convert_bits(8, 11, false) #convert_bits(8, 11, false)
+				Enum.map(fn i -> elem(wordlist, i) end, wordnums)
 			false -> {:error, :invalid_bits}
 		end
 	end

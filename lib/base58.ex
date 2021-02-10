@@ -111,7 +111,7 @@ defmodule Bitcoinex.Base58 do
   end
 
   @spec append_checksum(binary) :: binary
-  defp append_checksum(body) do
+  def append_checksum(body) do
     body <> checksum(body)
   end
 
