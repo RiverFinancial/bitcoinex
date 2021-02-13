@@ -101,7 +101,7 @@ defmodule Bitcoinex.Bech32Test do
   describe "decode/1 for bech32" do
     test "successfully decode with valid bech32" do
       for bech <- @valid_bech32 do
-        assert {:ok, {hrp, data}} = Bech32.decode(bech)
+        assert {:ok, {:bech32, hrp, data}} = Bech32.decode(bech)
         assert hrp != nil
 
         # encode after decode should be the same(after downcase) as before
@@ -170,7 +170,7 @@ defmodule Bitcoinex.Bech32Test do
   describe "decode/1 for bech32m" do
     test "successfully decode with valid bech32" do
       for bech <- @valid_bech32m do
-        assert {:ok, {hrp, data}} = Bech32.decode(bech)
+        assert {:ok, {:bech32m, hrp, data}} = Bech32.decode(bech)
         assert hrp != nil
 
         # encode after decode should be the same(after downcase) as before

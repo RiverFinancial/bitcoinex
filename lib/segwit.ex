@@ -27,10 +27,17 @@ defmodule Bitcoinex.Segwit do
   @spec decode_address(String.t()) ::
           {:ok, {network, witness_version, witness_program}} | {:error, error}
   def decode_address(address) when is_binary(address) do
-    with {_, {:ok, {hrp, data}}} <- {:decode_bech32, Bech32.decode(address)},
+    with {_, {:ok, {encoding_type, hrp, data}}} <- {:decode_bech32, Bech32.decode(address)},
          {_, {:ok, network}} <- {:parse_network, parse_network(hrp |> String.to_charlist())},
          {_, {:ok, {version, program}}} <- {:parse_segwit_data, parse_segwit_data(data)} do
-      {:ok, {network, version, program}}
+      case witness_version_to_bech_encoding(version) do
+        ^encoding_type ->
+          {:ok, {network, version, program}}
+
+        _ ->
+          # encoding type derived from witness version (first byte of data) is different from the code derived from bech32 decoding
+          {:error, :invalid_checksum}
+      end
     else
       {_, {:error, error}} ->
         {:error, error}
