@@ -33,7 +33,7 @@ defmodule Bitcoinex.Secp256k1.Math do
   end
 
   @doc """
-  Inv performs the Extended Euclidean Algorithm to to find
+  Inv performs the Extended Euclidean Algorithm to find
   the inverse of a number x mod n.
   """
   @spec inv(integer, pos_integer) :: integer
