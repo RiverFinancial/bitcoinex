@@ -52,7 +52,7 @@ defmodule Bitcoinex.Secp256k1.Point do
   end
 
   @doc """
-  serialize_public_key serializes a compressed public key to binary
+  sec serializes a compressed public key to binary
   """
   @spec sec(t()) :: binary
   def sec(%__MODULE__{x: x, y: y}) do

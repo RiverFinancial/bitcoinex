@@ -3,6 +3,7 @@ defmodule Bitcoinex.ExtendedKey do
   	Contains an an extended key as documented in BIP 32.
   """
     alias Bitcoinex.Secp256k1.{Params, Point, PrivateKey, Math}
+    alias Bitcoinex.Base58
     
     @type t :: %__MODULE__{
         prefix: binary,
@@ -155,25 +156,29 @@ defmodule Bitcoinex.ExtendedKey do
       if prefix not in all_prefixes() do
         {:error, "invalid prefix"}
       else 
-			  %__MODULE__{
-			  	prefix: prefix,
-          depth: depth,
-			  	parent: parent,
-          child_num: child_num,
-          chaincode: chaincode,
-          key: key,
-          checksum: checksum,
-        }
+        unless Base58.validate_checksum(prefix <> depth <> parent <> child_num <> chaincode <> key) do
+          {:error, "invalid checksum"}
+        else
+			    %__MODULE__{
+			    	prefix: prefix,
+            depth: depth,
+			    	parent: parent,
+            child_num: child_num,
+            chaincode: chaincode,
+            key: key,
+            checksum: checksum,
+          }
+        end
       end
     end
 
     def parse_extended_key(xkey) do
-      case Bitcoinex.Base58.decode(xkey) do
+      case Base58.decode(xkey) do
         {:error, _} ->
           {:error, "error parsing key"}
         {:ok, xkey} ->
           xkey
-          |> Bitcoinex.Base58.append_checksum()
+          |> Base58.append_checksum()
           |> parse_extended_key()
 
       end
@@ -182,14 +187,14 @@ defmodule Bitcoinex.ExtendedKey do
     @spec serialize_extended_key(t()) :: binary
     def serialize_extended_key(xkey) do
       xkey.prefix <> xkey.depth <> xkey.parent <> xkey.child_num <> xkey.chaincode <> xkey.key
-      |> Bitcoinex.Base58.append_checksum()
+      |> Base58.append_checksum()
     end
 
     @spec display(t()) :: String.t()
     def display(xkey) do
       xkey
       |> serialize_extended_key()
-      |> Bitcoinex.Base58.encode_base()
+      |> Base58.encode_base()
     end
 
     @spec to_extended_public_key(t()) :: t()
@@ -204,7 +209,7 @@ defmodule Bitcoinex.ExtendedKey do
       |> Kernel.<>(xprv.child_num)
       |> Kernel.<>(xprv.chaincode)
       |> Kernel.<>(pubkey)
-      |> Bitcoinex.Base58.append_checksum()
+      |> Base58.append_checksum()
       |> parse_extended_key()
     end
 
@@ -260,17 +265,17 @@ defmodule Bitcoinex.ExtendedKey do
           ent
           |> :binary.part(0, 32)
           |> :binary.decode_unsigned()
-        parent_pubkey = Point.parse_public_key(xkey.key)
-        pubkey =
-          %PrivateKey{d: key_secret}
-          |> PrivateKey.to_point()
-          |> Math.add(parent_pubkey)
-        # How to check if pubkey is not infinity?
         if key_secret >= Params.curve().n do
           {:error, "invalid key derived. Bad luck!"}
         else
-          xkey.prefix <> child_depth <> fingerprint <> i <> child_chaincode <> pubkey
-          |> Bitcoinex.Base58.append_checksum()
+          parent_pubkey = Point.parse_public_key(xkey.key)
+          pubkey =
+            %PrivateKey{d: key_secret}
+            |> PrivateKey.to_point()
+            |> Math.add(parent_pubkey)
+          #TODO How to check if pubkey is not infinity?
+          xkey.prefix <> child_depth <> fingerprint <> i <> child_chaincode <> Point.sec(pubkey)
+          |> Base58.append_checksum()
           |> parse_extended_key()
         end
       end
@@ -304,7 +309,7 @@ defmodule Bitcoinex.ExtendedKey do
           |> Bitcoinex.Secp256k1.Math.modulo(Params.curve().n)
           |> :binary.encode_unsigned()
         xkey.prefix <> child_depth <> fingerprint <> i <> child_chaincode <> <<0>> <> child_key
-        |> Bitcoinex.Base58.append_checksum()
+        |> Base58.append_checksum()
         |> parse_extended_key()
       end
     end
