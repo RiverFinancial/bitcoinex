@@ -180,7 +180,6 @@ defmodule Bitcoinex.ExtendedKey do
           xkey
           |> Base58.append_checksum()
           |> parse_extended_key()
-
       end
     end
     
@@ -244,6 +243,7 @@ defmodule Bitcoinex.ExtendedKey do
       end
     end
 
+    @spec derive_public_child(t(), non_neg_integer) :: t()
     def derive_public_child(xkey, idx) do
       if xkey.prefix in prv_prefixes() do
         xkey
@@ -281,6 +281,7 @@ defmodule Bitcoinex.ExtendedKey do
       end
     end
 
+    @spec derive_private_child(t(), non_neg_integer) :: t()
     def derive_private_child(xkey, idx) do
       if xkey.prefix not in prv_prefixes() do
         {:error, "public key cannot derive private child"}
@@ -314,7 +315,7 @@ defmodule Bitcoinex.ExtendedKey do
       end
     end
 
-    def incr(byte) do
+    defp incr(byte) do
       byte
       |> :binary.decode_unsigned()
       |> Kernel.+(1)
