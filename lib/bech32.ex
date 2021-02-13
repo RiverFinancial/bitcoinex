@@ -17,6 +17,12 @@ defmodule Bitcoinex.Bech32 do
   @max_overall_encoded_length 90
   @separator "1"
 
+  @encoding_constant_map %{
+    bech32: 1,
+    bech32m: 0x2BC830A3
+  }
+
+  @type encoding_type :: :bech32 | :bech32m
   @type hrp :: String.t()
   @type data :: list(integer)
 
@@ -72,15 +78,15 @@ defmodule Bitcoinex.Bech32 do
     |> format_bech32_decoding_result
   end
 
-  @spec encode(hrp, data | String.t(), max_encoded_length()) ::
+  @spec encode(hrp, data | String.t(), encoding_type, max_encoded_length()) ::
           {:ok, String.t()} | {:error, error}
-  def encode(hrp, data, max_encoded_length \\ @max_overall_encoded_length)
+  def encode(hrp, data, encoding_type, max_encoded_length \\ @max_overall_encoded_length)
 
-  def encode(hrp, data, max_encoded_length) when is_list(data) do
+  def encode(hrp, data, encoding_type, max_encoded_length) when is_list(data) do
     hrp_charlist = hrp |> String.to_charlist()
 
     if is_valid_hrp?(hrp_charlist) do
-      checksummed = data ++ create_checksum(hrp_charlist, data)
+      checksummed = data ++ create_checksum(hrp_charlist, data, encoding_type)
       dp = Enum.map(checksummed, &Enum.at(@data_charset_list, &1)) |> List.to_string()
       encoded_result = <<hrp::binary, @separator, dp::binary>>
 
@@ -97,12 +103,12 @@ defmodule Bitcoinex.Bech32 do
   end
 
   # Here we assume caller pass raw ASCII string
-  def encode(hrp, data, max_encoded_length) when is_binary(data) do
+  def encode(hrp, data, encoding_type, max_encoded_length) when is_binary(data) do
     data_integers = data |> String.to_charlist() |> Enum.map(&Map.get(@data_charset_map, &1))
 
     case check_data_charlist_validity(data_integers) do
       :ok ->
-        encode(hrp, data_integers, max_encoded_length)
+        encode(hrp, data_integers, encoding_type, max_encoded_length)
 
       {:error, error} ->
         {:error, error}
@@ -164,7 +170,10 @@ defmodule Bitcoinex.Bech32 do
          } = decode_result
        ) do
     case bech32_polymod(bech32_hrp_expand(hrp) ++ data) do
-      1 ->
+      unquote(@encoding_constant_map.bech32) ->
+        decode_result
+
+      unquote(@encoding_constant_map.bech32m) ->
         decode_result
 
       _ ->
@@ -172,9 +181,9 @@ defmodule Bitcoinex.Bech32 do
     end
   end
 
-  defp create_checksum(hrp, data) do
+  defp create_checksum(hrp, data, encoding_type) do
     values = bech32_hrp_expand(hrp) ++ data ++ [0, 0, 0, 0, 0, 0]
-    mod = bech32_polymod(values) ^^^ 1
+    mod = bech32_polymod(values) ^^^ @encoding_constant_map[encoding_type]
     for p <- 0..5, do: mod >>> (5 * (5 - p)) &&& 31
   end
 
