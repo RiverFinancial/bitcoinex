@@ -67,7 +67,7 @@ defmodule Bitcoinex.Segwit do
             "bcrt"
         end
 
-      Bech32.encode(hrp, [version | converted_program])
+      Bech32.encode(hrp, [version | converted_program], witness_version_to_bech_encoding(version))
     else
       {:is_program_length_valid, false} ->
         {:error, :invalid_program_length}
@@ -146,4 +146,7 @@ defmodule Bitcoinex.Segwit do
   defp parse_network('tb'), do: {:ok, :testnet}
   defp parse_network('bcrt'), do: {:ok, :regtest}
   defp parse_network(_), do: {:error, :invalid_network}
+
+  defp witness_version_to_bech_encoding(0), do: :bech32
+  defp witness_version_to_bech_encoding(witver) when witver in 1..16, do: :bech32m
 end

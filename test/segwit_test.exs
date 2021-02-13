@@ -8,10 +8,10 @@ defmodule Bitcoinex.SegwitTest do
   @valid_segwit_address_hexscript_pairs_mainnet [
     {"BC1QW508D6QEJXTDG4Y5R3ZARVARY0C5XW7KV8F3T4",
      "0014751e76e8199196d454941c45d1b3a323f1433bd6"},
-    {"bc1pw508d6qejxtdg4y5r3zarvary0c5xw7kw508d6qejxtdg4y5r3zarvary0c5xw7k7grplx",
+    {"bc1pw508d6qejxtdg4y5r3zarvary0c5xw7kw508d6qejxtdg4y5r3zarvary0c5xw7kt5nd6y",
      "5128751e76e8199196d454941c45d1b3a323f1433bd6751e76e8199196d454941c45d1b3a323f1433bd6"},
-    {"BC1SW50QA3JX3S", "6002751e"},
-    {"bc1zw508d6qejxtdg4y5r3zarvaryvg6kdaj", "5210751e76e8199196d454941c45d1b3a323"}
+    {"BC1SW50QGDZ25J", "6002751e"},
+    {"bc1zw508d6qejxtdg4y5r3zarvaryvaxxpcs", "5210751e76e8199196d454941c45d1b3a323"}
   ]
 
   @valid_segwit_address_hexscript_pairs_testnet [
