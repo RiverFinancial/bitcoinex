@@ -142,6 +142,11 @@ defmodule Bitcoinex.Secp256k1.PrivateKey do
     if z > n, do: z - n, else: z
   end
 
+  @doc """
+  sign returns an ECDSA signature using the privkey and z
+  where privkey is a PrivateKey object and z is an integer. 
+  The nonce is derived using RFC6979. 
+  """
   @spec sign(t(), integer) :: Signature.t()
   def sign(privkey, z) do
     k = deterministic_k(privkey, z)
