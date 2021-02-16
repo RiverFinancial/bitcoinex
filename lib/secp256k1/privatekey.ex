@@ -101,7 +101,7 @@ defmodule Bitcoinex.Secp256k1.PrivateKey do
   defp wif_prefix(<<0xEF>>), do: {:ok, :testnet}
   defp wif_prefix(_), do: {:error, "unrecognized network prefix for WIF"}
 
-  defp deterministic_k(%__MODULE__{d: d}, raw_z) do
+  def deterministic_k(%__MODULE__{d: d}, raw_z) do
     # RFC 6979 https://tools.ietf.org/html/rfc6979#section-3.2
     k = :binary.list_to_bin(List.duplicate(<<0x00>>, 32))
     v = :binary.list_to_bin(List.duplicate(<<0x01>>, 32))
@@ -142,6 +142,11 @@ defmodule Bitcoinex.Secp256k1.PrivateKey do
     if z > n, do: z - n, else: z
   end
 
+  @doc """
+  sign returns an ECDSA signature using the privkey and z
+  where privkey is a PrivateKey object and z is an integer. 
+  The nonce is derived using RFC6979. 
+  """
   @spec sign(t(), integer) :: Signature.t()
   def sign(privkey, z) do
     k = deterministic_k(privkey, z)
