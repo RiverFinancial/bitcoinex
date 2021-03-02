@@ -127,6 +127,7 @@ defmodule Bitcoinex.ExtendedKey do
       ]
     end
 
+    @spec network_from_prefix(binary) :: atom
     def network_from_prefix(prefix) do
       if prefix in mainnet_prefixes() do
         :mainnet
@@ -135,6 +136,7 @@ defmodule Bitcoinex.ExtendedKey do
       end
     end
 
+    @spec script_type_from_prefix(binary) :: atom
     def script_type_from_prefix(prefix) do
       cond do
         prefix in bip44() -> :p2pkh
@@ -143,6 +145,10 @@ defmodule Bitcoinex.ExtendedKey do
       end
     end
 
+    @doc """
+      parse_extended_key takes binary or string representation 
+      of an extended key and parses it to an extended key object
+    """
     @spec parse_extended_key(binary | String.t()) :: t()
 		def parse_extended_key(
 			<<prefix::binary-size(4),
@@ -172,6 +178,7 @@ defmodule Bitcoinex.ExtendedKey do
       end
     end
 
+    # parse from string
     def parse_extended_key(xkey) do
       case Base58.decode(xkey) do
         {:error, _} ->
@@ -183,12 +190,20 @@ defmodule Bitcoinex.ExtendedKey do
       end
     end
     
+    @doc """
+      serialize_extended_key takes an extended key
+      and returns the binary
+    """
     @spec serialize_extended_key(t()) :: binary
     def serialize_extended_key(xkey) do
       xkey.prefix <> xkey.depth <> xkey.parent <> xkey.child_num <> xkey.chaincode <> xkey.key
       |> Base58.append_checksum()
     end
 
+
+    @doc """
+      display returns the extended key as a string
+    """
     @spec display(t()) :: String.t()
     def display(xkey) do
       xkey
@@ -196,6 +211,10 @@ defmodule Bitcoinex.ExtendedKey do
       |> Base58.encode_base()
     end
 
+    @doc """
+      to_extended_public_key takes an extended private key
+      and returns an extended public key
+    """
     @spec to_extended_public_key(t()) :: t()
     def to_extended_public_key(xprv) do
       privkey = %PrivateKey{d: :binary.decode_unsigned(xprv.key, :big)}
@@ -212,6 +231,10 @@ defmodule Bitcoinex.ExtendedKey do
       |> parse_extended_key()
     end
 
+    @doc """
+      to_private_key takes an extended private key
+      and returns the contained private key.
+    """
     @spec to_private_key(t()) :: PrivateKey.t()
     def to_private_key(xprv) do
       if xprv.prefix not in prv_prefixes() do
@@ -222,18 +245,28 @@ defmodule Bitcoinex.ExtendedKey do
       end
     end
 
+    @doc """
+      to_public_key takes an extended key xkey and 
+      returns the public key.
+    """
     @spec to_public_key(t()) :: Point.t()
-    def to_public_key(xprv) do
-      if xprv.prefix in prv_prefixes() do
-        xprv
+    def to_public_key(xkey) do
+      if xkey.prefix in prv_prefixes() do
+        xkey
         |> to_private_key()
         |> PrivateKey.to_point()
       else
-        xprv.key
+        xkey.key
         |> Point.parse_public_key()
       end
     end
 
+    @doc """
+      derive_child uses a public or private key xkey to
+      derive the public or private key at index idx. 
+      public key -> public child
+      private key -> private child
+    """
     @spec derive_child_key(t(), non_neg_integer) :: t()
     def derive_child_key(xkey, idx) do
       if xkey.prefix in prv_prefixes() do
@@ -243,6 +276,10 @@ defmodule Bitcoinex.ExtendedKey do
       end
     end
 
+    @doc """
+      derive_public_child uses a public or private key xkey to
+      derive the public key at index idx
+    """
     @spec derive_public_child(t(), non_neg_integer) :: t()
     def derive_public_child(xkey, idx) do
       if xkey.prefix in prv_prefixes() do
@@ -281,6 +318,11 @@ defmodule Bitcoinex.ExtendedKey do
       end
     end
 
+
+    @doc """
+      derive_private_child uses a private key xkey to 
+      derive the private key at index idx 
+    """
     @spec derive_private_child(t(), non_neg_integer) :: t()
     def derive_private_child(xkey, idx) do
       if xkey.prefix not in prv_prefixes() do
