@@ -74,6 +74,4 @@ defmodule Bitcoinex.Secp256k1.Point do
     |> sec()
     |> Base.encode16(case: :lower)
   end
-
-
 end

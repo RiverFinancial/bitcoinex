@@ -71,6 +71,7 @@ defmodule Bitcoinex.ExtendedKey do
         harden(nnum, tick)
       end
     end
+  end
 
     defp harden(num, [""]), do: num + @softcap
     defp harden(num, []), do: num
@@ -515,11 +516,14 @@ defmodule Bitcoinex.ExtendedKey do
     end
   end
 
+<<<<<<< HEAD
   @doc """
     derive_extended_key uses an extended xkey and a derivation 
     path to derive the extended key at that path
   """
   @spec derive_extended_key(t(), DerivationPath.t()) :: t()
+=======
+>>>>>>> 3920e7a (add testing for deriv paths)
   def derive_extended_key(xkey, %DerivationPath{p: path}), do: rderive_extended_key(xkey, path)
 
   defp rderive_extended_key(xkey, []), do: xkey
