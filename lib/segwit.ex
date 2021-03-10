@@ -27,10 +27,17 @@ defmodule Bitcoinex.Segwit do
   @spec decode_address(String.t()) ::
           {:ok, {network, witness_version, witness_program}} | {:error, error}
   def decode_address(address) when is_binary(address) do
-    with {_, {:ok, {hrp, data}}} <- {:decode_bech32, Bech32.decode(address)},
+    with {_, {:ok, {encoding_type, hrp, data}}} <- {:decode_bech32, Bech32.decode(address)},
          {_, {:ok, network}} <- {:parse_network, parse_network(hrp |> String.to_charlist())},
          {_, {:ok, {version, program}}} <- {:parse_segwit_data, parse_segwit_data(data)} do
-      {:ok, {network, version, program}}
+      case witness_version_to_bech_encoding(version) do
+        ^encoding_type ->
+          {:ok, {network, version, program}}
+
+        _ ->
+          # encoding type derived from witness version (first byte of data) is different from the code derived from bech32 decoding
+          {:error, :invalid_checksum}
+      end
     else
       {_, {:error, error}} ->
         {:error, error}
@@ -67,7 +74,7 @@ defmodule Bitcoinex.Segwit do
             "bcrt"
         end
 
-      Bech32.encode(hrp, [version | converted_program])
+      Bech32.encode(hrp, [version | converted_program], witness_version_to_bech_encoding(version))
     else
       {:is_program_length_valid, false} ->
         {:error, :invalid_program_length}
@@ -146,4 +153,7 @@ defmodule Bitcoinex.Segwit do
   defp parse_network('tb'), do: {:ok, :testnet}
   defp parse_network('bcrt'), do: {:ok, :regtest}
   defp parse_network(_), do: {:error, :invalid_network}
+
+  defp witness_version_to_bech_encoding(0), do: :bech32
+  defp witness_version_to_bech_encoding(witver) when witver in 1..16, do: :bech32m
 end
