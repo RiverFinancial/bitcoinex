@@ -62,7 +62,7 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
   """
   @spec decode(String.t()) :: {:ok, t} | {:error, error}
   def decode(invoice) when is_binary(invoice) do
-    with {:ok, {hrp, data}} <- Bech32.decode(invoice, :infinity),
+    with {:ok, {_encoding_type, hrp, data}} <- Bech32.decode(invoice, :infinity),
          {:ok, {network, amount_msat}} <- parse_hrp(hrp),
          {invoice_data, signature_data} = split_at(data, -@signature_base32_length),
          {:ok, parsed_data} <-
