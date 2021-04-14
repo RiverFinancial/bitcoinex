@@ -245,23 +245,25 @@ defmodule Bitcoinex.ExtendedKey do
   def parse_extended_key(
         <<prefix::binary-size(4), depth::binary-size(1), parent::binary-size(4),
           child_num::binary-size(4), chaincode::binary-size(32), key::binary-size(33),
-          checksum::binary-size(4)>>
+          checksum::binary-size(4)>> = xkey
       ) do
     if prefix not in all_prefixes() do
       {:error, "invalid prefix"}
     else
-      unless Base58.validate_checksum(prefix <> depth <> parent <> child_num <> chaincode <> key) do
-        {:error, "invalid checksum"}
-      else
-        %__MODULE__{
-          prefix: prefix,
-          depth: depth,
-          parent: parent,
-          child_num: child_num,
-          chaincode: chaincode,
-          key: key,
-          checksum: checksum
-        }
+      case Base58.validate_checksum(xkey) do
+        {:error, msg} ->
+          {:error, msg}
+
+        _ ->
+          %__MODULE__{
+            prefix: prefix,
+            depth: depth,
+            parent: parent,
+            child_num: child_num,
+            chaincode: chaincode,
+            key: key,
+            checksum: checksum
+          }
       end
     end
   end
@@ -377,14 +379,16 @@ defmodule Bitcoinex.ExtendedKey do
   """
   @spec derive_public_child(t(), non_neg_integer) :: t()
   def derive_public_child(xkey, idx) do
-    if xkey.prefix in prv_prefixes() do
-      xkey
-      |> derive_private_child(idx)
-      |> to_extended_public_key()
-    else
-      if idx > @softcap do
-        {:error, "xpub cannot derive hardened child"}
-      else
+    cond do
+      xkey.prefix in prv_prefixes() ->
+        xkey
+        |> derive_private_child(idx)
+        |> to_extended_public_key()
+
+      idx >= @softcap or idx < 0 ->
+        {:error, "idx must be in 0..2**31-1"}
+
+      true ->
         child_depth = incr(xkey.depth)
 
         i =
@@ -420,7 +424,6 @@ defmodule Bitcoinex.ExtendedKey do
           |> Base58.append_checksum()
           |> parse_extended_key()
         end
-      end
     end
   end
 
@@ -430,41 +433,46 @@ defmodule Bitcoinex.ExtendedKey do
   """
   @spec derive_private_child(t(), non_neg_integer) :: t()
   def derive_private_child(xkey, idx) do
-    if xkey.prefix not in prv_prefixes() do
-      {:error, "public key cannot derive private child"}
-    else
-      child_depth = incr(xkey.depth)
+    cond do
+      idx >= @hardcap or idx < 0 ->
+        {:error, "idx must be in 0..2**32-1"}
 
-      i =
-        idx
-        |> :binary.encode_unsigned()
-        |> Bitcoinex.Utils.pad(4, :leading)
+      xkey.prefix not in prv_prefixes() ->
+        {:error, "public key cannot derive private child"}
 
-      key_secret =
-        xkey.key
-        |> :binary.decode_unsigned()
+      true ->
+        child_depth = incr(xkey.depth)
 
-      fingerprint =
-        %PrivateKey{d: key_secret}
-        |> PrivateKey.to_point()
-        |> Point.sec()
-        |> Bitcoinex.Utils.hash160()
-        |> :binary.part(0, 4)
+        i =
+          idx
+          |> :binary.encode_unsigned()
+          |> Bitcoinex.Utils.pad(4, :leading)
 
-      ent = get_prv_child_entropy(xkey, idx)
-      child_chaincode = :binary.part(ent, byte_size(ent), -32)
+        key_secret =
+          xkey.key
+          |> :binary.decode_unsigned()
 
-      child_key =
-        ent
-        |> :binary.part(0, 32)
-        |> :binary.decode_unsigned()
-        |> Kernel.+(key_secret)
-        |> Bitcoinex.Secp256k1.Math.modulo(Params.curve().n)
-        |> :binary.encode_unsigned()
+        fingerprint =
+          %PrivateKey{d: key_secret}
+          |> PrivateKey.to_point()
+          |> Point.sec()
+          |> Bitcoinex.Utils.hash160()
+          |> :binary.part(0, 4)
 
-      (xkey.prefix <> child_depth <> fingerprint <> i <> child_chaincode <> <<0>> <> child_key)
-      |> Base58.append_checksum()
-      |> parse_extended_key()
+        ent = get_prv_child_entropy(xkey, idx)
+        child_chaincode = :binary.part(ent, byte_size(ent), -32)
+
+        child_key =
+          ent
+          |> :binary.part(0, 32)
+          |> :binary.decode_unsigned()
+          |> Kernel.+(key_secret)
+          |> Bitcoinex.Secp256k1.Math.modulo(Params.curve().n)
+          |> :binary.encode_unsigned()
+
+        (xkey.prefix <> child_depth <> fingerprint <> i <> child_chaincode <> <<0>> <> child_key)
+        |> Base58.append_checksum()
+        |> parse_extended_key()
     end
   end
 
@@ -478,40 +486,32 @@ defmodule Bitcoinex.ExtendedKey do
 
   # BIP32 spec
   defp get_prv_child_entropy(xprv, idx) do
-    if idx > @hardcap or idx < 0 do
-      {:error, "idx must be [0,2**32-1]"}
+    i =
+      idx
+      |> :binary.encode_unsigned()
+      |> Bitcoinex.Utils.pad(4, :leading)
+
+    if idx >= @softcap do
+      # hardened child from priv key
+      :crypto.hmac(:sha512, xprv.chaincode, xprv.key <> i)
     else
-      i =
-        idx
-        |> :binary.encode_unsigned()
-        |> Bitcoinex.Utils.pad(4, :leading)
+      # unhardened child from privkey
+      pubkey =
+        %PrivateKey{d: :binary.decode_unsigned(xprv.key)}
+        |> PrivateKey.to_point()
+        |> Point.sec()
 
-      if idx >= @softcap do
-        # hardened child from priv key
-        :crypto.hmac(:sha512, xprv.chaincode, xprv.key <> i)
-      else
-        # unhardened child from privkey
-        pubkey =
-          %PrivateKey{d: :binary.decode_unsigned(xprv.key)}
-          |> PrivateKey.to_point()
-          |> Point.sec()
-
-        :crypto.hmac(:sha512, xprv.chaincode, pubkey <> i)
-      end
+      :crypto.hmac(:sha512, xprv.chaincode, pubkey <> i)
     end
   end
 
   defp get_pub_child_entropy(xpub, idx) do
-    if idx > @softcap or idx < 0 do
-      {:error, "idx must be [0, 2**31-1]"}
-    else
-      i =
-        idx
-        |> :binary.encode_unsigned()
-        |> Bitcoinex.Utils.pad(4, :leading)
+    i =
+      idx
+      |> :binary.encode_unsigned()
+      |> Bitcoinex.Utils.pad(4, :leading)
 
-      :crypto.hmac(:sha512, xpub.chaincode, xpub.key <> i)
-    end
+    :crypto.hmac(:sha512, xpub.chaincode, xpub.key <> i)
   end
 
   @doc """
