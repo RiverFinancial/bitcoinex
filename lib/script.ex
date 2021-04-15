@@ -29,7 +29,7 @@ defmodule Bitcoinex.Script do
 	def get_op_num(op), do: Map.fetch(opcode_atoms(), op)
 
 	@spec get_op_atom(non_neg_integer()) :: atom
-	def get_op_atom(i), do: if i > 0 and i < 0x51, do: i, else: Map.fetch(opcode_nums(), i) 
+	def get_op_atom(i), do: if i > 0 and i < 0x4c, do: i, else: Map.fetch(opcode_nums(), i) 
 
 	@spec pop(t()) :: nil | {:ok, non_neg_integer(), t()}
 	def pop(%__MODULE__{s: []}), do: nil
@@ -41,7 +41,7 @@ defmodule Bitcoinex.Script do
 		if is_integer(item) and item > 0 and item < 0xff do
 			%__MODULE__{s: [item | stack]}
 		else
-			# op is atom
+			# item is atom
 			case get_op_num(item) do
 				nil -> invalid_opcode_error(item)
 				{:ok, op} -> %__MODULE__{s: [op | stack]}	
@@ -81,24 +81,24 @@ defmodule Bitcoinex.Script do
 
 	# SERIALIZE & PARSE 
 	defp serializer(%__MODULE__{s: []}, acc), do: acc
-	defp serializer(%__MODULE__{s: [item | stack]}, acc) when is_integer(item) do
-		serializer(%__MODULE__{s: stack}, acc <> Utils.int_to_little(item, 1))
+	defp serializer(%__MODULE__{s: [item | script]}, acc) when is_integer(item) do
+		serializer(%__MODULE__{s: script}, acc <> Utils.int_to_little(item, 1))
 	end
 	# For data pushes
-	defp serializer(%__MODULE__{s: [item | stack]}, acc) do
+	defp serializer(%__MODULE__{s: [item | script]}, acc) when is_binary(item) do
 		len = byte_size(item)
 		cond do
 			len <= 0x4b -> # CHECK IF PUSHDATA75 is valid
-				n = Utils.int_to_little(len, 1)
-				serializer(%__MODULE__{s: stack}, acc <> n <> item)
-			len <= 0xff -> 
-				n = Utils.int_to_little(76, 1)
 				len = Utils.int_to_little(len, 1)
-				serializer(%__MODULE__{s: stack}, acc <> n <> len <> item)
+				serializer(%__MODULE__{s: script}, acc <> len <> item)
+			len <= 0xff -> 
+				# n = Utils.int_to_little(76, 1)
+				len = Utils.int_to_little(len, 1)
+				serializer(%__MODULE__{s: script}, acc <> len <> item)
 			len <= 0x0208 -> 
-				n = Utils.int_to_little(77, 1)
+				# n = Utils.int_to_little(77, 1)
 				len = Utils.int_to_little(len, 2)
-				serializer(%__MODULE__{s: stack}, acc <> n <> len <> item)
+				serializer(%__MODULE__{s: script}, acc <> len <> item)
 			true -> {:error, "data is too long"}
 		end
 	end
@@ -120,7 +120,7 @@ defmodule Bitcoinex.Script do
 
 	defp display_script(%__MODULE__{s: []}, acc), do: acc
 	defp display_script(%__MODULE__{s: [item | stack]}, acc) when is_integer(item) do
-		if item > 0 and item <= 0x4b do
+		if item > 0 and item < 0x4c do
 			display_script(%__MODULE__{s: stack}, acc <> " OP_PUSHBYTES_#{item}")
 		else
 			{:ok, op_atom} = get_op_atom(item)
@@ -131,7 +131,6 @@ defmodule Bitcoinex.Script do
 	defp display_script(%__MODULE__{s: [item | stack]}, acc) when is_binary(item) do
 		display_script(%__MODULE__{s: stack}, acc <> " " <> Base.encode16(item, case: :lower) ) 
 	end
-	#TODO display (sub out opcodes for text)
 	#TODO to_address from address
 	#TODO construct scripts given hashes
 	#TODO parse scripts
