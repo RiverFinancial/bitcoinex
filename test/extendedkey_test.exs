@@ -24,7 +24,7 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
 
   @bip32_test_case_1 %{
     # test vectors from bip32: https://github.com/bitcoin/bips/blob/master/bip-0032.mediawiki#test-vectors
-    # seed: "000102030405060708090a0b0c0d0e0f",
+    seed: "000102030405060708090a0b0c0d0e0f",
     xpub_m:
       "xpub661MyMwAqRbcFtXgS5sYJABqqG9YLmC4Q1Rdap9gSE8NqtwybGhePY2gZ29ESFjqJoCu1Rupje8YtGqsefD265TMg7usUDFdp6W1EGMcet8",
     xprv_m:
@@ -501,6 +501,15 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
       assert ExtendedKey.to_public_key(xprv) == pub
     end
 
+    test "BIP32 tests 1: seed to master prv key" do
+      t = @bip32_test_case_1
+
+      seed = t.seed |> Base.decode16!(case: :lower)
+      xprv = t.xprv_m |> ExtendedKey.parse_extended_key()
+
+      assert ExtendedKey.seed_to_master_private_key(seed, :xprv) == xprv
+    end
+
     # Test 2
 
     test "BIP32 tests 2: successfully convert xprv to xpub." do
@@ -592,6 +601,15 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
         |> ExtendedKey.derive_public_child(1)
 
       assert xpub1 == xpub2
+    end
+
+    test "BIP32 tests 2: seed to master prv key" do
+      t = @bip32_test_case_2
+
+      seed = t.seed |> Base.decode16!(case: :lower)
+      xprv = t.xprv_m |> ExtendedKey.parse_extended_key()
+
+      assert ExtendedKey.seed_to_master_private_key(seed, :xprv) == xprv
     end
 
     # Test 3

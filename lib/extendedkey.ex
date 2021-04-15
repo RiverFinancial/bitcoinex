@@ -135,7 +135,7 @@ defmodule Bitcoinex.ExtendedKey do
   @vpub_pfx <<0x04, 0x5F, 0x1C, 0xF6>>
   # vprv
   @vprv_pfx <<0x04, 0x5F, 0x18, 0xBC>>
-  # Multisig (no BIP or derivation path)
+  # Multisig (no BIP or derivation path, from SLIP-132)
   # @y_pub_pfx <<0x02,0x95,0xb4,0x3f>> #Ypub
   # @y_prv_pfx <<0x02,0x95,0xb0,0x05>> #Yprv
   # @z_pub_pfx <<0x02,0xaa,0x7e,0xd3>> #Zpub
@@ -156,6 +156,24 @@ defmodule Bitcoinex.ExtendedKey do
       @vpub_pfx,
       @vprv_pfx
     ]
+  end
+
+  defp pfx_atom_to_bin(pfx) do
+    case pfx do
+      :xpub -> @xpub_pfx
+      :xprv -> @xprv_pfx
+      :tpub -> @tpub_pfx
+      :tprv -> @tprv_pfx
+      :ypub -> @ypub_pfx
+      :yprv -> @yprv_pfx
+      :upub -> @upub_pfx
+      :uprv -> @uprv_pfx
+      :zpub -> @zpub_pfx
+      :zprv -> @zprv_pfx
+      :vpub -> @vpub_pfx
+      :vprv -> @vprv_pfx
+      _ -> nil
+    end
   end
 
   defp bip44 do
@@ -220,10 +238,9 @@ defmodule Bitcoinex.ExtendedKey do
 
   @spec network_from_prefix(binary) :: atom
   def network_from_prefix(prefix) do
-    if prefix in mainnet_prefixes() do
-      :mainnet
-    else
-      :testnet
+    cond do
+      prefix in mainnet_prefixes() -> :mainnet
+      true -> :testnet
     end
   end
 
@@ -247,24 +264,30 @@ defmodule Bitcoinex.ExtendedKey do
           child_num::binary-size(4), chaincode::binary-size(32), key::binary-size(33),
           checksum::binary-size(4)>> = xkey
       ) do
-    if prefix not in all_prefixes() do
-      {:error, "invalid prefix"}
-    else
-      case Base58.validate_checksum(xkey) do
-        {:error, msg} ->
-          {:error, msg}
+    cond do
+      prefix not in all_prefixes() ->
+        {:error, "invalid prefix"}
 
-        _ ->
-          %__MODULE__{
-            prefix: prefix,
-            depth: depth,
-            parent: parent,
-            child_num: child_num,
-            chaincode: chaincode,
-            key: key,
-            checksum: checksum
-          }
-      end
+      # BIP 32 instructs to check that public key is valid upon import
+      prefix not in prv_prefixes() and not check_point(key) ->
+        {:error, "invalid public key"}
+
+      true ->
+        case Base58.validate_checksum(xkey) do
+          {:error, msg} ->
+            {:error, msg}
+
+          _ ->
+            %__MODULE__{
+              prefix: prefix,
+              depth: depth,
+              parent: parent,
+              child_num: child_num,
+              chaincode: chaincode,
+              key: key,
+              checksum: checksum
+            }
+        end
     end
   end
 
@@ -279,6 +302,12 @@ defmodule Bitcoinex.ExtendedKey do
         |> Base58.append_checksum()
         |> parse_extended_key()
     end
+  end
+
+  defp check_point(key) do
+    key
+    |> Point.parse_public_key()
+    |> Bitcoinex.Secp256k1.verify_point()
   end
 
   @doc """
@@ -299,6 +328,30 @@ defmodule Bitcoinex.ExtendedKey do
     xkey
     |> serialize_extended_key()
     |> Base58.encode_base()
+  end
+
+  @doc """
+    seed_to_master_private_key transforms a bip32 seed 
+    into a master extended private key
+  """
+  @spec seed_to_master_private_key(binary, atom) :: t()
+  def seed_to_master_private_key(<<seed::binary>>, pfx \\ :xprv) do
+    prefix = pfx_atom_to_bin(pfx)
+
+    cond do
+      prefix not in prv_prefixes() ->
+        {:error, "invalid extended private key prefix"}
+
+      true ->
+        <<key::binary-size(32), chaincode::binary-size(32)>> =
+          :crypto.hmac(:sha512, "Bitcoin seed", seed)
+
+        depth_fingerprint_childnum = <<0, 0, 0, 0, 0, 0, 0, 0, 0>>
+
+        (prefix <> depth_fingerprint_childnum <> chaincode <> <<0>> <> key)
+        |> Base58.append_checksum()
+        |> parse_extended_key()
+    end
   end
 
   @doc """
