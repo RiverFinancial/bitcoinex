@@ -25,6 +25,14 @@ defmodule Bitcoinex.Utils do
     )
   end
 
+  @spec hash160(iodata()) :: binary
+  def hash160(preimage) do
+    :crypto.hash(
+      :ripemd160,
+      :crypto.hash(:sha256, preimage)
+    )
+  end
+
   @typedoc """
     The pad_type describes the padding to use.
   """

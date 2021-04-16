@@ -62,6 +62,84 @@ defmodule Bitcoinex.Secp256k1 do
 
     def parse_signature(compact_sig) when is_binary(compact_sig),
       do: {:error, "invalid signature size"}
+
+    @doc """
+    der_parse_signature parses a DER binary to a Signature
+    """
+    # @spec der_parse_signature(binary) :: {:ok, Signature.()} | {:error, String.t()}
+    def der_parse_signature(<<0x30>> <> der_sig) when is_binary(der_sig) do
+      sig_len = :binary.at(der_sig, 0)
+
+      if sig_len + 1 != byte_size(der_sig) do
+        {:error, "invalid signature length"}
+      else
+        case parse_sig_key(der_sig, 1) do
+          {:error, err} ->
+            {:error, err}
+
+          {r, s_pos} ->
+            case parse_sig_key(der_sig, s_pos) do
+              {:error, err} ->
+                {:error, err}
+
+              {s, sig_len} ->
+                if sig_len != byte_size(der_sig) do
+                  {:error, "invalid signature: signature is too long"}
+                else
+                  {:ok, %Signature{r: r, s: s}}
+                end
+            end
+        end
+      end
+    end
+
+    def der_parse_signature(_), do: {:error, "invalid signature"}
+
+    defp parse_sig_key(data, pos) do
+      if :binary.at(data, pos) != 0x02 do
+        {:error, "invalid signature key marker"}
+      else
+        k_len = :binary.at(data, pos + 1)
+        len_k = :binary.part(data, pos + 2, k_len)
+        {:binary.decode_unsigned(len_k), pos + 2 + k_len}
+      end
+    end
+
+    @doc """
+    der_serialize_signature returns the DER serialization of an ecdsa signature
+    """
+    @spec der_serialize_signature(Signature.t()) :: binary
+    def der_serialize_signature(%Signature{r: r, s: s}) do
+      r_bytes = serialize_sig_key(r)
+      s_bytes = serialize_sig_key(s)
+      <<0x30>> <> len_as_bytes(r_bytes <> s_bytes) <> r_bytes <> s_bytes
+    end
+
+    def der_serialize_signature(_), do: {:error, "Signature object required"}
+
+    defp serialize_sig_key(k) do
+      k
+      |> :binary.encode_unsigned()
+      |> lstrip(<<0x00>>)
+      |> add_high_bit()
+      |> prefix_key()
+    end
+
+    defp len_as_bytes(data), do: :binary.encode_unsigned(byte_size(data))
+
+    defp lstrip(<<head::binary-size(1)>> <> tail, val) do
+      if head == val, do: lstrip(tail, val), else: head <> tail
+    end
+
+    defp add_high_bit(k_bytes) do
+      unless (:binary.at(k_bytes, 0) &&& 0x80) == 0 do
+        <<0x00>> <> k_bytes
+      else
+        k_bytes
+      end
+    end
+
+    defp prefix_key(k_bytes), do: <<0x02>> <> len_as_bytes(k_bytes) <> k_bytes
   end
 
   @doc """
@@ -155,5 +233,18 @@ defmodule Bitcoinex.Secp256k1 do
     else
       {:ok, y}
     end
+  end
+
+  @doc """
+  verify whether the signature is valid for the given message hash and public key
+  """
+  @spec verify_signature(Point.t(), integer, Signature.t()) :: boolean
+  def verify_signature(pubkey, sighash, %Signature{r: r, s: s}) do
+    n = Params.curve().n
+    s_inv = Math.inv(s, n)
+    u = Math.modulo(sighash * s_inv, n)
+    v = Math.modulo(r * s_inv, n)
+    total = Math.add(Math.multiply(@generator_point, u), Math.multiply(pubkey, v))
+    total.x == r
   end
 end
