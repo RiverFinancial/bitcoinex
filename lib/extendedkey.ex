@@ -50,10 +50,17 @@ defmodule Bitcoinex.ExtendedKey do
       cond do
         l == :any ->
           tpath_to_string(rest, path_acc <> "*/")
+<<<<<<< HEAD
 
         l > @max_hardened_child_num ->
           {:error, "index cannot be greater than #{@max_hardened_child_num}"}
 
+=======
+
+        l > @max_hardened_child_num ->
+          {:error, "index cannot be greater than #{@max_hardened_child_num}"}
+
+>>>>>>> bb89707 (Update jason to 1.2.2 so that we can remove the overide for decimal (#30))
         l < @min_non_hardened_child_num ->
           {:error, "index cannot be less than #{@min_non_hardened_child_num}"}
 
@@ -150,19 +157,63 @@ defmodule Bitcoinex.ExtendedKey do
     :checksum
   ]
 
+<<<<<<< HEAD
+=======
+  # Single Sig
+  # xpub
+>>>>>>> bb89707 (Update jason to 1.2.2 so that we can remove the overide for decimal (#30))
   @xpub_pfx <<0x04, 0x88, 0xB2, 0x1E>>
   @xprv_pfx <<0x04, 0x88, 0xAD, 0xE4>>
   @tpub_pfx <<0x04, 0x35, 0x87, 0xCF>>
   @tprv_pfx <<0x04, 0x35, 0x83, 0x94>>
+<<<<<<< HEAD
 
   @prv_prefixes [
     @xprv_pfx,
     @tprv_pfx
+=======
+  # ypub
+  @ypub_pfx <<0x04, 0x9D, 0x7C, 0xB2>>
+  # yprv
+  @yprv_pfx <<0x04, 0x9D, 0x78, 0x78>>
+  # upub
+  @upub_pfx <<0x04, 0x4A, 0x52, 0x62>>
+  # uprv
+  @uprv_pfx <<0x04, 0x4A, 0x4E, 0x28>>
+  # zpub
+  @zpub_pfx <<0x04, 0xB2, 0x47, 0x46>>
+  # zprv
+  @zprv_pfx <<0x04, 0xB2, 0x43, 0x0C>>
+  # vpub
+  @vpub_pfx <<0x04, 0x5F, 0x1C, 0xF6>>
+  # vprv
+  @vprv_pfx <<0x04, 0x5F, 0x18, 0xBC>>
+  # Multisig (no BIP or derivation path, from SLIP-132)
+  # @y_pub_pfx <<0x02,0x95,0xb4,0x3f>> #Ypub
+  # @y_prv_pfx <<0x02,0x95,0xb0,0x05>> #Yprv
+  # @z_pub_pfx <<0x02,0xaa,0x7e,0xd3>> #Zpub
+  # @z_prv_pfx <<0x02,0xaa,0x7a,0x99>> #Zprv
+  @prv_prefixes [
+    @xprv_pfx,
+    @tprv_pfx,
+    @yprv_pfx,
+    @uprv_pfx,
+    @zprv_pfx,
+    @vprv_pfx
+>>>>>>> bb89707 (Update jason to 1.2.2 so that we can remove the overide for decimal (#30))
   ]
 
   @pub_prefixes [
     @xpub_pfx,
+<<<<<<< HEAD
     @tpub_pfx
+=======
+    @tpub_pfx,
+    @ypub_pfx,
+    @upub_pfx,
+    @zpub_pfx,
+    @vpub_pfx
+>>>>>>> bb89707 (Update jason to 1.2.2 so that we can remove the overide for decimal (#30))
   ]
 
   @all_prefixes @prv_prefixes ++ @pub_prefixes
@@ -173,9 +224,50 @@ defmodule Bitcoinex.ExtendedKey do
       :xprv -> @xprv_pfx
       :tpub -> @tpub_pfx
       :tprv -> @tprv_pfx
+<<<<<<< HEAD
     end
   end
 
+=======
+      :ypub -> @ypub_pfx
+      :yprv -> @yprv_pfx
+      :upub -> @upub_pfx
+      :uprv -> @uprv_pfx
+      :zpub -> @zpub_pfx
+      :zprv -> @zprv_pfx
+      :vpub -> @vpub_pfx
+      :vprv -> @vprv_pfx
+    end
+  end
+
+  defp bip44 do
+    [
+      @xpub_pfx,
+      @xprv_pfx,
+      @tpub_pfx,
+      @tprv_pfx
+    ]
+  end
+
+  defp bip49 do
+    [
+      @ypub_pfx,
+      @yprv_pfx,
+      @upub_pfx,
+      @uprv_pfx
+    ]
+  end
+
+  defp bip84 do
+    [
+      @zpub_pfx,
+      @zprv_pfx,
+      @vpub_pfx,
+      @vprv_pfx
+    ]
+  end
+
+>>>>>>> bb89707 (Update jason to 1.2.2 so that we can remove the overide for decimal (#30))
   defp prv_to_pub_prefix(prv_pfx) do
     case prv_pfx do
       @xprv_pfx -> @xpub_pfx
@@ -190,7 +282,12 @@ defmodule Bitcoinex.ExtendedKey do
     ]
   end
 
+<<<<<<< HEAD
   defp network_from_prefix(prefix) do
+=======
+  @spec network_from_prefix(binary) :: atom
+  def network_from_prefix(prefix) do
+>>>>>>> bb89707 (Update jason to 1.2.2 so that we can remove the overide for decimal (#30))
     if prefix in mainnet_prefixes(), do: :mainnet, else: :testnet
   end
 
