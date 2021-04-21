@@ -138,7 +138,7 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
       key:
         <<0, 24, 55, 193, 190, 142, 41, 149, 236, 17, 205, 162, 176, 102, 21, 27, 226, 207, 180,
           138, 223, 158, 71, 177, 81, 212, 106, 218, 179, 162, 28, 223, 103>>,
-      parent: <<0, 0, 0, 0>>,
+      parent_fingerprint: <<0, 0, 0, 0>>,
       prefix: <<4, 178, 67, 12>>
     },
     c_rootpub:
@@ -153,7 +153,7 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
       key:
         <<3, 217, 2, 243, 95, 86, 14, 4, 112, 198, 51, 19, 199, 54, 145, 104, 217, 215, 223, 45,
           73, 191, 41, 95, 217, 251, 124, 177, 9, 204, 238, 4, 148>>,
-      parent: <<0, 0, 0, 0>>,
+      parent_fingerprint: <<0, 0, 0, 0>>,
       prefix: <<4, 178, 71, 70>>
     },
     # Account 0, root: m/84'/0'/0'
@@ -170,66 +170,74 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
   @derivation_paths_to_strings [
     %{
       str: "84/0/0/2/1/",
-      deriv: %ExtendedKey.DerivationPath{p: [84, 0, 0, 2, 1]}
+      deriv: %ExtendedKey.DerivationPath{child_nums: [84, 0, 0, 2, 1]}
     },
     %{
       str: "84'/0'/",
-      deriv: %ExtendedKey.DerivationPath{p: [84 + @softcap, 0 + @softcap]}
+      deriv: %ExtendedKey.DerivationPath{child_nums: [84 + @softcap, 0 + @softcap]}
     },
     %{
       str: "84'/0'/",
-      deriv: %ExtendedKey.DerivationPath{p: [84 + @softcap, 0 + @softcap]}
+      deriv: %ExtendedKey.DerivationPath{child_nums: [84 + @softcap, 0 + @softcap]}
     },
     %{
       str: "84'/0'/1/2/2147483647/",
-      deriv: %ExtendedKey.DerivationPath{p: [84 + @softcap, 0 + @softcap, 1, 2, 2_147_483_647]}
+      deriv: %ExtendedKey.DerivationPath{
+        child_nums: [84 + @softcap, 0 + @softcap, 1, 2, 2_147_483_647]
+      }
     }
   ]
 
   @strings_to_derivation_paths [
     %{
       str: "84/0/0/2/1/",
-      deriv: %ExtendedKey.DerivationPath{p: [84, 0, 0, 2, 1]}
+      deriv: %ExtendedKey.DerivationPath{child_nums: [84, 0, 0, 2, 1]}
     },
     %{
       str: "m/84'/0'/0'/2/1",
-      deriv: %ExtendedKey.DerivationPath{p: [84 + @softcap, 0 + @softcap, 2_147_483_648, 2, 1]}
+      deriv: %ExtendedKey.DerivationPath{
+        child_nums: [84 + @softcap, 0 + @softcap, 2_147_483_648, 2, 1]
+      }
     },
     %{
       str: "m/84'/0'/",
-      deriv: %ExtendedKey.DerivationPath{p: [84 + @softcap, 0 + @softcap]}
+      deriv: %ExtendedKey.DerivationPath{child_nums: [84 + @softcap, 0 + @softcap]}
     },
     %{
       str: "m/84'/0'",
-      deriv: %ExtendedKey.DerivationPath{p: [84 + @softcap, 0 + @softcap]}
+      deriv: %ExtendedKey.DerivationPath{child_nums: [84 + @softcap, 0 + @softcap]}
     },
     %{
       str: "84'/0'",
-      deriv: %ExtendedKey.DerivationPath{p: [84 + @softcap, 0 + @softcap]}
+      deriv: %ExtendedKey.DerivationPath{child_nums: [84 + @softcap, 0 + @softcap]}
     },
     %{
       str: "84'/0'/",
-      deriv: %ExtendedKey.DerivationPath{p: [84 + @softcap, 0 + @softcap]}
+      deriv: %ExtendedKey.DerivationPath{child_nums: [84 + @softcap, 0 + @softcap]}
     },
     %{
       str: "84'/0'/1/2/2147483647",
-      deriv: %ExtendedKey.DerivationPath{p: [84 + @softcap, 0 + @softcap, 1, 2, 2_147_483_647]}
+      deriv: %ExtendedKey.DerivationPath{
+        child_nums: [84 + @softcap, 0 + @softcap, 1, 2, 2_147_483_647]
+      }
     },
     %{
       str: "m/84h/0h/0h/2/1",
-      deriv: %ExtendedKey.DerivationPath{p: [84 + @softcap, 0 + @softcap, 2_147_483_648, 2, 1]}
+      deriv: %ExtendedKey.DerivationPath{
+        child_nums: [84 + @softcap, 0 + @softcap, 2_147_483_648, 2, 1]
+      }
     },
     %{
       str: "m/84h/0h/",
-      deriv: %ExtendedKey.DerivationPath{p: [84 + @softcap, 0 + @softcap]}
+      deriv: %ExtendedKey.DerivationPath{child_nums: [84 + @softcap, 0 + @softcap]}
     },
     %{
       str: "84h/0h",
-      deriv: %ExtendedKey.DerivationPath{p: [84 + @softcap, 0 + @softcap]}
+      deriv: %ExtendedKey.DerivationPath{child_nums: [84 + @softcap, 0 + @softcap]}
     },
     %{
       str: "84h/0h/",
-      deriv: %ExtendedKey.DerivationPath{p: [84 + @softcap, 0 + @softcap]}
+      deriv: %ExtendedKey.DerivationPath{child_nums: [84 + @softcap, 0 + @softcap]}
     }
   ]
 
@@ -267,7 +275,7 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
   end
 
   describe "child derivation" do
-    test "fail to derive hardened children from pub parent" do
+    test "fail to derive hardened children from pub parent_fingerprint" do
       t = @bip32_test_case_1
 
       xpub = ExtendedKey.parse_extended_key(t.xpub_m)
@@ -416,7 +424,7 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
 
     test "BIP32 tests 1: derive prv keys in sequence" do
       t = @bip32_test_case_1
-      # derive prv child from prv parent
+      # derive prv child from prv parent_fingerprint
       m_0h_xprv =
         t.xprv_m
         |> ExtendedKey.parse_extended_key()
@@ -465,7 +473,7 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
                m_0h_1_2h_2_1000000000_xprv
     end
 
-    test "BIP32 tests 1: derive pub child from pub parent" do
+    test "BIP32 tests 1: derive pub child from pub parent_fingerprint" do
       t = @bip32_test_case_1
 
       m_0h_1_xpub =
@@ -542,7 +550,7 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
 
     test "BIP32 tests 2: derive prv keys in sequence" do
       t = @bip32_test_case_2
-      # derive prv child from prv parent
+      # derive prv child from prv parent_fingerprint
       m_0_xprv =
         t.xprv_m
         |> ExtendedKey.parse_extended_key()
@@ -626,7 +634,7 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
       assert ExtendedKey.to_extended_public_key(xprv) == xpub
     end
 
-    test "BIP32 tests 3: derive prv child from parent" do
+    test "BIP32 tests 3: derive prv child from parent_fingerprint" do
       t = @bip32_test_case_3
 
       xprv_m_0h =
@@ -637,7 +645,7 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
       assert ExtendedKey.parse_extended_key(t.xprv_m_0h) == xprv_m_0h
     end
 
-    test "BIP32 tests 3: derive pub child from prv parent" do
+    test "BIP32 tests 3: derive pub child from prv parent_fingerprint" do
       t = @bip32_test_case_3
 
       xpub_m_0h =
@@ -680,7 +688,7 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
   describe "derive_extended_key/2 using BIP 84 test cases" do
     test "test use of deriv path" do
       t = @bip84_test_case
-      deriv = %ExtendedKey.DerivationPath{p: [@softcap + 84, @softcap, @softcap]}
+      deriv = %ExtendedKey.DerivationPath{child_nums: [@softcap + 84, @softcap, @softcap]}
 
       child_key =
         t.c_rootpriv_obj
@@ -691,7 +699,7 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
 
     test "successfully derive zpub child key at path m/84'/0'/0'/" do
       t = @bip84_test_case
-      deriv = %ExtendedKey.DerivationPath{p: [@softcap + 84, @softcap, @softcap]}
+      deriv = %ExtendedKey.DerivationPath{child_nums: [@softcap + 84, @softcap, @softcap]}
 
       child_key =
         t.c_rootpriv_obj
@@ -703,7 +711,7 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
 
     test "successfully derive private key WIF at m/84'/0'/0'/0/0" do
       t = @bip84_test_case
-      deriv = %ExtendedKey.DerivationPath{p: [@softcap + 84, @softcap, @softcap, 0, 0]}
+      deriv = %ExtendedKey.DerivationPath{child_nums: [@softcap + 84, @softcap, @softcap, 0, 0]}
 
       child_key =
         t.c_rootpriv_obj
@@ -717,7 +725,7 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
       t = @bip32_test_case_2
 
       d = %ExtendedKey.DerivationPath{
-        p: [0, 2_147_483_647 + @softcap, 1, 2_147_483_646 + @softcap, 2]
+        child_nums: [0, 2_147_483_647 + @softcap, 1, 2_147_483_646 + @softcap, 2]
       }
 
       m = ExtendedKey.parse_extended_key(t.xprv_m)

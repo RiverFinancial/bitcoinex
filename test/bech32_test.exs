@@ -250,7 +250,7 @@ defmodule Bitcoinex.Bech32Test do
     end
 
     test "fail to encode with valid hrp and non empty valid string data" do
-      assert {:error, bech} = Bech32.encode("bc", "qpzry9x8gf2tvdw0s3jn54khce6mua7lo", :bech32)
+      assert {:error, _bech} = Bech32.encode("bc", "qpzry9x8gf2tvdw0s3jn54khce6mua7lo", :bech32)
     end
 
     test "fail to encode with overall encoded length is over 90" do
@@ -280,7 +280,7 @@ defmodule Bitcoinex.Bech32Test do
     end
 
     test "fail to encode with valid hrp and non empty valid string data" do
-      assert {:error, bech} = Bech32.encode("bc", "qpzry9x8gf2tvdw0s3jn54khce6mua7lo", :bech32m)
+      assert {:error, _bech} = Bech32.encode("bc", "qpzry9x8gf2tvdw0s3jn54khce6mua7lo", :bech32m)
     end
 
     test "fail to encode with overall encoded length is over 90" do

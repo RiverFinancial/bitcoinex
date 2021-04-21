@@ -485,7 +485,7 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
       invalid_encoded_invoices: invalid_encoded_invoices
     } do
       for invalid_encoded_invoice <- invalid_encoded_invoices do
-        assert {:error, error} = Invoice.decode(invalid_encoded_invoice)
+        assert {:error, _error} = Invoice.decode(invalid_encoded_invoice)
       end
     end
   end

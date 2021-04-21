@@ -21,6 +21,14 @@ defmodule Bitcoinex.Secp256k1.Point do
                   :erlang.is_map_key(:z, term)
 
   @doc """
+    is_inf returns whether or not point P is 
+    the point at infinity, ie. P.x == P.y == 0
+  """
+  @spec is_inf(t()) :: boolean
+  def is_inf(%__MODULE__{x: 0, y: 0}), do: true
+  def is_inf(_), do: false
+
+  @doc """
   parse_public_key parses a public key
   """
   @spec parse_public_key(binary | String.t()) :: t()
