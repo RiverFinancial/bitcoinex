@@ -75,8 +75,13 @@ defmodule Bitcoinex.ExtendedKey do
     end
 
     @spec string_to_path(String.t()) :: t()
-    def string_to_path(pathstr),
-      do: %__MODULE__{child_nums: tstring_to_path(String.split(pathstr, "/"))}
+    def string_to_path(pathstr) do
+      try do
+        %__MODULE__{child_nums: tstring_to_path(String.split(pathstr, "/"))}
+      rescue
+        e in ArgumentError -> {:error, e.message}
+      end
+    end
 
     defp tstring_to_path(path_list) do
       case path_list do

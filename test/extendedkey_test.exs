@@ -751,7 +751,8 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
 
     test "Raise exceptions on invalid derivation paths" do
       for t <- @error_derivation_path_strings do
-        assert_raise ArgumentError, fn -> ExtendedKey.DerivationPath.string_to_path(t) end
+        {res, _} = ExtendedKey.DerivationPath.string_to_path(t)
+        assert :error == res
       end
     end
   end
