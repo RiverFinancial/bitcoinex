@@ -397,6 +397,23 @@ defmodule Bitcoinex.PSBTTest do
             "5221023e1a92f74483a4c12a196d6c0253ac589cfadd5964ff3e6c63aef5d577051ed421024d0e39b33ab57782a98fd06a7d0653385e509ee3b74dc45559e6db6391d3137821036c0bae6bcb02e47c857c480ed1d23888c8ad6a66b83ab111cb6b9242afb1c72553ae"
         }
       ]
+    },
+    %{
+      psbt: "cHNidP8BAAoAAAAAAAAAAAAAAA==",
+      expected_global: %Global{
+        proprietary: nil,
+        unsigned_tx: %Bitcoinex.Transaction{
+          inputs: [],
+          lock_time: 0,
+          outputs: [],
+          witnesses: nil,
+          version: 0
+        },
+        version: nil,
+        xpub: nil
+      },
+      expected_in: [],
+      expected_out: []
     }
   ]
 
