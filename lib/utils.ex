@@ -62,6 +62,8 @@ defmodule Bitcoinex.Utils do
     |> pad(p, :trailing)
   end
 
+  def little_to_int(i), do: :binary.decode_unsigned(i, :little)
+
   def encode_int(i) when i > 0 do
     cond do
       i < 0xfd -> :binary.encode_unsigned(i)
@@ -69,6 +71,16 @@ defmodule Bitcoinex.Utils do
       i <= 0xffffffff -> <<0xfe>> <> int_to_little(i, 4)
       i <= 0xffffffffffffffff -> <<0xff>> <> int_to_little(i, 8)
       true -> {:error, "invalid integer size"}
+    end
+  end
+
+  def hex_to_bin(str) do
+    str
+    |> String.downcase()
+    |> Base.decode16!(case: :lower)
+    |> case do 
+      :error -> str
+      {:ok, bin} -> bin
     end
   end
 end
