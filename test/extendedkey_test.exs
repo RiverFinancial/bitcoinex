@@ -512,7 +512,7 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
       assert ExtendedKey.to_extended_public_key(xprv) == xpub
     end
 
-    test "BIP32 tests 3: derive prv child from parent_fingerprint" do
+    test "BIP32 tests 3: derive prv child from parent" do
       t = @bip32_test_case_3
 
       xprv_m_0h =
@@ -523,7 +523,7 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
       assert ExtendedKey.parse_extended_key(t.xprv_m_0h) == xprv_m_0h
     end
 
-    test "BIP32 tests 3: derive pub child from prv parent_fingerprint" do
+    test "BIP32 tests 3: derive pub child from prv parent" do
       t = @bip32_test_case_3
 
       xpub_m_0h =
