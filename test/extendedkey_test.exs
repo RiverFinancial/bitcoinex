@@ -4,8 +4,9 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
 
   alias Bitcoinex.ExtendedKey
 
-  @softcap Bitcoinex.Secp256k1.Math.pow(2, 31)
-  @hardcap @softcap * @softcap
+  @min_hardened_child_num 0x80000000
+  # 2^32 - 1
+  @max_hardened_child_num 0x100000000
 
   @invalid_xkeys [
     # changed prefix
@@ -27,8 +28,34 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
     seed: "000102030405060708090a0b0c0d0e0f",
     xpub_m:
       "xpub661MyMwAqRbcFtXgS5sYJABqqG9YLmC4Q1Rdap9gSE8NqtwybGhePY2gZ29ESFjqJoCu1Rupje8YtGqsefD265TMg7usUDFdp6W1EGMcet8",
+    xpub_m_obj: %Bitcoinex.ExtendedKey{
+      chaincode:
+        <<135, 61, 255, 129, 192, 47, 82, 86, 35, 253, 31, 229, 22, 126, 172, 58, 85, 160, 73,
+          222, 61, 49, 75, 180, 46, 226, 39, 255, 237, 55, 213, 8>>,
+      checksum: <<171, 71, 59, 33>>,
+      child_num: <<0, 0, 0, 0>>,
+      depth: <<0>>,
+      key:
+        <<3, 57, 163, 96, 19, 48, 21, 151, 218, 239, 65, 251, 229, 147, 160, 44, 197, 19, 208,
+          181, 85, 39, 236, 45, 241, 5, 14, 46, 143, 244, 156, 133, 194>>,
+      parent_fingerprint: <<0, 0, 0, 0>>,
+      prefix: <<4, 136, 178, 30>>
+    },
     xprv_m:
       "xprv9s21ZrQH143K3QTDL4LXw2F7HEK3wJUD2nW2nRk4stbPy6cq3jPPqjiChkVvvNKmPGJxWUtg6LnF5kejMRNNU3TGtRBeJgk33yuGBxrMPHi",
+    xprv_m_obj: %Bitcoinex.ExtendedKey{
+      chaincode:
+        <<135, 61, 255, 129, 192, 47, 82, 86, 35, 253, 31, 229, 22, 126, 172, 58, 85, 160, 73,
+          222, 61, 49, 75, 180, 46, 226, 39, 255, 237, 55, 213, 8>>,
+      checksum: <<231, 126, 157, 113>>,
+      child_num: <<0, 0, 0, 0>>,
+      depth: <<0>>,
+      key:
+        <<0, 232, 243, 46, 114, 61, 236, 244, 5, 26, 239, 172, 142, 44, 147, 201, 197, 178, 20,
+          49, 56, 23, 205, 176, 26, 20, 148, 185, 23, 200, 67, 107, 53>>,
+      parent_fingerprint: <<0, 0, 0, 0>>,
+      prefix: <<4, 136, 173, 228>>
+    },
     xpub_m_0h:
       "xpub68Gmy5EdvgibQVfPdqkBBCHxA5htiqg55crXYuXoQRKfDBFA1WEjWgP6LHhwBZeNK1VTsfTFUHCdrfp1bgwQ9xv5ski8PX9rL2dZXvgGDnw",
     xprv_m_0h:
@@ -92,81 +119,6 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
       "xprv9uPDJpEQgRQfDcW7BkF7eTya6RPxXeJCqCJGHuCJ4GiRVLzkTXBAJMu2qaMWPrS7AANYqdq6vcBcBUdJCVVFceUvJFjaPdGZ2y9WACViL4L"
   }
 
-  @bip49_test_case %{
-    masterseedWords:
-      ~w(abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about),
-    # (testnet)
-    masterseed:
-      "uprv8tXDerPXZ1QsVNjUJWTurs9kA1KGfKUAts74GCkcXtU8GwnH33GDRbNJpEqTvipfCyycARtQJhmdfWf8oKt41X9LL1zeD2pLsWmxEk3VAwd",
-
-    # Account 0, root: m/49'/1'/0'
-    # (testnet)
-    account0Xpriv:
-      "uprv91G7gZkzehuMVxDJTYE6tLivdF8e4rvzSu1LFfKw3b2Qx1Aj8vpoFnHdfUZ3hmi9jsvPifmZ24RTN2KhwB8BfMLTVqaBReibyaFFcTP1s9n",
-    # (testnet)
-    account0Xpub:
-      "upub5EFU65HtV5TeiSHmZZm7FUffBGy8UKeqp7vw43jYbvZPpoVsgU93oac7Wk3u6moKegAEWtGNF8DehrnHtv21XXEMYRUocHqguyjknFHYfgY",
-
-    # Account 0, first receiving private key: m/49'/1'/0'/0/0
-    account0recvPrivateKey: "cULrpoZGXiuC19Uhvykx7NugygA3k86b3hmdCeyvHYQZSxojGyXJ",
-    account0recvPrivateKeyHex: "c9bdb49cfbaedca21c4b1f3a7803c34636b1d7dc55a717132443fc3f4c5867e8",
-    account0recvPublicKeyHex:
-      "03a1af804ac108a8a51782198c2d034b28bf90c8803f5a53f76276fa69a4eae77f",
-
-    # Address derivation
-    keyhash: "38971f73930f6c141d977ac4fd4a727c854935b3",
-    scriptSig: "001438971f73930f6c141d977ac4fd4a727c854935b3",
-    addressBytes: "336caa13e08b96080a32b5d818d59b4ab3b36742",
-
-    # addressBytes base58check encoded for testnet
-    # (testnet)
-    address: "2Mww8dCYPUpKHofjgcXcBCEGmniw9CoaiD2"
-  }
-
-  @bip84_test_case %{
-    # test case from BIP 84: https://github.com/bitcoin/bips/blob/master/bip-0084.mediawiki#test-vectors
-    # mnemonic: ["abandon", "abandon", "abandon", "abandon", "abandon", "abandon", "abandon", "abandon", "abandon", "abandon", "abandon", "about"]
-    c_rootpriv:
-      "zprvAWgYBBk7JR8Gjrh4UJQ2uJdG1r3WNRRfURiABBE3RvMXYSrRJL62XuezvGdPvG6GFBZduosCc1YP5wixPox7zhZLfiUm8aunE96BBa4Kei5",
-    c_rootpriv_obj: %ExtendedKey{
-      chaincode:
-        <<121, 35, 64, 141, 173, 211, 199, 181, 110, 237, 21, 86, 119, 7, 174, 94, 93, 202, 8,
-          157, 233, 114, 224, 127, 59, 134, 4, 80, 226, 163, 183, 14>>,
-      checksum: <<118, 109, 143, 162>>,
-      child_num: <<0, 0, 0, 0>>,
-      depth: <<0>>,
-      key:
-        <<0, 24, 55, 193, 190, 142, 41, 149, 236, 17, 205, 162, 176, 102, 21, 27, 226, 207, 180,
-          138, 223, 158, 71, 177, 81, 212, 106, 218, 179, 162, 28, 223, 103>>,
-      parent_fingerprint: <<0, 0, 0, 0>>,
-      prefix: <<4, 178, 67, 12>>
-    },
-    c_rootpub:
-      "zpub6jftahH18ngZxLmXaKw3GSZzZsszmt9WqedkyZdezFtWRFBZqsQH5hyUmb4pCEeZGmVfQuP5bedXTB8is6fTv19U1GQRyQUKQGUTzyHACMF",
-    c_rootpub_obj: %ExtendedKey{
-      chaincode:
-        <<121, 35, 64, 141, 173, 211, 199, 181, 110, 237, 21, 86, 119, 7, 174, 94, 93, 202, 8,
-          157, 233, 114, 224, 127, 59, 134, 4, 80, 226, 163, 183, 14>>,
-      checksum: <<121, 191, 126, 202>>,
-      child_num: <<0, 0, 0, 0>>,
-      depth: <<0>>,
-      key:
-        <<3, 217, 2, 243, 95, 86, 14, 4, 112, 198, 51, 19, 199, 54, 145, 104, 217, 215, 223, 45,
-          73, 191, 41, 95, 217, 251, 124, 177, 9, 204, 238, 4, 148>>,
-      parent_fingerprint: <<0, 0, 0, 0>>,
-      prefix: <<4, 178, 71, 70>>
-    },
-    # Account 0, root: m/84'/0'/0'
-    c_xpriv:
-      "zprvAdG4iTXWBoARxkkzNpNh8r6Qag3irQB8PzEMkAFeTRXxHpbF9z4QgEvBRmfvqWvGp42t42nvgGpNgYSJA9iefm1yYNZKEm7z6qUWCroSQnE",
-    c_xpub:
-      "zpub6rFR7y4Q2AijBEqTUquhVz398htDFrtymD9xYYfG1m4wAcvPhXNfE3EfH1r1ADqtfSdVCToUG868RvUUkgDKf31mGDtKsAYz2oz2AGutZYs",
-    # Account 0, first receiving address: m/84'/0'/0'/0/0
-    c_privkey: "KyZpNDKnfs94vbrwhJneDi77V6jF64PWPF8x5cdJb8ifgg2DUc9d",
-    c_pubkey: "0330d54fd0dd420a6e5f8d3624f5f3482cae350f79d5f0753bf5beef9c2d91af3c",
-    c_address: "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu"
-  }
-
   @derivation_paths_to_strings [
     %{
       str: "84/0/0/2/1/",
@@ -174,16 +126,26 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
     },
     %{
       str: "84'/0'/",
-      deriv: %ExtendedKey.DerivationPath{child_nums: [84 + @softcap, 0 + @softcap]}
+      deriv: %ExtendedKey.DerivationPath{
+        child_nums: [84 + @min_hardened_child_num, 0 + @min_hardened_child_num]
+      }
     },
     %{
       str: "84'/0'/",
-      deriv: %ExtendedKey.DerivationPath{child_nums: [84 + @softcap, 0 + @softcap]}
+      deriv: %ExtendedKey.DerivationPath{
+        child_nums: [84 + @min_hardened_child_num, 0 + @min_hardened_child_num]
+      }
     },
     %{
       str: "84'/0'/1/2/2147483647/",
       deriv: %ExtendedKey.DerivationPath{
-        child_nums: [84 + @softcap, 0 + @softcap, 1, 2, 2_147_483_647]
+        child_nums: [
+          84 + @min_hardened_child_num,
+          0 + @min_hardened_child_num,
+          1,
+          2,
+          2_147_483_647
+        ]
       }
     }
   ]
@@ -196,48 +158,80 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
     %{
       str: "m/84'/0'/0'/2/1",
       deriv: %ExtendedKey.DerivationPath{
-        child_nums: [84 + @softcap, 0 + @softcap, 2_147_483_648, 2, 1]
+        child_nums: [
+          84 + @min_hardened_child_num,
+          0 + @min_hardened_child_num,
+          2_147_483_648,
+          2,
+          1
+        ]
       }
     },
     %{
       str: "m/84'/0'/",
-      deriv: %ExtendedKey.DerivationPath{child_nums: [84 + @softcap, 0 + @softcap]}
+      deriv: %ExtendedKey.DerivationPath{
+        child_nums: [84 + @min_hardened_child_num, 0 + @min_hardened_child_num]
+      }
     },
     %{
       str: "m/84'/0'",
-      deriv: %ExtendedKey.DerivationPath{child_nums: [84 + @softcap, 0 + @softcap]}
+      deriv: %ExtendedKey.DerivationPath{
+        child_nums: [84 + @min_hardened_child_num, 0 + @min_hardened_child_num]
+      }
     },
     %{
       str: "84'/0'",
-      deriv: %ExtendedKey.DerivationPath{child_nums: [84 + @softcap, 0 + @softcap]}
+      deriv: %ExtendedKey.DerivationPath{
+        child_nums: [84 + @min_hardened_child_num, 0 + @min_hardened_child_num]
+      }
     },
     %{
       str: "84'/0'/",
-      deriv: %ExtendedKey.DerivationPath{child_nums: [84 + @softcap, 0 + @softcap]}
+      deriv: %ExtendedKey.DerivationPath{
+        child_nums: [84 + @min_hardened_child_num, 0 + @min_hardened_child_num]
+      }
     },
     %{
       str: "84'/0'/1/2/2147483647",
       deriv: %ExtendedKey.DerivationPath{
-        child_nums: [84 + @softcap, 0 + @softcap, 1, 2, 2_147_483_647]
+        child_nums: [
+          84 + @min_hardened_child_num,
+          0 + @min_hardened_child_num,
+          1,
+          2,
+          2_147_483_647
+        ]
       }
     },
     %{
       str: "m/84h/0h/0h/2/1",
       deriv: %ExtendedKey.DerivationPath{
-        child_nums: [84 + @softcap, 0 + @softcap, 2_147_483_648, 2, 1]
+        child_nums: [
+          84 + @min_hardened_child_num,
+          0 + @min_hardened_child_num,
+          2_147_483_648,
+          2,
+          1
+        ]
       }
     },
     %{
       str: "m/84h/0h/",
-      deriv: %ExtendedKey.DerivationPath{child_nums: [84 + @softcap, 0 + @softcap]}
+      deriv: %ExtendedKey.DerivationPath{
+        child_nums: [84 + @min_hardened_child_num, 0 + @min_hardened_child_num]
+      }
     },
     %{
       str: "84h/0h",
-      deriv: %ExtendedKey.DerivationPath{child_nums: [84 + @softcap, 0 + @softcap]}
+      deriv: %ExtendedKey.DerivationPath{
+        child_nums: [84 + @min_hardened_child_num, 0 + @min_hardened_child_num]
+      }
     },
     %{
       str: "84h/0h/",
-      deriv: %ExtendedKey.DerivationPath{child_nums: [84 + @softcap, 0 + @softcap]}
+      deriv: %ExtendedKey.DerivationPath{
+        child_nums: [84 + @min_hardened_child_num, 0 + @min_hardened_child_num]
+      }
     }
   ]
 
@@ -249,146 +243,28 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
     "h",
     "'",
     "0/h/0",
-    "m/1/1/#{@hardcap}",
+    "m/1/1/#{@max_hardened_child_num}",
     "m/-1/0/1"
   ]
 
   # Extended Key Testing
 
   describe "parse_extended_key/1" do
-    test "successfully parse extended zprv" do
-      t = @bip84_test_case
+    test "successfully parse extended xprv" do
+      t = @bip32_test_case_1
       # priv
-      assert ExtendedKey.parse_extended_key(t.c_rootpriv) == t.c_rootpriv_obj
-      assert ExtendedKey.display_extended_key(t.c_rootpriv_obj) == t.c_rootpriv
+      assert ExtendedKey.parse_extended_key(t.xprv_m) == t.xprv_m_obj
+      assert ExtendedKey.display_extended_key(t.xprv_m_obj) == t.xprv_m
       # pub
-      assert ExtendedKey.parse_extended_key(t.c_rootpub) == t.c_rootpub_obj
-      assert ExtendedKey.display_extended_key(t.c_rootpub_obj) == t.c_rootpub
+      assert ExtendedKey.parse_extended_key(t.xpub_m) == t.xpub_m_obj
+      assert ExtendedKey.display_extended_key(t.xpub_m_obj) == t.xpub_m
     end
   end
 
   describe "to_extended_public_key/1" do
-    test "successfully turn zprv into zpub" do
-      t = @bip84_test_case
-      assert ExtendedKey.to_extended_public_key(t.c_rootpriv_obj) == t.c_rootpub_obj
-    end
-  end
-
-  describe "child derivation" do
-    test "fail to derive hardened children from pub parent_fingerprint" do
+    test "successfully turn xprv into xpub" do
       t = @bip32_test_case_1
-
-      xpub = ExtendedKey.parse_extended_key(t.xpub_m)
-
-      assert ExtendedKey.derive_public_child(xpub, @softcap) ==
-               {:error, "idx must be in 0..2**31-1"}
-
-      assert ExtendedKey.derive_public_child(xpub, @softcap + 1) ==
-               {:error, "idx must be in 0..2**31-1"}
-
-      assert ExtendedKey.derive_public_child(xpub, @hardcap - 1) ==
-               {:error, "idx must be in 0..2**31-1"}
-    end
-
-    test "fail to derive children with invalid index" do
-      t = @bip32_test_case_1
-
-      xprv = ExtendedKey.parse_extended_key(t.xprv_m)
-      xpub = ExtendedKey.parse_extended_key(t.xpub_m)
-
-      assert ExtendedKey.derive_private_child(xprv, @hardcap) ==
-               {:error, "idx must be in 0..2**32-1"}
-
-      assert ExtendedKey.derive_private_child(xprv, @hardcap + 1) ==
-               {:error, "idx must be in 0..2**32-1"}
-
-      assert ExtendedKey.derive_private_child(xprv, -1) == {:error, "idx must be in 0..2**32-1"}
-
-      assert ExtendedKey.derive_public_child(xpub, -1) == {:error, "idx must be in 0..2**31-1"}
-    end
-  end
-
-  describe "BIP84 tests" do
-    test "successfully derive zprv child key at path m/84'/0'/0'/" do
-      t = @bip84_test_case
-
-      child_key =
-        t.c_rootpriv_obj
-        |> ExtendedKey.derive_private_child(@softcap + 84)
-        |> ExtendedKey.derive_private_child(@softcap)
-        |> ExtendedKey.derive_private_child(@softcap)
-
-      assert ExtendedKey.display_extended_key(child_key) == t.c_xpriv
-    end
-
-    test "successfully derive zpub child key at path m/84'/0'/0'/" do
-      t = @bip84_test_case
-
-      child_key =
-        t.c_rootpriv_obj
-        |> ExtendedKey.derive_private_child(@softcap + 84)
-        |> ExtendedKey.derive_private_child(@softcap)
-        |> ExtendedKey.derive_public_child(@softcap)
-
-      assert ExtendedKey.display_extended_key(child_key) == t.c_xpub
-    end
-
-    test "successfully derive private key WIF at m/84'/0'/0'/0/0" do
-      t = @bip84_test_case
-
-      child_key =
-        t.c_rootpriv_obj
-        |> ExtendedKey.derive_private_child(@softcap + 84)
-        |> ExtendedKey.derive_private_child(@softcap)
-        |> ExtendedKey.derive_private_child(@softcap)
-        |> ExtendedKey.derive_private_child(0)
-        |> ExtendedKey.derive_private_child(0)
-        |> ExtendedKey.to_private_key()
-
-      assert Bitcoinex.Secp256k1.PrivateKey.wif!(child_key, :mainnet) == t.c_privkey
-    end
-
-    test "successfully derive account xpub and then public key at m/84'/0'/0'/0/0" do
-      t = @bip84_test_case
-
-      child_key =
-        t.c_rootpriv_obj
-        |> ExtendedKey.derive_private_child(@softcap + 84)
-        |> ExtendedKey.derive_private_child(@softcap)
-        |> ExtendedKey.derive_public_child(@softcap)
-        |> ExtendedKey.derive_public_child(0)
-        |> ExtendedKey.derive_public_child(0)
-        |> ExtendedKey.to_public_key()
-
-      assert Bitcoinex.Secp256k1.Point.serialize_public_key(child_key) == t.c_pubkey
-    end
-  end
-
-  describe "BIP49 tests" do
-    test "successfully derive private keys from account yprv" do
-      t = @bip49_test_case
-
-      prvkey =
-        t.account0Xpriv
-        |> ExtendedKey.parse_extended_key()
-        |> ExtendedKey.derive_private_child(0)
-        |> ExtendedKey.derive_private_child(0)
-        |> ExtendedKey.to_private_key()
-
-      assert Bitcoinex.Secp256k1.PrivateKey.wif!(prvkey, :testnet) == t.account0recvPrivateKey
-    end
-
-    test "successfully derive public key from account ypub  " do
-      t = @bip49_test_case
-
-      pubkey =
-        t.account0Xpub
-        |> ExtendedKey.parse_extended_key()
-        |> ExtendedKey.derive_public_child(0)
-        |> ExtendedKey.derive_public_child(0)
-        |> ExtendedKey.to_public_key()
-
-      assert Bitcoinex.Secp256k1.Point.serialize_public_key(pubkey) == t.account0recvPublicKeyHex
+      assert ExtendedKey.to_extended_public_key(t.xprv_m_obj) == t.xpub_m_obj
     end
   end
 
@@ -428,7 +304,7 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
       m_0h_xprv =
         t.xprv_m
         |> ExtendedKey.parse_extended_key()
-        |> ExtendedKey.derive_private_child(@softcap)
+        |> ExtendedKey.derive_private_child(@min_hardened_child_num)
 
       assert ExtendedKey.parse_extended_key(t.xprv_m_0h) == m_0h_xprv
 
@@ -443,16 +319,16 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
       m_0h_xpub =
         t.xprv_m
         |> ExtendedKey.parse_extended_key()
-        |> ExtendedKey.derive_public_child(@softcap)
+        |> ExtendedKey.derive_public_child(@min_hardened_child_num)
 
       assert ExtendedKey.parse_extended_key(t.xpub_m_0h) == m_0h_xpub
 
       m_0h_1_2h_xpub =
         t.xprv_m
         |> ExtendedKey.parse_extended_key()
-        |> ExtendedKey.derive_private_child(@softcap)
+        |> ExtendedKey.derive_private_child(@min_hardened_child_num)
         |> ExtendedKey.derive_private_child(1)
-        |> ExtendedKey.derive_public_child(@softcap + 2)
+        |> ExtendedKey.derive_public_child(@min_hardened_child_num + 2)
 
       assert ExtendedKey.parse_extended_key(t.xpub_m_0h_1_2h) == m_0h_1_2h_xpub
     end
@@ -463,9 +339,9 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
       m_0h_1_2h_2_1000000000_xprv =
         t.xprv_m
         |> ExtendedKey.parse_extended_key()
-        |> ExtendedKey.derive_private_child(@softcap)
+        |> ExtendedKey.derive_private_child(@min_hardened_child_num)
         |> ExtendedKey.derive_private_child(1)
-        |> ExtendedKey.derive_private_child(@softcap + 2)
+        |> ExtendedKey.derive_private_child(@min_hardened_child_num + 2)
         |> ExtendedKey.derive_private_child(2)
         |> ExtendedKey.derive_private_child(1_000_000_000)
 
@@ -559,7 +435,9 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
       assert ExtendedKey.parse_extended_key(t.xprv_m_0) == m_0_xprv
 
       # derive child m/0/2147483647h
-      m_0_2147483647h_xprv = ExtendedKey.derive_private_child(m_0_xprv, 2_147_483_647 + @softcap)
+      m_0_2147483647h_xprv =
+        ExtendedKey.derive_private_child(m_0_xprv, 2_147_483_647 + @min_hardened_child_num)
+
       assert ExtendedKey.parse_extended_key(t.xprv_m_0_2147483647h) == m_0_2147483647h_xprv
     end
 
@@ -577,7 +455,7 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
         t.xprv_m
         |> ExtendedKey.parse_extended_key()
         |> ExtendedKey.derive_private_child(0)
-        |> ExtendedKey.derive_private_child(2_147_483_647 + @softcap)
+        |> ExtendedKey.derive_private_child(2_147_483_647 + @min_hardened_child_num)
         |> ExtendedKey.derive_public_child(1)
 
       assert ExtendedKey.parse_extended_key(t.xpub_m_0_2147483647h_1) == m_0_2147483647h_1_xpub
@@ -640,7 +518,7 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
       xprv_m_0h =
         t.xprv_m
         |> ExtendedKey.parse_extended_key()
-        |> ExtendedKey.derive_private_child(@softcap)
+        |> ExtendedKey.derive_private_child(@min_hardened_child_num)
 
       assert ExtendedKey.parse_extended_key(t.xprv_m_0h) == xprv_m_0h
     end
@@ -651,7 +529,7 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
       xpub_m_0h =
         t.xprv_m
         |> ExtendedKey.parse_extended_key()
-        |> ExtendedKey.derive_public_child(@softcap)
+        |> ExtendedKey.derive_public_child(@min_hardened_child_num)
 
       assert ExtendedKey.display_extended_key(xpub_m_0h) == t.xpub_m_0h
     end
@@ -687,45 +565,51 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
 
   describe "derive_extended_key/2 using BIP 84 test cases" do
     test "test use of deriv path" do
-      t = @bip84_test_case
-      deriv = %ExtendedKey.DerivationPath{child_nums: [@softcap + 84, @softcap, @softcap]}
+      t = @bip32_test_case_1
+
+      deriv = %ExtendedKey.DerivationPath{
+        child_nums: [@min_hardened_child_num, 1, @min_hardened_child_num + 2, 2]
+      }
 
       child_key =
-        t.c_rootpriv_obj
+        t.xprv_m_obj
         |> ExtendedKey.derive_extended_key(deriv)
 
-      assert ExtendedKey.display_extended_key(child_key) == t.c_xpriv
+      assert ExtendedKey.display_extended_key(child_key) == t.xprv_m_0h_1_2h_2
     end
 
-    test "successfully derive zpub child key at path m/84'/0'/0'/" do
-      t = @bip84_test_case
-      deriv = %ExtendedKey.DerivationPath{child_nums: [@softcap + 84, @softcap, @softcap]}
+    test "successfully derive xpub child key at path m/84'/0'/0'/" do
+      t = @bip32_test_case_2
+
+      deriv = %ExtendedKey.DerivationPath{
+        child_nums: [
+          0,
+          @min_hardened_child_num + 2_147_483_647,
+          1,
+          @min_hardened_child_num + 2_147_483_646
+        ]
+      }
 
       child_key =
-        t.c_rootpriv_obj
+        t.xprv_m
+        |> ExtendedKey.parse_extended_key()
         |> ExtendedKey.derive_extended_key(deriv)
         |> ExtendedKey.to_extended_public_key()
 
-      assert ExtendedKey.display_extended_key(child_key) == t.c_xpub
-    end
-
-    test "successfully derive private key WIF at m/84'/0'/0'/0/0" do
-      t = @bip84_test_case
-      deriv = %ExtendedKey.DerivationPath{child_nums: [@softcap + 84, @softcap, @softcap, 0, 0]}
-
-      child_key =
-        t.c_rootpriv_obj
-        |> ExtendedKey.derive_extended_key(deriv)
-        |> ExtendedKey.to_private_key()
-
-      assert Bitcoinex.Secp256k1.PrivateKey.wif!(child_key, :mainnet) == t.c_privkey
+      assert ExtendedKey.display_extended_key(child_key) == t.xpub_m_0_2147483647h_1_2147483646h
     end
 
     test "test use of deriv path bip32 test 2" do
       t = @bip32_test_case_2
 
       d = %ExtendedKey.DerivationPath{
-        child_nums: [0, 2_147_483_647 + @softcap, 1, 2_147_483_646 + @softcap, 2]
+        child_nums: [
+          0,
+          2_147_483_647 + @min_hardened_child_num,
+          1,
+          2_147_483_646 + @min_hardened_child_num,
+          2
+        ]
       }
 
       m = ExtendedKey.parse_extended_key(t.xprv_m)
@@ -762,3 +646,28 @@ end
 # Test parse and serialize
 # test parse each prefix
 # test fail on public key->hardened child
+
+# r_xprv = "xprvAWgYBBk7JR8Gjrh4UJQ2uJdG1r3WNRRfURiABBE3RvMXYSrRJL62XuezvGdPvG6GFBZduosCc1YP5wixPox7zhZLfiUm8aunE96BBa4Kei5"
+# r_xpub = "xpub6jftahH18ngZxLmXaKw3GSZzZsszmt9WqedkyZdezFtWRFBZqsQH5hyUmb4pCEeZGmVfQuP5bedXTB8is6fTv19U1GQRyQUKQGUTzyHACMF"
+# {:ok, xprv} = Bitcoinex.Base58.decode(r_xprv)
+# xprv = Bitcoinex.Base58.append_checksum(xprv)
+# xprv = Bitcoinex.ExtendedKey.parse_extended_key(r_xprv)
+# xpub = Bitcoinex.ExtendedKey.to_extended_public_key(xprv)
+# xpub = Bitcoinex.ExtendedKey.parse_extended_key(xpub)
+
+# r_xprv = "xprvAWgYBBk7JR8Gjrh4UJQ2uJdG1r3WNRRfURiABBE3RvMXYSrRJL62XuezvGdPvG6GFBZduosCc1YP5wixPox7zhZLfiUm8aunE96BBa4Kei5"
+# xprv = Bitcoinex.ExtendedKey.parse_extended_key(r_xprv)
+# child_84 = Bitcoinex.ExtendedKey.derive_private_child(xprv, Bitcoinex.Secp256k1.Math.pow(2, 31) + 84)
+# child_84_0 = Bitcoinex.ExtendedKey.derive_private_child(child_84, Bitcoinex.Secp256k1.Math.pow(2, 31) )
+# child_84_0_0 = Bitcoinex.ExtendedKey.derive_private_child(child_84_0, Bitcoinex.Secp256k1.Math.pow(2, 31) )
+
+# Bitcoinex.ExtendedKey.display_extended_key(child_84_0_0)
+
+# r_child_xprv = "xprvAdG4iTXWBoARxkkzNpNh8r6Qag3irQB8PzEMkAFeTRXxHpbF9z4QgEvBRmfvqWvGp42t42nvgGpNgYSJA9iefm1yYNZKEm7z6qUWCroSQnE"
+# Bitcoinex.ExtendedKey.parse_extended_key(r_child_xprv)
+
+# xpub =
+#   "xpub68Gmy5EdvgibQVfPdqkBBCHxA5htiqg55crXYuXoQRKfDBFA1WEjWgP6LHhwBZeNK1VTsfTFUHCdrfp1bgwQ9xv5ski8PX9rL2dZXvgGDnw"
+
+# xpub = Bitcoinex.ExtendedKey.parse_extended_key(xpub)
+# Bitcoinex.ExtendedKey.derive_public_child(xpub, 1)

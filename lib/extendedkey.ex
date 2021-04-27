@@ -159,43 +159,15 @@ defmodule Bitcoinex.ExtendedKey do
   @tpub_pfx <<0x04, 0x35, 0x87, 0xCF>>
   # tprv
   @tprv_pfx <<0x04, 0x35, 0x83, 0x94>>
-  # ypub
-  @ypub_pfx <<0x04, 0x9D, 0x7C, 0xB2>>
-  # yprv
-  @yprv_pfx <<0x04, 0x9D, 0x78, 0x78>>
-  # upub
-  @upub_pfx <<0x04, 0x4A, 0x52, 0x62>>
-  # uprv
-  @uprv_pfx <<0x04, 0x4A, 0x4E, 0x28>>
-  # zpub
-  @zpub_pfx <<0x04, 0xB2, 0x47, 0x46>>
-  # zprv
-  @zprv_pfx <<0x04, 0xB2, 0x43, 0x0C>>
-  # vpub
-  @vpub_pfx <<0x04, 0x5F, 0x1C, 0xF6>>
-  # vprv
-  @vprv_pfx <<0x04, 0x5F, 0x18, 0xBC>>
-  # Multisig (no BIP or derivation path, from SLIP-132)
-  # @y_pub_pfx <<0x02,0x95,0xb4,0x3f>> #Ypub
-  # @y_prv_pfx <<0x02,0x95,0xb0,0x05>> #Yprv
-  # @z_pub_pfx <<0x02,0xaa,0x7e,0xd3>> #Zpub
-  # @z_prv_pfx <<0x02,0xaa,0x7a,0x99>> #Zprv
+
   @prv_prefixes [
     @xprv_pfx,
-    @tprv_pfx,
-    @yprv_pfx,
-    @uprv_pfx,
-    @zprv_pfx,
-    @vprv_pfx
+    @tprv_pfx
   ]
 
   @pub_prefixes [
     @xpub_pfx,
-    @tpub_pfx,
-    @ypub_pfx,
-    @upub_pfx,
-    @zpub_pfx,
-    @vpub_pfx
+    @tpub_pfx
   ]
 
   @all_prefixes @prv_prefixes ++ @pub_prefixes
@@ -206,80 +178,33 @@ defmodule Bitcoinex.ExtendedKey do
       :xprv -> @xprv_pfx
       :tpub -> @tpub_pfx
       :tprv -> @tprv_pfx
-      :ypub -> @ypub_pfx
-      :yprv -> @yprv_pfx
-      :upub -> @upub_pfx
-      :uprv -> @uprv_pfx
-      :zpub -> @zpub_pfx
-      :zprv -> @zprv_pfx
-      :vpub -> @vpub_pfx
-      :vprv -> @vprv_pfx
     end
-  end
-
-  defp bip44 do
-    [
-      @xpub_pfx,
-      @xprv_pfx,
-      @tpub_pfx,
-      @tprv_pfx
-    ]
-  end
-
-  defp bip49 do
-    [
-      @ypub_pfx,
-      @yprv_pfx,
-      @upub_pfx,
-      @uprv_pfx
-    ]
-  end
-
-  defp bip84 do
-    [
-      @zpub_pfx,
-      @zprv_pfx,
-      @vpub_pfx,
-      @vprv_pfx
-    ]
   end
 
   defp prv_to_pub_prefix(prv_pfx) do
     case prv_pfx do
       @xprv_pfx -> @xpub_pfx
       @tprv_pfx -> @tpub_pfx
-      @yprv_pfx -> @ypub_pfx
-      @uprv_pfx -> @upub_pfx
-      @zprv_pfx -> @zpub_pfx
-      @vprv_pfx -> @vpub_pfx
     end
   end
 
   defp mainnet_prefixes do
     [
       @xpub_pfx,
-      @xprv_pfx,
-      @ypub_pfx,
-      @yprv_pfx,
-      @zpub_pfx,
-      @zprv_pfx
+      @xprv_pfx
     ]
   end
 
   @spec network_from_prefix(binary) :: atom
-  def network_from_prefix(prefix) do
+  defp network_from_prefix(prefix) do
     if prefix in mainnet_prefixes(), do: :mainnet, else: :testnet
   end
 
-  @spec script_type_from_prefix(binary) :: atom
-  def script_type_from_prefix(prefix) do
-    cond do
-      prefix in bip44() -> :p2pkh
-      # p2sh or p2sh_p2wpkh? 
-      prefix in bip49() -> :p2sh_p2wpkh
-      prefix in bip84() -> :p2wpkh
-    end
-  end
+  @doc """
+    network_from_extended_key returns :testnet or :mainnet 
+    depending on the network prefix of the key.
+  """
+  def network_from_extended_key(%__MODULE__{prefix: prefix}), do: network_from_prefix(prefix)
 
   @doc """
     parse_extended_key takes binary or string representation 
