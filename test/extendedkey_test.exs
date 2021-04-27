@@ -512,7 +512,7 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
       assert ExtendedKey.to_extended_public_key(xprv) == xpub
     end
 
-    test "BIP32 tests 3: derive prv child from parent_fingerprint" do
+    test "BIP32 tests 3: derive prv child from parent" do
       t = @bip32_test_case_3
 
       xprv_m_0h =
@@ -523,7 +523,7 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
       assert ExtendedKey.parse_extended_key(t.xprv_m_0h) == xprv_m_0h
     end
 
-    test "BIP32 tests 3: derive pub child from prv parent_fingerprint" do
+    test "BIP32 tests 3: derive pub child from prv parent" do
       t = @bip32_test_case_3
 
       xpub_m_0h =
@@ -561,9 +561,31 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
     end
   end
 
+  describe "Fail on attempt to derive hardened child from pubkey" do
+    test "fail to derive hardened child from pubkey parent" do
+      t = @bip32_test_case_3
+
+      xpub = ExtendedKey.parse_extended_key(t.xpub_m)
+      {err, _msg} = ExtendedKey.derive_child_key(xpub, @min_hardened_child_num)
+      assert :error == err
+    end
+
+    test "fail to derive hardened child from pubkey parent with deriv path" do
+      t = @bip32_test_case_3
+
+      deriv = %ExtendedKey.DerivationPath{
+        child_nums: [@min_hardened_child_num, 1]
+      }
+
+      xpub = ExtendedKey.parse_extended_key(t.xpub_m)
+      {err, _msg} = ExtendedKey.derive_extended_key(xpub, deriv)
+      assert :error == err
+    end
+  end
+
   # Derivation Path Testing
 
-  describe "derive_extended_key/2 using BIP 84 test cases" do
+  describe "derive_extended_key/2 using BIP 32 test cases" do
     test "test use of deriv path" do
       t = @bip32_test_case_1
 
@@ -578,7 +600,7 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
       assert ExtendedKey.display_extended_key(child_key) == t.xprv_m_0h_1_2h_2
     end
 
-    test "successfully derive xpub child key at path m/84'/0'/0'/" do
+    test "successfully derive xpub child key with derivation path" do
       t = @bip32_test_case_2
 
       deriv = %ExtendedKey.DerivationPath{
@@ -641,33 +663,3 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
     end
   end
 end
-
-# Test Parse from String, Parse from bytes
-# Test parse and serialize
-# test parse each prefix
-# test fail on public key->hardened child
-
-# r_xprv = "xprvAWgYBBk7JR8Gjrh4UJQ2uJdG1r3WNRRfURiABBE3RvMXYSrRJL62XuezvGdPvG6GFBZduosCc1YP5wixPox7zhZLfiUm8aunE96BBa4Kei5"
-# r_xpub = "xpub6jftahH18ngZxLmXaKw3GSZzZsszmt9WqedkyZdezFtWRFBZqsQH5hyUmb4pCEeZGmVfQuP5bedXTB8is6fTv19U1GQRyQUKQGUTzyHACMF"
-# {:ok, xprv} = Bitcoinex.Base58.decode(r_xprv)
-# xprv = Bitcoinex.Base58.append_checksum(xprv)
-# xprv = Bitcoinex.ExtendedKey.parse_extended_key(r_xprv)
-# xpub = Bitcoinex.ExtendedKey.to_extended_public_key(xprv)
-# xpub = Bitcoinex.ExtendedKey.parse_extended_key(xpub)
-
-# r_xprv = "xprvAWgYBBk7JR8Gjrh4UJQ2uJdG1r3WNRRfURiABBE3RvMXYSrRJL62XuezvGdPvG6GFBZduosCc1YP5wixPox7zhZLfiUm8aunE96BBa4Kei5"
-# xprv = Bitcoinex.ExtendedKey.parse_extended_key(r_xprv)
-# child_84 = Bitcoinex.ExtendedKey.derive_private_child(xprv, Bitcoinex.Secp256k1.Math.pow(2, 31) + 84)
-# child_84_0 = Bitcoinex.ExtendedKey.derive_private_child(child_84, Bitcoinex.Secp256k1.Math.pow(2, 31) )
-# child_84_0_0 = Bitcoinex.ExtendedKey.derive_private_child(child_84_0, Bitcoinex.Secp256k1.Math.pow(2, 31) )
-
-# Bitcoinex.ExtendedKey.display_extended_key(child_84_0_0)
-
-# r_child_xprv = "xprvAdG4iTXWBoARxkkzNpNh8r6Qag3irQB8PzEMkAFeTRXxHpbF9z4QgEvBRmfvqWvGp42t42nvgGpNgYSJA9iefm1yYNZKEm7z6qUWCroSQnE"
-# Bitcoinex.ExtendedKey.parse_extended_key(r_child_xprv)
-
-# xpub =
-#   "xpub68Gmy5EdvgibQVfPdqkBBCHxA5htiqg55crXYuXoQRKfDBFA1WEjWgP6LHhwBZeNK1VTsfTFUHCdrfp1bgwQ9xv5ski8PX9rL2dZXvgGDnw"
-
-# xpub = Bitcoinex.ExtendedKey.parse_extended_key(xpub)
-# Bitcoinex.ExtendedKey.derive_public_child(xpub, 1)

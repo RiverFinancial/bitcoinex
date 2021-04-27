@@ -150,14 +150,9 @@ defmodule Bitcoinex.ExtendedKey do
     :checksum
   ]
 
-  # Single Sig
-  # xpub
   @xpub_pfx <<0x04, 0x88, 0xB2, 0x1E>>
-  # xprv
   @xprv_pfx <<0x04, 0x88, 0xAD, 0xE4>>
-  # tpub
   @tpub_pfx <<0x04, 0x35, 0x87, 0xCF>>
-  # tprv
   @tprv_pfx <<0x04, 0x35, 0x83, 0x94>>
 
   @prv_prefixes [
@@ -195,7 +190,6 @@ defmodule Bitcoinex.ExtendedKey do
     ]
   end
 
-  @spec network_from_prefix(binary) :: atom
   defp network_from_prefix(prefix) do
     if prefix in mainnet_prefixes(), do: :mainnet, else: :testnet
   end
@@ -204,7 +198,24 @@ defmodule Bitcoinex.ExtendedKey do
     network_from_extended_key returns :testnet or :mainnet 
     depending on the network prefix of the key.
   """
+  @spec network_from_extended_key(t()) :: atom
   def network_from_extended_key(%__MODULE__{prefix: prefix}), do: network_from_prefix(prefix)
+
+  # GETTERS
+
+  @spec get_prefix(t()) :: binary
+  def get_prefix(%__MODULE__{prefix: prefix}), do: prefix
+
+  @spec get_depth(t()) :: binary
+  def get_depth(%__MODULE__{depth: depth}), do: depth
+
+  @spec get_parent_fingerprint(t()) :: binary
+  def get_parent_fingerprint(%__MODULE__{parent_fingerprint: pfp}), do: pfp
+
+  @spec get_child_num(t()) :: binary
+  def get_child_num(%__MODULE__{child_num: child_num}), do: child_num
+
+  # PARSE & SERIALIZE 
 
   @doc """
     parse_extended_key takes binary or string representation 
@@ -256,6 +267,7 @@ defmodule Bitcoinex.ExtendedKey do
     end
   end
 
+  # verify if point is valid on secp256k1
   defp check_point(key) do
     key
     |> Point.parse_public_key()
@@ -531,16 +543,20 @@ defmodule Bitcoinex.ExtendedKey do
   defp rderive_extended_key(xkey, []), do: xkey
 
   defp rderive_extended_key(xkey, [p | rest]) do
-    case p do
-      # if asterisk (:any) is in path, return the immediate parent xkey
-      :any ->
-        xkey
+    try do
+      case p do
+        # if asterisk (:any) is in path, return the immediate parent xkey
+        :any ->
+          xkey
 
-      # otherwise it is an integer, so derive child at that index.
-      _ ->
-        xkey
-        |> derive_child_key(p)
-        |> rderive_extended_key(rest)
+        # otherwise it is an integer, so derive child at that index.
+        _ ->
+          xkey
+          |> derive_child_key(p)
+          |> rderive_extended_key(rest)
+      end
+    rescue
+      e in ArgumentError -> {:error, e.message}
     end
   end
 end
