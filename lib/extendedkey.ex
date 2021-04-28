@@ -157,6 +157,7 @@ defmodule Bitcoinex.ExtendedKey do
   @prv_prefixes [
     @xprv_pfx,
     @tprv_pfx
+  ]
 
   @pub_prefixes [
     @xpub_pfx,
@@ -188,11 +189,7 @@ defmodule Bitcoinex.ExtendedKey do
     ]
   end
 
-  defp network_from_prefix(prefix) do
-
   @spec network_from_prefix(binary) :: atom
-  def network_from_prefix(prefix) do
-
   defp network_from_prefix(prefix) do
     if prefix in mainnet_prefixes(), do: :mainnet, else: :testnet
   end
