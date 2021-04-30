@@ -256,10 +256,10 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
       t = @bip32_test_case_1
       # priv
       assert ExtendedKey.parse_extended_key(t.xprv_m) == {:ok, t.xprv_m_obj}
-      assert ExtendedKey.display_extended_key(t.xprv_m_obj) == t.xprv_m
+      assert ExtendedKey.to_string(t.xprv_m_obj) == t.xprv_m
       # pub
       assert ExtendedKey.parse_extended_key(t.xpub_m) == {:ok, t.xpub_m_obj}
-      assert ExtendedKey.display_extended_key(t.xpub_m_obj) == t.xpub_m
+      assert ExtendedKey.to_string(t.xpub_m_obj) == t.xpub_m
     end
   end
 
@@ -570,7 +570,7 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
       {:ok, xprv} = ExtendedKey.parse_extended_key(t.xprv_m)
       {:ok, xpub_m_0h} = ExtendedKey.derive_public_child(xprv, @min_hardened_child_num)
 
-      assert ExtendedKey.display_extended_key(xpub_m_0h) == t.xpub_m_0h
+      assert ExtendedKey.to_string(xpub_m_0h) == t.xpub_m_0h
     end
 
     test "BIP32 tests 3: derive master prv key from seed" do
@@ -663,7 +663,7 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
         t.xprv_m_obj
         |> ExtendedKey.derive_extended_key(deriv)
 
-      assert ExtendedKey.display_extended_key(child_key) == t.xprv_m_0h_1_2h_2
+      assert ExtendedKey.to_string(child_key) == t.xprv_m_0h_1_2h_2
     end
 
     test "successfully derive xpub child key with derivation path" do
@@ -682,7 +682,7 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
       {:ok, xprv_t2} = ExtendedKey.derive_extended_key(xprv_t1, deriv)
       {:ok, child_key} = ExtendedKey.to_extended_public_key(xprv_t2)
 
-      assert ExtendedKey.display_extended_key(child_key) == t.xpub_m_0_2147483647h_1_2147483646h
+      assert ExtendedKey.to_string(child_key) == t.xpub_m_0_2147483647h_1_2147483646h
     end
 
     test "test use of deriv path bip32 test 2" do
