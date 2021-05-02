@@ -77,9 +77,11 @@ defmodule Bitcoinex.Utils do
   def hex_to_bin(str) do
     str
     |> String.downcase()
-    |> Base.decode16!(case: :lower)
+    |> Base.decode16(case: :lower)
     |> case do 
-      :error -> str
+      # In case of error, its already binary or its invalid
+      :error -> {:error, "invalid string"}
+      # valid binary
       {:ok, bin} -> bin
     end
   end
