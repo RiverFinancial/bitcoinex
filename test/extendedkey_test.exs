@@ -681,21 +681,21 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
   end
 
   describe "Derivation Path parse/ser testing" do
-    test "string_to_path/1" do
+    test "from_string/1" do
       for t <- @strings_to_derivation_paths do
-        assert ExtendedKey.DerivationPath.string_to_path(t.str) == {:ok, t.deriv}
+        assert ExtendedKey.DerivationPath.from_string(t.str) == {:ok, t.deriv}
       end
     end
 
-    test "path_to_string/1" do
+    test "to_string/1" do
       for t <- @derivation_paths_to_strings do
-        assert ExtendedKey.DerivationPath.path_to_string(t.deriv) == {:ok, t.str}
+        assert ExtendedKey.DerivationPath.to_string(t.deriv) == {:ok, t.str}
       end
     end
 
     test "Raise exceptions on invalid derivation paths" do
       for t <- @error_derivation_path_strings do
-        {res, _} = ExtendedKey.DerivationPath.string_to_path(t)
+        {res, _} = ExtendedKey.DerivationPath.from_string(t)
         assert :error == res
       end
     end
