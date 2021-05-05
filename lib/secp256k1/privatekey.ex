@@ -15,7 +15,13 @@ defmodule Bitcoinex.Secp256k1.PrivateKey do
   defstruct [:d]
 
   @doc """
-  calculate Point from private key
+    new creates a private key from an integer
+  """
+  @spec new(non_neg_integer()) :: t()
+  def new(d), do: %__MODULE__{d: d}
+
+  @doc """
+    to_point calculate Point from private key
   """
   @spec to_point(t()) :: Point.t()
   def to_point(%__MODULE__{d: d}) do
@@ -40,7 +46,8 @@ defmodule Bitcoinex.Secp256k1.PrivateKey do
   """
   @spec wif!(t(), Bitcoinex.Network.network_name()) :: String.t()
   def wif!(%__MODULE__{d: d}, network_name) do
-    :binary.encode_unsigned(d)
+    d
+    |> :binary.encode_unsigned()
     |> Bitcoinex.Utils.pad(32, :leading)
     |> wif_prefix(network_name)
     |> compressed_suffix()

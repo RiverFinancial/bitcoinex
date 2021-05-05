@@ -33,7 +33,7 @@ defmodule Bitcoinex.Secp256k1.Point do
   """
   @spec parse_public_key(binary | String.t()) :: t()
   def parse_public_key(<<0x04, x::binary-size(32), y::binary-size(32)>>) do
-    %__MODULE__{x: :binary.decode_unsigned(x), y: :binary.decode_unsigned(y)}
+    {:ok, %__MODULE__{x: :binary.decode_unsigned(x), y: :binary.decode_unsigned(y)}}
   end
 
   # Above matches with uncompressed keys. Below matches with compressed keys
@@ -42,12 +42,16 @@ defmodule Bitcoinex.Secp256k1.Point do
 
     case :binary.decode_unsigned(prefix) do
       2 ->
-        {:ok, y} = Bitcoinex.Secp256k1.get_y(x, false)
-        %__MODULE__{x: x, y: y}
+        case Bitcoinex.Secp256k1.get_y(x, false) do
+          {:ok, y} -> {:ok, %__MODULE__{x: x, y: y}}
+          _ -> {:error, "invalid public key"}
+        end
 
       3 ->
-        {:ok, y} = Bitcoinex.Secp256k1.get_y(x, true)
-        %__MODULE__{x: x, y: y}
+        case Bitcoinex.Secp256k1.get_y(x, true) do
+          {:ok, y} -> {:ok, %__MODULE__{x: x, y: y}}
+          _ -> {:error, "invalid public key"}
+        end
     end
   end
 
