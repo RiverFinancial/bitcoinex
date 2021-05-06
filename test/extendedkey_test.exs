@@ -393,10 +393,21 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
 
       assert ExtendedKey.derive_extended_key(seed, deriv) == {:ok, xprv}
 
+      # derive m/0'/1
       {:ok, xprv} = t.xprv_m_0h_1 |> ExtendedKey.parse_extended_key()
       deriv = %ExtendedKey.DerivationPath{child_nums: [@min_hardened_child_num, 1]}
 
       assert ExtendedKey.derive_extended_key(seed, deriv) == {:ok, xprv}
+
+      # derive xprv_m_0h_1_2h_2_1000000000
+      {:ok, xprv_m_0h_1_2h_2_1000000000} =
+        t.xprv_m_0h_1_2h_2_1000000000 |> ExtendedKey.parse_extended_key()
+
+      deriv = %ExtendedKey.DerivationPath{
+        child_nums: [@min_hardened_child_num, 1, @min_hardened_child_num + 2, 2, 1_000_000_000]
+      }
+
+      assert ExtendedKey.derive_extended_key(seed, deriv) == {:ok, xprv_m_0h_1_2h_2_1000000000}
     end
 
     # Test 2
@@ -509,6 +520,22 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
       }
 
       assert ExtendedKey.derive_extended_key(seed, deriv) == {:ok, xprv}
+
+      {:ok, xprv_m_0_2147483647h_1_2147483646h_2} =
+        t.xprv_m_0_2147483647h_1_2147483646h_2 |> ExtendedKey.parse_extended_key()
+
+      deriv = %ExtendedKey.DerivationPath{
+        child_nums: [
+          0,
+          2_147_483_647 + @min_hardened_child_num,
+          1,
+          2_147_483_646 + @min_hardened_child_num,
+          2
+        ]
+      }
+
+      assert ExtendedKey.derive_extended_key(seed, deriv) ==
+               {:ok, xprv_m_0_2147483647h_1_2147483646h_2}
     end
 
     # Test 3
