@@ -1,4 +1,9 @@
 defmodule Bitcoinex.Opcode do
+	@moduledoc """
+		a module for storing the list of opcodes by number and atom
+		and defining the functions associated with each opcode
+	"""
+
 	def opcode_nums, do: %{
 		0x00 => :op_0,
 		0x4c => :op_pushdata1,
@@ -262,5 +267,5 @@ defmodule Bitcoinex.Opcode do
 
 		op_invalidopcode: 0xff,
 	}
-	
+
 end

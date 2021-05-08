@@ -9,6 +9,8 @@ defmodule Bitcoinex.Script do
 
 	alias Bitcoinex.Utils
 
+	@type script_type :: :p2pk | :p2pkh | :p2sh | :p2wpkh | :p2wsh | :p2tr | :non_standard
+
 	@type t :: %__MODULE__{
 		items: list
 	}
@@ -19,9 +21,6 @@ defmodule Bitcoinex.Script do
 	defstruct [:items]
 
 	defp invalid_opcode_error(msg), do: {:error, "invalid opcode: #{msg}"}
-
-	# defguard is_opcode_num(op) when :erlang.is_map_key(op, opcode_nums())
-	# defguard is_opcode_atom(op) when :erlang.is_map_key(op, opcode_atoms())
 
 	@spec new() :: t()
 	def new, do: %__MODULE__{items: []}
@@ -52,7 +51,7 @@ defmodule Bitcoinex.Script do
 	@spec get_op_atom(non_neg_integer()) :: atom
 	def get_op_atom(i), do: if i > 0 and i < 0x4c, do: i, else: Map.fetch(opcode_nums(), i) 
 
-	@spec pop(t()) :: nil | {:ok, non_neg_integer(), t()}
+	@spec pop(t()) :: nil | {:ok, non_neg_integer() | binary, t()}
 	def pop(%__MODULE__{items: []}), do: nil
 	def pop(%__MODULE__{items: [item | stack]}), do: {:ok, item, %__MODULE__{items: stack}}
 
@@ -95,6 +94,7 @@ defmodule Bitcoinex.Script do
 	# SERIALIZE & PARSE 
 	defp serializer(%__MODULE__{items: []}, acc), do: acc
 	defp serializer(%__MODULE__{items: [item | script]}, acc) when is_integer(item) do
+		# prevents UTF-8 ints from becoming strings
 		serializer(%__MODULE__{items: script}, acc <> Utils.int_to_little(item, 1))
 	end
 	# For data pushes
@@ -104,9 +104,9 @@ defmodule Bitcoinex.Script do
 			len < 0x4c -> # CHECK IF PUSHBYTES75 is valid
 				serializer(%__MODULE__{items: script}, acc <> item)
 			len <= 0xff -> 
-				len = Utils.int_to_little(len, 1)
+				len = len |> Utils.int_to_little(1)
 				serializer(%__MODULE__{items: script}, acc <> len <> item)
-			# TODO PUSHDATA limited to 520 bytes, so no PUSHDATA4 is a valid script.
+			# PUSHDATA limited to 520 bytes, so no PUSHDATA4 is a valid script.
 			# Should we allow this?
 			len <= 0x0208 ->
 				len = Utils.int_to_little(len, 2)
@@ -120,7 +120,11 @@ defmodule Bitcoinex.Script do
 
 	@spec serialize_script(t()) :: binary
 	def serialize_script(script = %__MODULE__{}) do
-		serializer(script, <<>>)
+		# avoid binary being interpreted as utf8 strings
+		# serialize_script(%Script{items: [0x81]}) will still display "Q" but 
+		# it functions as binary 0x51. Use to_hex for displaying scripts.
+		<<0, script::binary>> = serializer(script, <<0>>)
+		script
 	end
 
 	def to_hex(script) do
@@ -130,16 +134,16 @@ defmodule Bitcoinex.Script do
 	end
 
 	def parse_script(script_str) when is_binary(script_str) do
-		case Utils.hex_to_bin(script_str) do
-			{:error, _msg} -> 
-				try do
-					# necessary to allow parse_script to accept raw binary script
-					parser(new(), script_str)
-				rescue
-					_ -> {:error, "invalid script. parse_script accepts hex or binary."}
-				end
-			bin ->
-				parser(new(), bin)
+		try do
+			case Utils.hex_to_bin(script_str) do
+				{:error, _msg} -> 
+						# necessary to allow parse_script to accept raw binary script
+						parser(new(), script_str)
+				bin ->
+					parser(new(), bin)
+			end
+		rescue
+			_ -> {:error, "invalid script. parse_script accepts hex or binary."}
 		end
 	end
 
@@ -216,9 +220,24 @@ defmodule Bitcoinex.Script do
 		display_script(%__MODULE__{items: stack}, acc <> " " <> Base.encode16(item, case: :lower) ) 
 	end
 
-	#TODO to_address from address
-
 	# SCRIPT TYPE DETERMINERS
+
+	@doc """
+		is_p2pk returns whether a given script is of the p2pk format:
+		<33-byte or 65-byte pubkey> OP_CHECKSIG
+	"""
+	@spec is_p2pk(t()) :: boolean
+	def is_p2pk(script) do
+		try do
+			{:ok, len, script} = pop(script)
+			{:ok, pubkey, script} = pop(script)
+			{:ok, 0xac, script} = pop(script)
+				
+			len in [33,65] and byte_size(pubkey) in [33,65] and empty?(script)
+		rescue 
+			_ in MatchError -> false
+		end
+	end
 
 	@doc """
 		is_p2pkh returns whether a given script is of the p2pkh format:
@@ -306,7 +325,36 @@ defmodule Bitcoinex.Script do
 		end
 	end
 
+	@doc """
+		get_script_type determines the type of a script based on its elements
+		returns :non_standard if no type matches
+	"""
+	@spec get_script_type(t()) :: script_type
+	def get_script_type(script = %__MODULE__{}) do
+		cond do
+
+			is_p2pkh(script) -> :p2pkh
+			is_p2wpkh(script) -> :p2wpkh
+			is_p2sh(script) -> :p2sh
+			is_p2pk(script) -> :p2pk
+			is_p2wsh(script) -> :p2wsh
+			is_p2tr(script) -> :p2tr
+			true -> :non_standard
+		end
+	end
+
 	# CREATE COMMON SCRIPTS
+
+	@doc """
+		create_p2pk creates a p2pk script using the passed public key
+	"""
+	@spec create_p2pkh(binary) :: t()
+	def create_p2pk(pk) when is_binary(pk) and byte_size(pk) in [33,65] do
+		new()
+		|> push_op(0xac)
+		|> push_data(pk)
+	end
+	def create_p2pk(_), do: {:error, "pubkey must be 33 or 65 bytes compressed or uncompressed SEC"}
 
 	@doc """
 		create_p2pkh creates a p2pkh script using the passed 20-byte public key hash
@@ -377,6 +425,7 @@ defmodule Bitcoinex.Script do
 		|> Utils.hash160()
 		|> create_p2sh()
 	end
+	def create_p2sh_p2wpkh(_), do: {:error, "public key hash must be 20-bytes"}
 
 	# CREATE SCRIPTS FROM PUBKEYS
 
@@ -418,5 +467,48 @@ defmodule Bitcoinex.Script do
 		|> public_key_hash()
 		|> create_p2sh_p2wpkh()
 	end
+
+	# ADDRESS CREATION & DECODING
+
+
+
+	# @spec to_address(t(), Bitcoinex.Network.network_name())
+	# def to_address(script = %__MODULE__{}, network) do
+	# 	cond do
+	# 		is_p2pkh(script) -> 
+
+
+	# 	end
+	# end
+
+	# def to_address(script = %__MODULE__{}, network) do
+	# 	{:ok, head, script} = pop(script)
+	# 	try do
+	# 		case head do
+	# 			# segwit 0
+	# 			0x00 ->
+	# 				{:ok, len, script} = pop(script)
+	# 				{:ok, <<res::binary-size(len)>>, script} = pop(script)
+	# 				if len == 20 do
+	# 					Bech32.encode("bc1", [0, res], :bech32, )
+	# 			# segwit 1 (taproot)
+	# 			0x01 -> 
+	# 				{:ok, 32, script} = pop(script)
+	# 				{:ok, <<res::binary-size(32)>>, script} = pop(script)
+	# 				res
+	# 			# p2sh
+	# 			0xa9 -> 
+	# 				{:ok, 0x14, script} = pop(script)
+	# 				{:ok, <<res::binary-size(0x14)>>, script} = pop(script)
+	# 				res
+	# 			# p2pkh 
+	# 			0x76 -> 
+	# 				{:ok, 0xa9, script} = pop(script)
+	# 				{:ok, 0x14, script} = pop(script)
+	# 				{:ok, <<res::binary-size(0x14)>>, script} = pop(script)
+	# 				res
+	# 		end
+	# 	end
+	# end
 
 end
