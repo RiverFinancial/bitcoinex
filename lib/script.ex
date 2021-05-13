@@ -7,7 +7,11 @@ defmodule Bitcoinex.Script do
 
 	alias Bitcoinex.Secp256k1.Point
 
-	alias Bitcoinex.Utils
+	alias Bitcoinex.{Utils, Address, Segwit}
+
+	@wsh_length 32
+	@trkey_length 32
+	@h160_length 20
 
 	@type script_type :: :p2pk | :p2pkh | :p2sh | :p2wpkh | :p2wsh | :p2tr | :non_standard
 
@@ -84,10 +88,12 @@ defmodule Bitcoinex.Script do
 				push_op(script, datalen)
 			datalen <= 0xff ->
 				push_op(script, :op_pushdata1)
-			datalen <= 0x0208 ->
+			datalen <= 0xffff ->
 				push_op(script, :op_pushdata2)
+			datalen <= 0xffffffff ->
+				push_op(script, :op_pushdata4)
 			true ->
-				{:error, "invalid data length, must be 0..0x0208, got #{datalen}"}
+				{:error, "invalid data length, must be 0..0xffffffff, got #{datalen}"}
 		end
 	end
 
@@ -106,25 +112,25 @@ defmodule Bitcoinex.Script do
 			len <= 0xff -> 
 				len = len |> Utils.int_to_little(1)
 				serializer(%__MODULE__{items: script}, acc <> len <> item)
-			# PUSHDATA limited to 520 bytes, so no PUSHDATA4 is a valid script.
+			# PUSHDATA limited to 520 bytes, so no PUSHDATA2 > 520 is a valid script.
 			# Should we allow this?
-			len <= 0x0208 ->
+			len <= 0xffff ->
 				len = Utils.int_to_little(len, 2)
 				serializer(%__MODULE__{items: script}, acc <> len <> item)
-			# len <= 0xffffffff ->
-			# 	len = Utils.int_to_little(len, 4)
-			# 	serializer(%__MODULE__{items: script}, acc <> len <> item)
+			# no PUSHDATA4 is a valid script.
+			# Should we allow this?
+			len <= 0xffffffff ->
+				len = Utils.int_to_little(len, 4)
+				serializer(%__MODULE__{items: script}, acc <> len <> item)
 			true -> {:error, "data is too long"}
 		end
 	end
 
 	@spec serialize_script(t()) :: binary
 	def serialize_script(script = %__MODULE__{}) do
-		# avoid binary being interpreted as utf8 strings
 		# serialize_script(%Script{items: [0x81]}) will still display "Q" but 
 		# it functions as binary 0x51. Use to_hex for displaying scripts.
-		<<0, script::binary>> = serializer(script, <<0>>)
-		script
+		serializer(script, <<>>)
 	end
 
 	def to_hex(script) do
@@ -233,7 +239,7 @@ defmodule Bitcoinex.Script do
 			{:ok, pubkey, script} = pop(script)
 			{:ok, 0xac, script} = pop(script)
 				
-			len in [33,65] and byte_size(pubkey) in [33,65] and empty?(script)
+			len == byte_size(pubkey) and byte_size(pubkey) in [33, 65] and empty?(script)
 		rescue 
 			_ in MatchError -> false
 		end
@@ -248,8 +254,8 @@ defmodule Bitcoinex.Script do
 		try do
 			{:ok, 0x76, script} = pop(script)
 			{:ok, 0xa9, script} = pop(script)
-			{:ok, 0x14, script} = pop(script)
-			{:ok, <<_::binary-size(20)>>, script} = pop(script)
+			{:ok, @h160_length, script} = pop(script)
+			{:ok, <<_::binary-size(@h160_length)>>, script} = pop(script)
 			{:ok, 0x88, script} = pop(script)
 			{:ok, 0xac, script} = pop(script)
 			empty?(script)
@@ -266,8 +272,8 @@ defmodule Bitcoinex.Script do
 	def is_p2sh(script) do
 		try do
 			{:ok, 0xa9, script} = pop(script)
-			{:ok, 0x14, script} = pop(script)
-			{:ok, <<_::binary-size(20)>>, script} = pop(script)
+			{:ok, @h160_length, script} = pop(script)
+			{:ok, <<_::binary-size(@h160_length)>>, script} = pop(script)
 			{:ok, 0x87, script} = pop(script)
 			empty?(script)
 		rescue 
@@ -283,8 +289,8 @@ defmodule Bitcoinex.Script do
 	def is_p2wpkh(script) do
 		try do
 			{:ok, 0x00, script} = pop(script)
-			{:ok, 0x14, script} = pop(script)
-			{:ok, <<_::binary-size(20)>>, script} = pop(script)
+			{:ok, @h160_length, script} = pop(script)
+			{:ok, <<_::binary-size(@h160_length)>>, script} = pop(script)
 			empty?(script)
 		rescue 
 			_ in MatchError -> false
@@ -300,8 +306,8 @@ defmodule Bitcoinex.Script do
 	def is_p2wsh(script) do
 		try do
 			{:ok, 0x00, script} = pop(script)
-			{:ok, 0x20, script} = pop(script)
-			{:ok, <<_::binary-size(32)>>, script} = pop(script)
+			{:ok, @wsh_length, script} = pop(script)
+			{:ok, <<_::binary-size(@wsh_length)>>, script} = pop(script)
 			empty?(script)
 		rescue 
 			_ in MatchError -> false
@@ -317,8 +323,8 @@ defmodule Bitcoinex.Script do
 		try do
 			# from bip340 https://github.com/bitcoin/bips/blob/master/bip-0341.mediawiki#script-validation-rules
 			{:ok, 0x01, script} = pop(script)
-			{:ok, 0x20, script} = pop(script)
-			{:ok, <<_::binary-size(32)>>, script} = pop(script)
+			{:ok, @trkey_length, script} = pop(script)
+			{:ok, <<_::binary-size(@trkey_length)>>, script} = pop(script)
 			empty?(script)
 		rescue 
 			_ in MatchError -> false
@@ -332,12 +338,11 @@ defmodule Bitcoinex.Script do
 	@spec get_script_type(t()) :: script_type
 	def get_script_type(script = %__MODULE__{}) do
 		cond do
-
 			is_p2pkh(script) -> :p2pkh
-			is_p2wpkh(script) -> :p2wpkh
 			is_p2sh(script) -> :p2sh
-			is_p2pk(script) -> :p2pk
+			is_p2wpkh(script) -> :p2wpkh
 			is_p2wsh(script) -> :p2wsh
+			is_p2pk(script) -> :p2pk
 			is_p2tr(script) -> :p2tr
 			true -> :non_standard
 		end
@@ -360,7 +365,7 @@ defmodule Bitcoinex.Script do
 		create_p2pkh creates a p2pkh script using the passed 20-byte public key hash
 	"""
 	@spec create_p2pkh(binary) :: t()
-	def create_p2pkh(<<pkh::binary-size(20)>>) do
+	def create_p2pkh(<<pkh::binary-size(@h160_length)>>) do
 		new()
 		|> push_op(0xac)
 		|> push_op(0x88)
@@ -368,19 +373,19 @@ defmodule Bitcoinex.Script do
 		|> push_op(0xa9)
 		|> push_op(0x76)
 	end
-	def create_p2pkh(_), do: {:error, "pubkey hash must be a 20-byte hash"}
+	def create_p2pkh(_), do: {:error, "pubkey hash must be a #{@h160_length}-byte hash"}
 
 	@doc """
 		create_p2sh creates a p2sh script using the passed 20-byte public key hash
 	"""
 	@spec create_p2sh(binary) :: t()
-	def create_p2sh(<<sh::binary-size(20)>>) do
+	def create_p2sh(<<sh::binary-size(@h160_length)>>) do
 		new()
 		|> push_op(0x87)
 		|> push_data(sh)
 		|> push_op(0xa9)
 	end
-	def create_p2sh(_), do: {:error, "script hash must be a 20-byte hash"}
+	def create_p2sh(_), do: {:error, "script hash must be a #{@h160_length}-byte hash"}
 
 	@doc """
 		create_witness_script creates any witness script from a witness version
@@ -397,35 +402,35 @@ defmodule Bitcoinex.Script do
 		create_p2wpkh creates a p2wpkh script using the passed 20-byte public key hash
 	"""
 	@spec create_p2wpkh(binary) :: t()
-	def create_p2wpkh(<<pkh::binary-size(20)>>), do: create_witness_script(0x00, pkh)
-	def create_p2wpkh(_), do: {:error, "pubkey hash must be a 20-byte hash"}
+	def create_p2wpkh(<<pkh::binary-size(@h160_length)>>), do: create_witness_script(0x00, pkh)
+	def create_p2wpkh(_), do: {:error, "pubkey hash must be a #{@h160_length}-byte hash"}
 
 	@doc """
 		create_p2wsh creates a p2wsh script using the passed 32-byte script hash
 	"""
 	@spec create_p2wsh(binary) :: t()
-	def create_p2wsh(<<sh::binary-size(32)>>), do: create_witness_script(0x00, sh)
-	def create_p2wsh(_), do: {:error, "script hash must be a 32-byte hash"}
+	def create_p2wsh(<<sh::binary-size(@wsh_length)>>), do: create_witness_script(0x00, sh)
+	def create_p2wsh(_), do: {:error, "script hash must be a #{@wsh_length}-byte hash"}
 
 	@doc """
 		create_p2tr creates a p2tr script using the passed 32-byte public key
 	"""
 	@spec create_p2tr(binary) :: t()
-	def create_p2tr(<<pk::binary-size(32)>>), do: create_witness_script(0x01, pk)
-	def create_p2tr(_), do: {:error, "public key must be 32-bytes"}
+	def create_p2tr(<<pk::binary-size(@trkey_length)>>), do: create_witness_script(0x01, pk)
+	def create_p2tr(_), do: {:error, "public key must be #{@trkey_length}-bytes"}
 
 	@doc """
 		create_p2sh_p2wpkh creates a p2wsh script using the passed 20-byte public key hash
 	"""
 	@spec create_p2sh_p2wpkh(binary) :: t()
-	def create_p2sh_p2wpkh(<<pkh::binary-size(20)>>) do
+	def create_p2sh_p2wpkh(<<pkh::binary-size(@h160_length)>>) do
 		pkh
 		|> create_p2wpkh()
 		|> serialize_script()
 		|> Utils.hash160()
 		|> create_p2sh()
 	end
-	def create_p2sh_p2wpkh(_), do: {:error, "public key hash must be 20-bytes"}
+	def create_p2sh_p2wpkh(_), do: {:error, "public key hash must be #{@h160_length}-bytes"}
 
 	# CREATE SCRIPTS FROM PUBKEYS
 
@@ -470,45 +475,61 @@ defmodule Bitcoinex.Script do
 
 	# ADDRESS CREATION & DECODING
 
+	@spec from_address(String.t()) :: {:error, String.t()} | {:ok, t(), Bitcoinex.Network.network_name()}
+	def from_address(addr) do
+		case String.slice(addr, 0, 2) do
+			p when p in ["bc", "tb"] -> 
+				case Segwit.decode_address(addr) do
+					{:ok, {_network, version, program}} -> 
+						{:ok, create_witness_script(version, :binary.list_to_bin(program))}
+					{:error, msg} -> {:error, "invalid segwit address"}
+				end
+			_ ->
+				try do 
+					{:ok, <<pfx::little-size(8), body::binary>>} = Base58.decode(addr)
+					case pfx do
+						p when [Network.testnet.p2pkh_version_decimal_prefix, 
+										Network.mainnet.p2pkh_version_decimal_prefix] -> 
+							create_p2pkh(body)
+						p when [Network.testnet.p2sh_version_decimal_prefix, 
+										Network.mainnet.p2sh_version_decimal_prefix] -> 
+							create_p2sh(body)
+				end
+		end
+	end
 
 
-	# @spec to_address(t(), Bitcoinex.Network.network_name())
-	# def to_address(script = %__MODULE__{}, network) do
-	# 	cond do
-	# 		is_p2pkh(script) -> 
-
-
-	# 	end
-	# end
-
-	# def to_address(script = %__MODULE__{}, network) do
-	# 	{:ok, head, script} = pop(script)
-	# 	try do
-	# 		case head do
-	# 			# segwit 0
-	# 			0x00 ->
-	# 				{:ok, len, script} = pop(script)
-	# 				{:ok, <<res::binary-size(len)>>, script} = pop(script)
-	# 				if len == 20 do
-	# 					Bech32.encode("bc1", [0, res], :bech32, )
-	# 			# segwit 1 (taproot)
-	# 			0x01 -> 
-	# 				{:ok, 32, script} = pop(script)
-	# 				{:ok, <<res::binary-size(32)>>, script} = pop(script)
-	# 				res
-	# 			# p2sh
-	# 			0xa9 -> 
-	# 				{:ok, 0x14, script} = pop(script)
-	# 				{:ok, <<res::binary-size(0x14)>>, script} = pop(script)
-	# 				res
-	# 			# p2pkh 
-	# 			0x76 -> 
-	# 				{:ok, 0xa9, script} = pop(script)
-	# 				{:ok, 0x14, script} = pop(script)
-	# 				{:ok, <<res::binary-size(0x14)>>, script} = pop(script)
-	# 				res
-	# 		end
-	# 	end
-	# end
-
+	@spec to_address(t(), Bitcoinex.Network.network_name()) :: String.t()
+	def to_address(script = %__MODULE__{}, network) do
+		{:ok, head, script} = pop(script)
+		case head do
+			# segwit 0
+			0x00 ->
+				{:ok, len, script} = pop(script)
+				{:ok, <<res::binary-size(len)>>, _script} = pop(script)
+				if len in [@h160_length, @wsh_length] do 
+					Segwit.encode_address(network, 0, :binary.bin_to_list(res))
+				else
+					{:error, "invalid witness program length. Must be in [#{@h160_length}, #{@wsh_length}]"}
+				end
+			# segwit 1 (taproot)
+			0x01 -> 
+				{:ok, @trkey_length, script} = pop(script)
+				{:ok, <<res::binary-size(@trkey_length)>>, _script} = pop(script)
+				Segwit.encode_address(network, 1, :binary.bin_to_list(res))
+			# p2sh
+			0xa9 -> 
+				{:ok, @h160_length, script} = pop(script)
+				{:ok, <<res::binary-size(@h160_length)>>, _script} = pop(script)
+				{:ok, Address.encode(res, network, :p2sh)}
+			# p2pkh 
+			0x76 -> 
+				{:ok, 0xa9, script} = pop(script)
+				{:ok, @h160_length, script} = pop(script)
+				{:ok, <<res::binary-size(@h160_length)>>, _script} = pop(script)
+				{:ok, Address.encode(res, network, :p2pkh)}
+			_ -> 
+				{:error, "non standard script type"}
+		end
+	end
 end

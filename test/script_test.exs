@@ -165,8 +165,6 @@ defmodule Bitcoinex.ScriptTest do
 			assert op2 == 77
 			assert bin2 == bin
 		end
-
-
 	end
 
 	describe "test specific script creation and identification" do 
@@ -266,7 +264,7 @@ defmodule Bitcoinex.ScriptTest do
 		test "test create scripts from pubkey" do
 			hex = "033b15e1b8c51bb947a134d17addc3eb6abbda551ad02137699636f907ad7e0f1a"
 			h160 = hex |> Base.decode16!(case: :lower) |> Utils.hash160()
-			pubkey = Point.parse_public_key(hex)
+			{:ok, pubkey} = Point.parse_public_key(hex)
 
 			p2pkh = Script.public_key_to_p2pkh(pubkey)
 			assert Script.is_p2pkh(p2pkh)
@@ -292,7 +290,6 @@ defmodule Bitcoinex.ScriptTest do
 			assert len == 20
 			assert pkh == h160
 			assert Script.empty?(rest)
-
 
 			p2sh_p2wpkh = Script.public_key_to_p2sh_p2wpkh(pubkey)
 			assert Script.is_p2sh(p2sh_p2wpkh)
@@ -415,6 +412,87 @@ defmodule Bitcoinex.ScriptTest do
 			assert Script.display_script(s) == text
 		end
 
+		test "push data 4" do
+
+
+		end
+
 	end
+
+	describe "test to_address/2" do
+		test "test p2sh_p2wpkh address" do
+			addr = "3HTC7s9dwBzK9Gn9mzejanBV25i35PvGSQ"
+			hex = "034c3773e6ee01be50be219e5dd14179f0feb0c1fc8cd25fd3cb3ca37f607a4534"
+			h160 = hex |> Base.decode16!(case: :lower) |> Utils.hash160()
+			s = Script.create_p2sh_p2wpkh(h160)
+			assert Script.to_address(s, :mainnet) == {:ok, addr}
+
+			addr = "3KjjkKUqDSqPCeAhTFP57Xp87JKsdqJLYH"
+			hex = "035d03803d60e65786c328c6ef0077c3b2d017542d6f3a67e23f21568d30f8f619"
+			h160 = hex |> Base.decode16!(case: :lower) |> Utils.hash160()
+			s = Script.create_p2sh_p2wpkh(h160)
+			assert Script.to_address(s, :mainnet) == {:ok, addr}
+		end
+
+		test "test p2pkh address" do
+			# from tx 1af0fbe9141371e29ab870121a3d9ae361d6664d789e367e6341e8a4b3311ea0
+			addr = "12wRAwmwVBXrnquwwc8uH5xHT7ExaP6gU3"
+			hex = "0247c446b01e77fc0318be2db38f97b441b98bb171cdb467a2efee7276a760ea58"
+			h160 = hex |> Base.decode16!(case: :lower) |> Utils.hash160()
+			s = Script.create_p2pkh(h160)
+			assert Script.to_address(s, :mainnet) == {:ok, addr}
+
+			# from tx d531beedb3c4e0996e3df72318f174505bb0b4f99c0a7c70ba1fcd0f27e45fa8
+			addr = "133qBf9RgtwAyn11mrLHPWydTwSsfhwsav"
+			hex = "0230016a9764716395085ed329b00928bf04d36f2b803f5cd457df021db42a59df"
+			h160 = hex |> Base.decode16!(case: :lower) |> Utils.hash160()
+			s = Script.create_p2pkh(h160)
+			assert Script.to_address(s, :mainnet) == {:ok, addr}
+
+			# from testnet tx d87beaa61c425eb5d6b4687f8d186df5e4a764483b3a616032741ac0615405ec
+			addr = "mrHhy9DgpBbDLoJsACv4QXXY7f2B5Fq5o1"
+			hex = "037ed58c914720772c59f7a1e7e76fba0ef95d7c5667119798586301519b9ad2cf"
+			h160 = hex |> Base.decode16!(case: :lower) |> Utils.hash160()
+			s = Script.create_p2pkh(h160)
+			assert Script.to_address(s, :testnet) == {:ok, addr}
+		
+		end
+
+		test "test p2wpkh address" do
+			# from tx 915924af3d478a1ca5e32b81fe327ee78b24d8475ed90666242dfd4bf52fc33d
+			addr = "bc1qtvdt23u5mpkkaxw596s5d5hcjm2qgs68p4k9qe"
+			hex = "03e6cf64144a2243816151623a5ddaf47b3be771f4d5e450dfb93ea38372af0ceb"
+			h160 = hex |> Base.decode16!(case: :lower) |> Utils.hash160()
+			s = Script.create_p2wpkh(h160)
+			assert Script.to_address(s, :mainnet) == {:ok, addr}
+
+			# from tx 915924af3d478a1ca5e32b81fe327ee78b24d8475ed90666242dfd4bf52fc33d
+			addr = "bc1qtvdt23u5mpkkaxw596s5d5hcjm2qgs68p4k9qe"
+			hex = "03e6cf64144a2243816151623a5ddaf47b3be771f4d5e450dfb93ea38372af0ceb"
+			h160 = hex |> Base.decode16!(case: :lower) |> Utils.hash160()
+			s = Script.create_p2wpkh(h160)
+			assert Script.to_address(s, :mainnet) == {:ok, addr}
+
+			# from testnet tx 8bcb4bef012fff4191919f5615b894f43b940bd625162018b0d710c71a9b2603
+			addr = "tb1qtk3vfds84nvcrlxucu5a8p8dqz2k6w5e8h9m8d"
+			hex = "02ca6a71b4f16b75763cb5467666a94972d18ebda3baf296b37149ffea78dc6129"
+			h160 = hex |> Base.decode16!(case: :lower) |> Utils.hash160()
+			s = Script.create_p2wpkh(h160)
+			assert Script.to_address(s, :testnet) == {:ok, addr}
+
+			# from testnet tx 6b8fd02e55cb49ab5d6483e6c1257f6edd0f5497f04ef22ecba8fd74f1e246f1
+			addr = "tb1qtk3vfds84nvcrlxucu5a8p8dqz2k6w5e8h9m8d"
+			hex = "02ca6a71b4f16b75763cb5467666a94972d18ebda3baf296b37149ffea78dc6129"
+			h160 = hex |> Base.decode16!(case: :lower) |> Utils.hash160()
+			s = Script.create_p2wpkh(h160)
+			assert Script.to_address(s, :testnet) == {:ok, addr}
+		end
+
+		test "test p2wsh address" do
+
+		end
+	end
+
+
 
 end
