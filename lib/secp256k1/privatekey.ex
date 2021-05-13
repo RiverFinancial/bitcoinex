@@ -5,6 +5,8 @@ defmodule Bitcoinex.Secp256k1.PrivateKey do
   alias Bitcoinex.Secp256k1.{Params, Math, Point, Signature}
   alias Bitcoinex.Base58
 
+  @max_privkey Params.curve().n - 1
+
   @type t :: %__MODULE__{
           d: non_neg_integer()
         }
@@ -14,30 +16,52 @@ defmodule Bitcoinex.Secp256k1.PrivateKey do
   ]
   defstruct [:d]
 
+  def validate(%__MODULE__{d: d}) do
+    if d > @max_privkey do
+      {:error, "invalid private key out of range."}
+    else
+      {:ok, %__MODULE__{d: d}}
+    end
+  end
+
   @doc """
     new creates a private key from an integer
   """
-  @spec new(non_neg_integer()) :: t()
-  def new(d), do: %__MODULE__{d: d}
+  @spec new(non_neg_integer()) :: {:ok, t()}
+  def new(d) do
+    validate(%__MODULE__{d: d})
+  end
 
   @doc """
     to_point calculate Point from private key
   """
   @spec to_point(t()) :: Point.t()
-  def to_point(%__MODULE__{d: d}) do
-    g = %Point{x: Params.curve().g_x, y: Params.curve().g_y, z: 0}
-    Math.multiply(g, d)
+  def to_point(prvkey = %__MODULE__{}) do
+    case validate(prvkey) do
+      {:error, msg} ->
+        {:error, msg}
+
+      {:ok, %__MODULE__{d: d}} ->
+        g = %Point{x: Params.curve().g_x, y: Params.curve().g_y, z: 0}
+        Math.multiply(g, d)
+    end
   end
 
   @doc """
    serialize_private_key serializes a private key into hex
   """
   @spec serialize_private_key(t()) :: String.t()
-  def serialize_private_key(%__MODULE__{d: d}) do
-    d
-    |> :binary.encode_unsigned()
-    |> Bitcoinex.Utils.pad(32, :leading)
-    |> Base.encode16(case: :lower)
+  def serialize_private_key(prvkey = %__MODULE__{}) do
+    case validate(prvkey) do
+      {:error, msg} ->
+        {:error, msg}
+
+      {:ok, %__MODULE__{d: d}} ->
+        d
+        |> :binary.encode_unsigned()
+        |> Bitcoinex.Utils.pad(32, :leading)
+        |> Base.encode16(case: :lower)
+    end
   end
 
   @doc """
@@ -45,13 +69,19 @@ defmodule Bitcoinex.Secp256k1.PrivateKey do
   assumes all keys are compressed
   """
   @spec wif!(t(), Bitcoinex.Network.network_name()) :: String.t()
-  def wif!(%__MODULE__{d: d}, network_name) do
-    d
-    |> :binary.encode_unsigned()
-    |> Bitcoinex.Utils.pad(32, :leading)
-    |> wif_prefix(network_name)
-    |> compressed_suffix()
-    |> Base58.encode()
+  def wif!(prvkey = %__MODULE__{}, network_name) do
+    case validate(prvkey) do
+      {:error, msg} ->
+        {:error, msg}
+
+      {:ok, %__MODULE__{d: d}} ->
+        d
+        |> :binary.encode_unsigned()
+        |> Bitcoinex.Utils.pad(32, :leading)
+        |> wif_prefix(network_name)
+        |> compressed_suffix()
+        |> Base58.encode()
+    end
   end
 
   def parse_wif!(wif_str) do
@@ -82,7 +112,14 @@ defmodule Bitcoinex.Secp256k1.PrivateKey do
       {:error, network_name}
     else
       secret = :binary.decode_unsigned(wif)
-      {:ok, %__MODULE__{d: secret}, network_name, true}
+
+      case validate(%__MODULE__{d: secret}) do
+        {:error, msg} ->
+          {:error, msg}
+
+        {:ok, %__MODULE__{d: d}} ->
+          {:ok, %__MODULE__{d: d}, network_name, true}
+      end
     end
   end
 
@@ -94,7 +131,14 @@ defmodule Bitcoinex.Secp256k1.PrivateKey do
       {:error, network_name}
     else
       secret = :binary.decode_unsigned(wif)
-      {:ok, %__MODULE__{d: secret}, network_name, false}
+
+      case validate(%__MODULE__{d: secret}) do
+        {:error, msg} ->
+          {:error, msg}
+
+        {:ok, %__MODULE__{d: d}} ->
+          {:ok, %__MODULE__{d: d}, network_name, false}
+      end
     end
   end
 
@@ -156,16 +200,22 @@ defmodule Bitcoinex.Secp256k1.PrivateKey do
   """
   @spec sign(t(), integer) :: Signature.t()
   def sign(privkey, z) do
-    k = deterministic_k(privkey, z)
-    n = Params.curve().n
-    sig_r = to_point(k).x
-    inv_k = Math.inv(k.d, n)
-    sig_s = Math.modulo((z + sig_r * privkey.d) * inv_k, n)
+    case validate(privkey) do
+      {:error, msg} ->
+        {:error, msg}
 
-    if sig_s > n / 2 do
-      %Signature{r: sig_r, s: n - sig_s}
-    else
-      %Signature{r: sig_r, s: sig_s}
+      {:ok, privkey} ->
+        k = deterministic_k(privkey, z)
+        n = Params.curve().n
+        sig_r = to_point(k).x
+        inv_k = Math.inv(k.d, n)
+        sig_s = Math.modulo((z + sig_r * privkey.d) * inv_k, n)
+
+        if sig_s > n / 2 do
+          %Signature{r: sig_r, s: n - sig_s}
+        else
+          %Signature{r: sig_r, s: sig_s}
+        end
     end
   end
 end

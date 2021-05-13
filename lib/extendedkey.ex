@@ -325,22 +325,26 @@ defmodule Bitcoinex.ExtendedKey do
   @spec to_extended_public_key(t()) :: {:ok, t()} | {:error, String.t()}
   def to_extended_public_key(xprv) do
     if xprv.prefix in @prv_prefixes do
-      privkey = %PrivateKey{d: :binary.decode_unsigned(xprv.key, :big)}
+      try do
+        {:ok, privkey} = PrivateKey.new(:binary.decode_unsigned(xprv.key, :big))
 
-      pubkey =
-        privkey
-        |> PrivateKey.to_point()
-        |> Point.sec()
+        pubkey =
+          privkey
+          |> PrivateKey.to_point()
+          |> Point.sec()
 
-      xprv.prefix
-      |> prv_to_pub_prefix()
-      |> Kernel.<>(xprv.depth)
-      |> Kernel.<>(xprv.parent_fingerprint)
-      |> Kernel.<>(xprv.child_num)
-      |> Kernel.<>(xprv.chaincode)
-      |> Kernel.<>(pubkey)
-      |> Base58.append_checksum()
-      |> parse_extended_key()
+        xprv.prefix
+        |> prv_to_pub_prefix()
+        |> Kernel.<>(xprv.depth)
+        |> Kernel.<>(xprv.parent_fingerprint)
+        |> Kernel.<>(xprv.child_num)
+        |> Kernel.<>(xprv.chaincode)
+        |> Kernel.<>(pubkey)
+        |> Base58.append_checksum()
+        |> parse_extended_key()
+      rescue
+        _ in MatchError -> {:error, "invalid private key"}
+      end
     else
       # it is an xpub already
       xprv
@@ -355,7 +359,7 @@ defmodule Bitcoinex.ExtendedKey do
   def to_private_key(xprv) do
     if xprv.prefix in @prv_prefixes do
       secret = :binary.decode_unsigned(xprv.key, :big)
-      {:ok, %PrivateKey{d: secret}}
+      PrivateKey.new(secret)
     else
       {:error, "key is not a extended private key."}
     end
@@ -431,9 +435,10 @@ defmodule Bitcoinex.ExtendedKey do
           {:error, "invalid key derived. Bad luck!"}
         else
           {:ok, parent_pubkey} = Point.parse_public_key(xkey.key)
+          {:ok, prvkey} = PrivateKey.new(key_secret)
 
           pubkey =
-            %PrivateKey{d: key_secret}
+            prvkey
             |> PrivateKey.to_point()
             |> Math.add(parent_pubkey)
 
@@ -471,27 +476,33 @@ defmodule Bitcoinex.ExtendedKey do
       xkey.key
       |> :binary.decode_unsigned()
 
-    fingerprint =
-      %PrivateKey{d: key_secret}
-      |> PrivateKey.to_point()
-      |> Point.sec()
-      |> Bitcoinex.Utils.hash160()
-      |> :binary.part(0, 4)
+    try do
+      {:ok, prvkey} = PrivateKey.new(key_secret)
 
-    ent = get_prv_child_entropy(xkey, idx)
-    child_chaincode = :binary.part(ent, byte_size(ent), -32)
+      fingerprint =
+        prvkey
+        |> PrivateKey.to_point()
+        |> Point.sec()
+        |> Bitcoinex.Utils.hash160()
+        |> :binary.part(0, 4)
 
-    child_key =
-      ent
-      |> :binary.part(0, 32)
-      |> :binary.decode_unsigned()
-      |> Kernel.+(key_secret)
-      |> Bitcoinex.Secp256k1.Math.modulo(Params.curve().n)
-      |> :binary.encode_unsigned()
+      ent = get_prv_child_entropy(xkey, idx)
+      child_chaincode = :binary.part(ent, byte_size(ent), -32)
 
-    (xkey.prefix <> child_depth <> fingerprint <> i <> child_chaincode <> <<0>> <> child_key)
-    |> Base58.append_checksum()
-    |> parse_extended_key()
+      child_key =
+        ent
+        |> :binary.part(0, 32)
+        |> :binary.decode_unsigned()
+        |> Kernel.+(key_secret)
+        |> Bitcoinex.Secp256k1.Math.modulo(Params.curve().n)
+        |> :binary.encode_unsigned()
+
+      (xkey.prefix <> child_depth <> fingerprint <> i <> child_chaincode <> <<0>> <> child_key)
+      |> Base58.append_checksum()
+      |> parse_extended_key()
+    rescue
+      _ in MatchError -> {:error, "invalid private key in extended private key"}
+    end
   end
 
   # increment byte by 1
@@ -514,8 +525,10 @@ defmodule Bitcoinex.ExtendedKey do
       :crypto.hmac(:sha512, xprv.chaincode, xprv.key <> i)
     else
       # unhardened child from privkey
+      {:ok, prvkey} = PrivateKey.new(:binary.decode_unsigned(xprv.key))
+
       pubkey =
-        %PrivateKey{d: :binary.decode_unsigned(xprv.key)}
+        prvkey
         |> PrivateKey.to_point()
         |> Point.sec()
 
