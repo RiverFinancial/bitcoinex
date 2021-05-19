@@ -21,11 +21,19 @@ defmodule Bitcoinex.Secp256k1.Point do
                   :erlang.is_map_key(:z, term)
 
   @doc """
+    is_inf returns whether or not point P is 
+    the point at infinity, ie. P.x == P.y == 0
+  """
+  @spec is_inf(t()) :: boolean
+  def is_inf(%__MODULE__{x: 0, y: 0}), do: true
+  def is_inf(_), do: false
+
+  @doc """
   parse_public_key parses a public key
   """
-  @spec parse_public_key(binary | String.t()) :: t()
+  @spec parse_public_key(binary) :: {:ok, t()} | {:error, String.t()}
   def parse_public_key(<<0x04, x::binary-size(32), y::binary-size(32)>>) do
-    %__MODULE__{x: :binary.decode_unsigned(x), y: :binary.decode_unsigned(y)}
+    {:ok, %__MODULE__{x: :binary.decode_unsigned(x), y: :binary.decode_unsigned(y)}}
   end
 
   # Above matches with uncompressed keys. Below matches with compressed keys
@@ -34,12 +42,16 @@ defmodule Bitcoinex.Secp256k1.Point do
 
     case :binary.decode_unsigned(prefix) do
       2 ->
-        {:ok, y} = Bitcoinex.Secp256k1.get_y(x, false)
-        %__MODULE__{x: x, y: y}
+        case Bitcoinex.Secp256k1.get_y(x, false) do
+          {:ok, y} -> {:ok, %__MODULE__{x: x, y: y}}
+          _ -> {:error, "invalid public key"}
+        end
 
       3 ->
-        {:ok, y} = Bitcoinex.Secp256k1.get_y(x, true)
-        %__MODULE__{x: x, y: y}
+        case Bitcoinex.Secp256k1.get_y(x, true) do
+          {:ok, y} -> {:ok, %__MODULE__{x: x, y: y}}
+          _ -> {:error, "invalid public key"}
+        end
     end
   end
 
@@ -52,7 +64,7 @@ defmodule Bitcoinex.Secp256k1.Point do
   end
 
   @doc """
-  serialize_public_key serializes a compressed public key to binary
+  sec serializes a compressed public key to binary
   """
   @spec sec(t()) :: binary
   def sec(%__MODULE__{x: x, y: y}) do

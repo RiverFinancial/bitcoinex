@@ -236,6 +236,17 @@ defmodule Bitcoinex.Secp256k1 do
   end
 
   @doc """
+    verify_point verifies that a given point is on the secp256k1
+    curve
+  """
+  @spec verify_point(Point.t()) :: bool
+  def verify_point(%Point{x: x, y: y}) do
+    y_odd = rem(y, 2) == 1
+    {:ok, new_y} = get_y(x, y_odd)
+    y == new_y
+  end
+
+  @doc """
   verify whether the signature is valid for the given message hash and public key
   """
   @spec verify_signature(Point.t(), integer, Signature.t()) :: boolean
