@@ -4,7 +4,7 @@ defmodule Bitcoinex.MixProject do
   def project do
     [
       app: :bitcoinex,
-      version: "0.1.1",
+      version: "0.1.4",
       elixir: "~> 1.8",
       package: package(),
       start_permanent: Mix.env() == :prod,
@@ -67,7 +67,7 @@ defmodule Bitcoinex.MixProject do
 
   defp package do
     [
-      files: ~w(lib test .formatter.exs mix.exs README.md UNLICENSE),
+      files: ~w(lib test .formatter.exs mix.exs README.md UNLICENSE CHANGELOG.md SECURITY.md),
       licenses: ["Unlicense"],
       links: %{"GitHub" => "https://github.com/RiverFinancial/bitcoinex"}
     ]
