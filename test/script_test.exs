@@ -597,6 +597,91 @@ defmodule Bitcoinex.ScriptTest do
     end
   end
 
+  describe "test serialize scripts" do
+    test "test serialize pushdata1" do
+      data_hex =
+        "c5802547372094c58025802547372094c5802547802c9ca07652be7e8025472547372094c5802547802c9ca07652be7e802547372094c5802547802c9ca07652be7e47802c9ca07652be7e6419bc9aa1"
+
+      s_hex =
+        "4c50c5802547372094c58025802547372094c5802547802c9ca07652be7e8025472547372094c5802547802c9ca07652be7e802547372094c5802547802c9ca07652be7e47802c9ca07652be7e6419bc9aa1"
+
+      {:ok, s1} = Script.parse_script(s_hex)
+
+      bin = data_hex |> Base.decode16!(case: :lower)
+      {:ok, s2} = Script.push_data(Script.new(), bin)
+
+      assert s2 == s1
+      assert Script.serialize_script(s2) == s_hex |> Base.decode16!(case: :lower)
+      assert Script.to_hex(s2) == s_hex
+
+      s_hex =
+        "a94c50c5802547372094c58025802547372094c5802547802c9ca07652be7e8025472547372094c5802547802c9ca07652be7e802547372094c5802547802c9ca07652be7e47802c9ca07652be7e6419bc9aa1ac"
+
+      {:ok, s} = Script.parse_script(s_hex)
+      assert Script.serialize_script(s) == s_hex |> Base.decode16!(case: :lower)
+      assert Script.to_hex(s) == s_hex
+    end
+
+    test "test serialize pushdata2" do
+      s_hex =
+        "4de901c5802547372094c58025478025473720941cee958bca07652be7e6419bc91cee958b8025473720941cee958bca07652be7e6419bc91cee958b3720941cee958bca07652be7e6419bc91ceec5802547372094c58025478025473720941cee958bca07652be7e6419bc91cee958b8025473720941cee958bca07652be7e6419bc91cee958b3720941cee958bca07652be7e6419c5802547372094c58025478025473720941cee958bca07652be7e6419bc91cee958b8025473720941cee958bca07652be7e6419bc91cee958b3720941cee958bca07652be7ec5802547372094c58025478025473720941cee958bca07652be7e6419bc91cee958b8025473720941cee958bca07652be7e6419bc91cee958b3720941cee958bca07652be7e6419bc91cee958bc58025473720941cee958bca07652be7e6419bc9ca07652be7e6419bc96419bc91cee958bc58025473720941cee958bca07652be7e6419bc9ca07652be7e6419bc9bc91cee958bc58025473720941cee958bca07652be7e6419bc9ca07652c5802547372094c58025478025473720941cee958bca07652be7e6419bc91cee958b8025473720941cee958bca07652be7e6419bc91cee958b3720941cee958bca07652be9bc9958bc58025473720941cee958bca07652be7e6419bc9ca07652be7e6419bc9"
+
+      {:ok, s} = Script.parse_script(s_hex)
+
+      assert Script.serialize_script(s) == s_hex |> Base.decode16!(case: :lower)
+      assert Script.to_hex(s) == s_hex
+    end
+
+    test "test serialize common scripts" do
+      s_hex = "0014a38e224fc2ead8f32b13e3cef6bbf3520f16378c"
+
+      {:ok, s} = Script.parse_script(s_hex)
+
+      assert Script.serialize_script(s) == s_hex |> Base.decode16!(case: :lower)
+      assert Script.to_hex(s) == s_hex
+
+      s_hex = "0020701a8d401c84fb13e6baf169d59684e17abd9fa216c8cc5b9fc63d622ff8c58d"
+
+      {:ok, s} = Script.parse_script(s_hex)
+
+      assert Script.serialize_script(s) == s_hex |> Base.decode16!(case: :lower)
+      assert Script.to_hex(s) == s_hex
+
+      s_hex = "a914cbb5d42faa8e9267f3a4ab9eabde9ebc9016ef8787"
+
+      {:ok, s} = Script.parse_script(s_hex)
+
+      assert Script.serialize_script(s) == s_hex |> Base.decode16!(case: :lower)
+      assert Script.to_hex(s) == s_hex
+
+      s_hex = "76a914c58025473720941cee958bca07652be7e6419bc988ac"
+
+      {:ok, s} = Script.parse_script(s_hex)
+
+      assert Script.serialize_script(s) == s_hex |> Base.decode16!(case: :lower)
+      assert Script.to_hex(s) == s_hex
+    end
+
+    test "serialize other scripts" do
+      # op_0 op_0 op_0 op_0 op_0 op_1
+      s_hex = "000000000051"
+      {:ok, s} = Script.parse_script(s_hex)
+      assert Script.serialize_script(s) == s_hex |> Base.decode16!(case: :lower)
+      assert Script.to_hex(s) == s_hex
+
+      # op_0 op_0 pushbytes_1 <<0x00>>
+      s_hex = "00000100"
+      {:ok, s} = Script.parse_script(s_hex)
+      assert Script.serialize_script(s) == s_hex |> Base.decode16!(case: :lower)
+      assert Script.to_hex(s) == s_hex
+
+      # op_0
+      s_hex = "00"
+      {:ok, s} = Script.parse_script(s_hex)
+      assert Script.serialize_script(s) == <<0x00>>
+    end
+  end
+
   describe "test display_script/1" do
     test "test display_script/1 with p2pkh" do
       text =
@@ -835,6 +920,30 @@ defmodule Bitcoinex.ScriptTest do
         |> Script.create_p2wsh()
 
       assert Script.to_address(p2wsh, :mainnet) == {:ok, p2wsh_addr}
+
+      {:ok, op2, s} = Script.pop(s)
+      {:ok, push33, s} = Script.pop(s)
+      {:ok, pk1, s} = Script.pop(s)
+      {:ok, push33_, s} = Script.pop(s)
+      {:ok, pk2, s} = Script.pop(s)
+      {:ok, push33__, s} = Script.pop(s)
+      {:ok, pk3, s} = Script.pop(s)
+      {:ok, op3, s} = Script.pop(s)
+      {:ok, op_cms, s} = Script.pop(s)
+
+      {:ok, pubkey1} = Bitcoinex.Secp256k1.Point.parse_public_key(pk1)
+      {:ok, pubkey2} = Bitcoinex.Secp256k1.Point.parse_public_key(pk2)
+      {:ok, pubkey3} = Bitcoinex.Secp256k1.Point.parse_public_key(pk3)
+
+      assert Script.empty?(s)
+      assert push33 == 33 and push33_ == 33 and push33__ == 33
+      assert op2 == 0x52
+      assert op3 == 0x53
+      assert op_cms == 0xAE
+
+      assert Bitcoinex.Secp256k1.Point.sec(pubkey1) == pk1
+      assert Bitcoinex.Secp256k1.Point.sec(pubkey2) == pk2
+      assert Bitcoinex.Secp256k1.Point.sec(pubkey3) == pk3
     end
   end
 end
