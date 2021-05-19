@@ -43,6 +43,12 @@ defmodule Bitcoinex.Script do
   def is_true?(_), do: false
 
   @doc """
+  	to_list returns the script as a list of items
+  """
+  @spec to_list(t()) :: list
+  def to_list(%__MODULE__{items: script}), do: script
+
+  @doc """
   	empty? returns true for empty scripts, false otherwise.
   """
   @spec empty?(t()) :: bool
@@ -620,7 +626,7 @@ defmodule Bitcoinex.Script do
   @doc """
   	to_address converts a script object into the proper address type
   """
-  @spec to_address(t(), Bitcoinex.Network.network_name()) ::
+  @spec to_address(t(), Network.network_name()) ::
           {:ok, String.t()} | {:error, String.t()}
   def to_address(script = %__MODULE__{}, network) do
     {:ok, head, script} = pop(script)
