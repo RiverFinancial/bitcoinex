@@ -10,6 +10,14 @@ defmodule Bitcoinex.Transaction do
   alias Bitcoinex.Utils
   alias Bitcoinex.Transaction.Utils, as: TxUtils
 
+  @type t() :: %__MODULE__{
+          version: non_neg_integer(),
+          inputs: list(In.t()),
+          outputs: list(Out.t()),
+          witnesses: list(Witness.t()),
+          lock_time: non_neg_integer()
+        }
+
   defstruct [
     :version,
     :inputs,
@@ -25,7 +33,6 @@ defmodule Bitcoinex.Transaction do
   """
   def transaction_id(txn) do
     legacy_txn = TxUtils.serialize_legacy(txn)
-    {:ok, legacy_txn} = Base.decode16(legacy_txn, case: :lower)
 
     Base.encode16(
       <<:binary.decode_unsigned(
@@ -56,9 +63,7 @@ defmodule Bitcoinex.Transaction do
   end
 
   # returns transaction 
-  defp parse(tx_bytes) do
-    <<version::little-size(32), remaining::binary>> = tx_bytes
-
+  defp parse(<<version::little-size(32), remaining::binary>>) do
     {is_segwit, remaining} =
       case remaining do
         <<1::size(16), segwit_remaining::binary>> ->
@@ -105,6 +110,7 @@ defmodule Bitcoinex.Transaction.Utils do
   @moduledoc """
   Utilities for when dealing with transaction objects.
   """
+  alias Bitcoinex.Transaction
   alias Bitcoinex.Transaction.In
   alias Bitcoinex.Transaction.Out
 
@@ -139,6 +145,7 @@ defmodule Bitcoinex.Transaction.Utils do
   @doc """
     Serializes a transaction without the witness structure.
   """
+  @spec serialize_legacy(Transaction.t()) :: iolist()
   def serialize_legacy(txn) do
     version = <<txn.version::little-size(32)>>
     tx_in_count = serialize_compact_size_unsigned_int(length(txn.inputs))
@@ -147,15 +154,14 @@ defmodule Bitcoinex.Transaction.Utils do
     outputs = Out.serialize_outputs(txn.outputs)
     lock_time = <<txn.lock_time::little-size(32)>>
 
-    Base.encode16(
-      version <>
-        tx_in_count <>
-        inputs <>
-        tx_out_count <>
-        outputs <>
-        lock_time,
-      case: :lower
-    )
+    [
+      version,
+      tx_in_count,
+      inputs,
+      tx_out_count,
+      outputs,
+      lock_time
+    ]
   end
 
   @doc """
@@ -185,6 +191,9 @@ defmodule Bitcoinex.Transaction.Witness do
   alias Bitcoinex.Transaction.Witness
   alias Bitcoinex.Transaction.Utils, as: TxUtils
 
+  @type t :: %__MODULE__{
+          txinwitness: list(binary())
+        }
   defstruct [
     :txinwitness
   ]
@@ -253,6 +262,13 @@ defmodule Bitcoinex.Transaction.In do
   alias Bitcoinex.Transaction.In
   alias Bitcoinex.Transaction.Utils, as: TxUtils
 
+  @type t :: %__MODULE__{
+          prev_txid: binary(),
+          prev_vout: non_neg_integer(),
+          script_sig: binary(),
+          sequence_no: non_neg_integer()
+        }
+
   defstruct [
     :prev_txid,
     :prev_vout,
@@ -260,8 +276,9 @@ defmodule Bitcoinex.Transaction.In do
     :sequence_no
   ]
 
+  @spec serialize_inputs(list(In.t())) :: iolist()
   def serialize_inputs(inputs) do
-    serialize_input(inputs, <<""::binary>>)
+    serialize_input(inputs, [])
   end
 
   defp serialize_input([], serialized_inputs), do: serialized_inputs
@@ -281,12 +298,15 @@ defmodule Bitcoinex.Transaction.In do
 
     script_len = TxUtils.serialize_compact_size_unsigned_int(byte_size(script_sig))
 
-    serialized_input =
-      prev_txid <>
-        <<input.prev_vout::little-size(32)>> <>
-        script_len <> script_sig <> <<input.sequence_no::little-size(32)>>
+    serialized_input = [
+      prev_txid,
+      <<input.prev_vout::little-size(32)>>,
+      script_len,
+      script_sig,
+      <<input.sequence_no::little-size(32)>>
+    ]
 
-    serialize_input(inputs, <<serialized_inputs::binary>> <> serialized_input)
+    serialize_input(inputs, [serialized_inputs, serialized_input])
   end
 
   def parse_inputs(counter, inputs) do
@@ -324,13 +344,19 @@ defmodule Bitcoinex.Transaction.Out do
   alias Bitcoinex.Transaction.Out
   alias Bitcoinex.Transaction.Utils, as: TxUtils
 
+  @type t :: %__MODULE__{
+          value: non_neg_integer(),
+          script_pub_key: binary()
+        }
+
   defstruct [
     :value,
     :script_pub_key
   ]
 
+  @spec serialize_outputs(list(Out.t())) :: iolist()
   def serialize_outputs(outputs) do
-    serialize_output(outputs, <<""::binary>>)
+    serialize_output(outputs, [])
   end
 
   defp serialize_output([], serialized_outputs), do: serialized_outputs
@@ -342,8 +368,8 @@ defmodule Bitcoinex.Transaction.Out do
 
     script_len = TxUtils.serialize_compact_size_unsigned_int(byte_size(script_pub_key))
 
-    serialized_output = <<output.value::little-size(64)>> <> script_len <> script_pub_key
-    serialize_output(outputs, <<serialized_outputs::binary>> <> serialized_output)
+    serialized_output = [<<output.value::little-size(64)>>, script_len, script_pub_key]
+    serialize_output(outputs, [serialized_outputs, serialized_output])
   end
 
   def output(out_bytes) do

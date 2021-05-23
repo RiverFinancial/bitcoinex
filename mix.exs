@@ -33,7 +33,8 @@ defmodule Bitcoinex.MixProject do
       {:stream_data, "~> 0.1", only: :test},
       {:timex, "~> 3.1"},
       {:decimal, "~> 1.0 or ~> 2.0"},
-      {:ex_doc, ">= 0.0.0", only: :dev, runtime: false}
+      {:ex_doc, ">= 0.0.0", only: :dev, runtime: false},
+      {:benchee, ">= 1.0.0", only: :dev}
     ]
   end
 
