@@ -309,102 +309,66 @@ defmodule Bitcoinex.Script do
   	<33-byte or 65-byte pubkey> OP_CHECKSIG
   """
   @spec is_p2pk?(t()) :: boolean
-  def is_p2pk?(script) do
-    try do
-      {:ok, len, script} = pop(script)
-      {:ok, pubkey, script} = pop(script)
-      {:ok, 0xAC, script} = pop(script)
-
-      len == byte_size(pubkey) and byte_size(pubkey) in [33, 65] and empty?(script)
-    rescue
-      _ in MatchError -> false
-    end
+  def is_p2pk?(%__MODULE__{
+        items: [len, pubkey, 0xAC]
+      })
+      when len in [33, 65] and len == byte_size(pubkey) do
+    true
   end
+
+  def is_p2pk?(%__MODULE__{}), do: false
 
   @doc """
   	is_p2pkh? returns whether a given script is of the p2pkh format:
   	OP_DUP OP_HASH160 OP_PUSHBYTES_20 <20-byte hash> OP_EQUALVERIFY OP_CHECKSIG
   """
   @spec is_p2pkh?(t()) :: boolean
-  def is_p2pkh?(script) do
-    try do
-      {:ok, 0x76, script} = pop(script)
-      {:ok, 0xA9, script} = pop(script)
-      {:ok, @h160_length, script} = pop(script)
-      {:ok, <<_::binary-size(@h160_length)>>, script} = pop(script)
-      {:ok, 0x88, script} = pop(script)
-      {:ok, 0xAC, script} = pop(script)
-      empty?(script)
-    rescue
-      _ in MatchError -> false
-    end
-  end
+  def is_p2pkh?(%__MODULE__{
+        items: [0x76, 0xA9, @h160_length, <<_::binary-size(@h160_length)>>, 0x88, 0xAC]
+      }),
+      do: true
+
+  def is_p2pkh?(%__MODULE__{}), do: false
 
   @doc """
   	is_p2sh? returns whether a given script is of the p2sh format:
   	OP_HASH160 OP_PUSHBYTES_20 <20-byte hash> OP_EQUAL
   """
   @spec is_p2sh?(t()) :: boolean
-  def is_p2sh?(script) do
-    try do
-      {:ok, 0xA9, script} = pop(script)
-      {:ok, @h160_length, script} = pop(script)
-      {:ok, <<_::binary-size(@h160_length)>>, script} = pop(script)
-      {:ok, 0x87, script} = pop(script)
-      empty?(script)
-    rescue
-      _ in MatchError -> false
-    end
-  end
+  def is_p2sh?(%__MODULE__{items: [0xA9, @h160_length, <<_::binary-size(@h160_length)>>, 0x87]}),
+    do: true
+
+  def is_p2sh?(%__MODULE__{}), do: false
 
   @doc """
   	is_p2wpkh? returns whether a given script is of the p2wpkh format:
   	OP_0 OP_PUSHBYTES_20 <20-byte hash>
   """
   @spec is_p2wpkh?(t()) :: boolean
-  def is_p2wpkh?(script) do
-    try do
-      {:ok, 0x00, script} = pop(script)
-      {:ok, @h160_length, script} = pop(script)
-      {:ok, <<_::binary-size(@h160_length)>>, script} = pop(script)
-      empty?(script)
-    rescue
-      _ in MatchError -> false
-    end
-  end
+  def is_p2wpkh?(%__MODULE__{items: [0x00, @h160_length, <<_::binary-size(@h160_length)>>]}),
+    do: true
+
+  def is_p2wpkh?(%__MODULE__{}), do: false
 
   @doc """
   	is_p2wsh? returns whether a given script is of the p2wsh format:
   	OP_0 OP_PUSHBYTES_32 <32-byte hash>
   """
   @spec is_p2wsh?(t()) :: boolean
-  def is_p2wsh?(script) do
-    try do
-      {:ok, 0x00, script} = pop(script)
-      {:ok, @wsh_length, script} = pop(script)
-      {:ok, <<_::binary-size(@wsh_length)>>, script} = pop(script)
-      empty?(script)
-    rescue
-      _ in MatchError -> false
-    end
-  end
+  def is_p2wsh?(%__MODULE__{items: [0x00, @wsh_length, <<_::binary-size(@wsh_length)>>]}),
+    do: true
+
+  def is_p2wsh?(%__MODULE__{}), do: false
 
   @doc """
   	is_p2tr? returns whether a given script is of the p2tr format:
   	OP_1 OP_PUSHBYTES_32 <32-byte hash>
   """
   @spec is_p2tr?(t()) :: boolean
-  def is_p2tr?(script) do
-    try do
-      # from bip340 https://github.com/bitcoin/bips/blob/master/bip-0341.mediawiki#script-validation-rules
-      {:ok, 0x01, script} = pop(script)
-      {:ok, @tapkey_length, script} = pop(script)
-      {:ok, <<_::binary-size(@tapkey_length)>>, script} = pop(script)
-      empty?(script)
-    rescue
-      _ in MatchError -> false
-    end
-  end
+  def is_p2tr?(%__MODULE__{items: [0x01, @tapkey_length, <<_::binary-size(@tapkey_length)>>]}),
+    do: true
+
+  def is_p2tr?(%__MODULE__{}), do: false
 
   @doc """
   	get_script_type determines the type of a script based on its elements
