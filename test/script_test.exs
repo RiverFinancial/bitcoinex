@@ -94,7 +94,7 @@ defmodule Bitcoinex.ScriptTest do
     "0020701a8d401c84fb13e6baf169d59684e17abd9fa216c8cc5b9fc63d622ff8c58d"
   ]
 
-  # from 
+  # from
   # https://github.com/bitcoin/bips/blob/master/bip-0350.mediawiki#test-vectors-for-v0-v16-native-segregated-witness-addresses
   # test vectors that are not valid v0 or v1 scripts have been removed.
   @bip350_test_vectors [
@@ -682,7 +682,7 @@ defmodule Bitcoinex.ScriptTest do
 
   describe "test parsing scripts" do
     test "test parse pushdata1 script" do
-      # pushdata1 <data> 
+      # pushdata1 <data>
       data_hex =
         "c5802547372094c58025802547372094c5802547802c9ca07652be7e8025472547372094c5802547802c9ca07652be7e802547372094c5802547802c9ca07652be7e47802c9ca07652be7e6419bc9aa1"
 
@@ -720,7 +720,7 @@ defmodule Bitcoinex.ScriptTest do
     end
 
     test "test parse pushdata2 script" do
-      # pushdata2 <data> 
+      # pushdata2 <data>
       data_hex =
         "c5802547372094c58025478025473720941cee958bca07652be7e6419bc91cee958b8025473720941cee958bca07652be7e6419bc91cee958b3720941cee958bca07652be7e6419bc91ceec5802547372094c58025478025473720941cee958bca07652be7e6419bc91cee958b8025473720941cee958bca07652be7e6419bc91cee958b3720941cee958bca07652be7e6419c5802547372094c58025478025473720941cee958bca07652be7e6419bc91cee958b8025473720941cee958bca07652be7e6419bc91cee958b3720941cee958bca07652be7ec5802547372094c58025478025473720941cee958bca07652be7e6419bc91cee958b8025473720941cee958bca07652be7e6419bc91cee958b3720941cee958bca07652be7e6419bc91cee958bc58025473720941cee958bca07652be7e6419bc9ca07652be7e6419bc96419bc91cee958bc58025473720941cee958bca07652be7e6419bc9ca07652be7e6419bc9bc91cee958bc58025473720941cee958bca07652be7e6419bc9ca07652c5802547372094c58025478025473720941cee958bca07652be7e6419bc91cee958b8025473720941cee958bca07652be7e6419bc91cee958b3720941cee958bca07652be9bc9958bc58025473720941cee958bca07652be7e6419bc9ca07652be7e6419bc9"
 
@@ -1125,6 +1125,7 @@ defmodule Bitcoinex.ScriptTest do
         end
       end
     end
+<<<<<<< HEAD
 
     test "test bip350 test vectors" do
       for t <- @bip350_test_vectors do
@@ -1132,6 +1133,8 @@ defmodule Bitcoinex.ScriptTest do
         assert Script.to_address(s, t.net) == {:ok, t.b32}
       end
     end
+=======
+>>>>>>> 7206ceb (add multisig capability & more testing)
   end
 
   describe "test from_address" do
@@ -1240,6 +1243,26 @@ defmodule Bitcoinex.ScriptTest do
         {:ok, s, net} = Script.from_address(t.b32)
         assert Script.to_hex(s) == t.hex
         assert net == t.net
+      end
+    end
+  end
+
+  describe "test extract multisig policy" do
+    test "extract policy from multisig script" do
+      for multi <- @raw_multisigs_with_data do
+        {:ok, ms} = Script.parse_script(multi.script_hex)
+        {:ok, m, pks} = Script.extract_multi_policy(ms)
+        {:ok, ms2} = Script.create_multi(m, pks)
+
+        assert ms == ms2
+      end
+
+      for m <- @raw_multisig_scripts do
+        {:ok, ms} = Script.parse_script(m)
+        {:ok, m, pks} = Script.extract_multi_policy(ms)
+        {:ok, ms2} = Script.create_multi(m, pks)
+
+        assert ms == ms2
       end
     end
   end
