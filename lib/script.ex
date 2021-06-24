@@ -12,8 +12,9 @@ defmodule Bitcoinex.Script do
   @wsh_length 32
   @tapkey_length 32
   @h160_length 20
+  @pubkey_lengths [33, 65]
 
-  @type script_type :: :p2pk | :p2pkh | :p2sh | :p2wpkh | :p2wsh | :p2tr | :non_standard
+  @type script_type :: :p2pk | :p2pkh | :p2sh | :p2wpkh | :p2wsh | :p2tr | :multi | :non_standard
 
   @type t :: %__MODULE__{
           items: list
@@ -24,6 +25,9 @@ defmodule Bitcoinex.Script do
   ]
   defstruct [:items]
 
+  defguard is_valid_multi(m, pubkeys)
+           when is_integer(m) and m > 0 and length(pubkeys) > 0 and length(pubkeys) >= m
+
   defp invalid_opcode_error(msg), do: {:error, "invalid opcode: #{msg}"}
 
   def is_valid_opcode(i) when is_integer(i), do: i >= 0x00 && i < 0xFF
@@ -33,14 +37,6 @@ defmodule Bitcoinex.Script do
   """
   @spec new() :: t()
   def new, do: %__MODULE__{items: []}
-
-  @doc """
-  	is_true? returns true if the script's only item is op_true, false otherwise.
-  """
-  @spec is_true?(t()) :: bool
-  def is_true?(%__MODULE__{items: [0x51]}), do: true
-  def is_true?(%__MODULE__{items: [:op_true]}), do: true
-  def is_true?(_), do: false
 
   @doc """
   	to_list returns the script as a list of items
@@ -69,6 +65,28 @@ defmodule Bitcoinex.Script do
     script
     |> serialize_script()
     |> byte_size()
+  end
+
+  @doc """
+    hash160 is a helper function which returns the hash160 
+    digest of the serialized script, as used in P2SH scripts.
+  """
+  @spec hash160(t()) :: binary
+  def hash160(script = %__MODULE__{}) do
+    script
+    |> serialize_script()
+    |> Utils.hash160()
+  end
+
+  @doc """
+    hash256 is a helper function which returns the hash256
+    digest of the serialized script, as used in P2WSH scripts.
+  """
+  @spec sha256(t()) :: binary
+  def sha256(script = %__MODULE__{}) do
+    script
+    |> serialize_script()
+    |> Utils.sha256()
   end
 
   @doc """
@@ -312,7 +330,7 @@ defmodule Bitcoinex.Script do
   def is_p2pk?(%__MODULE__{
         items: [len, pubkey, 0xAC]
       })
-      when len in [33, 65] and len == byte_size(pubkey) do
+      when len in @pubkey_lengths and len == byte_size(pubkey) do
     true
   end
 
@@ -371,6 +389,52 @@ defmodule Bitcoinex.Script do
   def is_p2tr?(%__MODULE__{}), do: false
 
   @doc """
+  	is_multi? returns whether a given script is of the raw multisig format:
+  	OP_(INT) [Public Keys] OP_(INT) OP_CHECKMULTISIG
+  """
+  @spec is_multi?(t()) :: boolean
+  def is_multi?(%__MODULE__{items: [op_m | rest]})
+      when op_m > 0x50 and op_m <= 0x60 and length(rest) > 3 do
+    test_multi(rest, 0, op_m)
+  end
+
+  def is_multi?(_), do: false
+
+  defp test_multi([op_n, 0xAE], n, m) when op_n == 0x50 + n and m <= op_n, do: true
+
+  defp test_multi([op_push | [pk | rest]], n, m) when op_push in @pubkey_lengths do
+    case Point.parse_public_key(pk) do
+      {:ok, _pk} -> test_multi(rest, n + 1, m)
+      {:error, _msg} -> false
+    end
+  end
+
+  defp test_multi(_, _, _), do: false
+
+  @doc """
+    extract_multi_policy takes in a raw multisig script and returns the m, the 
+    number of signatures required and the n authorized public keys.
+  """
+  @spec extract_multi_policy(t()) ::
+          {:ok, non_neg_integer(), list(Point.t())} | {:error, String.t()}
+  def extract_multi_policy(script = %__MODULE__{items: [op_m | items]}) do
+    if is_multi?(script) do
+      {:ok, op_m - 0x50, extractor(items, [])}
+    else
+      {:error, "invalid raw multisig script"}
+    end
+  end
+
+  defp extractor([_op_n, 0xAE], keys), do: keys
+
+  defp extractor([_op_push | [key | items]], keys) do
+    case Point.parse_public_key(key) do
+      {:ok, pk} -> [pk | extractor(items, keys)]
+      {:error, msg} -> {:error, "invalid public key: #{msg}"}
+    end
+  end
+
+  @doc """
   	get_script_type determines the type of a script based on its elements
   	returns :non_standard if no type matches
   """
@@ -384,6 +448,7 @@ defmodule Bitcoinex.Script do
       is_p2wsh?(script) -> :p2wsh
       is_p2pk?(script) -> :p2pk
       is_p2tr?(script) -> :p2tr
+      is_multi?(script) -> :multi
       true -> :non_standard
     end
   end
@@ -426,6 +491,69 @@ defmodule Bitcoinex.Script do
   end
 
   def create_p2sh(_), do: {:error, "script hash must be a #{@h160_length}-byte hash"}
+
+  @doc """
+    create_multi creates a raw multisig script using m and the list of public keys.
+  """
+  @spec create_multi(non_neg_integer(), list(Point.t())) :: {:ok, t()} | {:error, String.t()}
+  def create_multi(m, pubkeys) when is_valid_multi(m, pubkeys) do
+    try do
+      # checkmultisig
+      {:ok, s} = push_op(new(), 0xAE)
+      {:ok, s} = push_op(s, 0x50 + length(pubkeys))
+      s = fill_multi_keys(s, pubkeys)
+      push_op(s, 0x50 + m)
+    rescue
+      _ -> {:error, "invalid public key."}
+    end
+  end
+
+  def create_multi(_, _), do: {:error, "invalid multisig: must be of form: (int, list(%Point)"}
+
+  defp fill_multi_keys(s, []), do: s
+
+  defp fill_multi_keys(s, [pk = %Point{} | pubkeys]) do
+    {:ok, s} = push_data(fill_multi_keys(s, pubkeys), Point.sec(pk))
+    s
+  end
+
+  defp fill_multi_keys(_, _), do: raise(ArgumentError)
+
+  @doc """
+    create_p2sh_multi returns both a P2SH-wrapped multisig script 
+    and the underlying raw multisig script using m and the list of public keys.
+  """
+  @spec create_p2sh_multi(non_neg_integer(), list(Point.t())) ::
+          {:ok, t(), t()} | {:error, String.t()}
+  def create_p2sh_multi(m, pubkeys) do
+    case create_multi(m, pubkeys) do
+      {:ok, multi} ->
+        h160 = hash160(multi)
+        {:ok, p2sh} = create_p2sh(h160)
+        {:ok, p2sh, multi}
+
+      {:error, msg} ->
+        {:error, msg}
+    end
+  end
+
+  @doc """
+    create_p2wsh_multi returns both a P2WSH-wrapped multisig script 
+    and the underlying raw multisig script using m and the list of public keys.
+  """
+  @spec create_p2wsh_multi(non_neg_integer(), list(Point.t())) ::
+          {:ok, t(), t()} | {:error, String.t()}
+  def create_p2wsh_multi(m, pubkeys) do
+    case create_multi(m, pubkeys) do
+      {:ok, multi} ->
+        h256 = sha256(multi)
+        {:ok, p2wsh} = create_p2wsh(h256)
+        {:ok, p2wsh, multi}
+
+      {:error, msg} ->
+        {:error, msg}
+    end
+  end
 
   @doc """
   	create_witness_scriptpubkey creates any witness script from a witness version

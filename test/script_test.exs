@@ -5,6 +5,95 @@ defmodule Bitcoinex.ScriptTest do
   alias Bitcoinex.{Script, Utils}
   alias Bitcoinex.Secp256k1.Point
 
+  @raw_multisig_scripts [
+    "522103a882d414e478039cd5b52a92ffb13dd5e6bd4515497439dffd691a0f12af957521036ce31db9bdd543e72fe3039a1f1c047dab87037c36a669ff90e28da1848f640d210311ffd36c70776538d079fbae117dc38effafb33304af83ce4894589747aee1ef53ae",
+    # from testnet tx: c7d1582d4cf85fbd10732002c5bb06068d4b86cfd5cca151ef88104c6702435a
+    "52210265e6f7fb614a369c9230912a3bb09c33c5c5be2e1bcfc2293ecaed46708e0b5c2103f546edf7b434b50aa0115c1c82a0f9a96505d9eff55d2fe3b848c4b51c06b6432102908375f301c7ea583f7e113939eab1164abda4ac27898b1cf78abf1c82f02da953ae",
+    # from tx: 336b9de8941d945a41f9d982eaadb344b3457d22edf43a1aaec29252a58e6566
+    "52210375e00eb72e29da82b89367947f29ef34afb75e8654f6ea368e0acdfd92976b7c2103a1b26313f430c4b15bb1fdce663207659d8cac749a0e53d70eff01874496feff2103c96d495bfdd5ba4145e3e046fee45e84a8a48ad05bd8dbb395c011a32cf9f88053ae",
+    # from tx: 578e8ab81e6eff430fd37eaa460377387d75f0221881fe13cf9e5b400d98b0e3
+    "52210353d36c27d345e0cda30800d769dbf239b16d19e0a28821c092ad277f1ae569f121034e2c48afb6d9cd6446442eeb6867a7787f16d28758b88ec99fa178d941930c6b2103142776b8982a94855686f175a31edbdc48336741e08b07c4cad5bc6852f6197353ae",
+    "522103af40079dabd57915a41fc676c9a1e8e9278b9aa7e3b2cf7db63435e357bd589521024a84c829eb98eb69b37be6adcdc206b462b4c9549a0db2dbc91279a2f031a50a2102a5264fbc1be9b9a7d03d9637a5534ce8d59a06c4c1f30802fe52e7bf6c1dd97153ae"
+  ]
+
+  @raw_multisigs_with_data [
+    # from testnet tx: c7d1582d4cf85fbd10732002c5bb06068d4b86cfd5cca151ef88104c6702435a
+    %{
+      script_hex:
+        "52210265e6f7fb614a369c9230912a3bb09c33c5c5be2e1bcfc2293ecaed46708e0b5c2103f546edf7b434b50aa0115c1c82a0f9a96505d9eff55d2fe3b848c4b51c06b6432102908375f301c7ea583f7e113939eab1164abda4ac27898b1cf78abf1c82f02da953ae",
+      network: :testnet,
+      wsh_addr: "",
+      sh_addr: "2NFhEhTAiXJ8z8yEYnXe6SJX5E8bRgB5ZgY"
+    },
+    # from tx: 336b9de8941d945a41f9d982eaadb344b3457d22edf43a1aaec29252a58e6566
+    %{
+      script_hex:
+        "52210375e00eb72e29da82b89367947f29ef34afb75e8654f6ea368e0acdfd92976b7c2103a1b26313f430c4b15bb1fdce663207659d8cac749a0e53d70eff01874496feff2103c96d495bfdd5ba4145e3e046fee45e84a8a48ad05bd8dbb395c011a32cf9f88053ae",
+      network: :mainnet,
+      wsh_addr: "bc1qwqdg6squsna38e46795at95yu9atm8azzmyvckulcc7kytlcckxswvvzej",
+      sh_addr: ""
+    },
+    # from tx: 578e8ab81e6eff430fd37eaa460377387d75f0221881fe13cf9e5b400d98b0e3
+    %{
+      script_hex:
+        "52210353d36c27d345e0cda30800d769dbf239b16d19e0a28821c092ad277f1ae569f121034e2c48afb6d9cd6446442eeb6867a7787f16d28758b88ec99fa178d941930c6b2103142776b8982a94855686f175a31edbdc48336741e08b07c4cad5bc6852f6197353ae",
+      network: :mainnet,
+      wsh_addr: "bc1q95wu94w9a08yzed4vc4v9z8v3zndltmgurkh893uy2qdk0lacneqawrq36",
+      sh_addr: ""
+    },
+    # from tx: 578e8ab81e6eff430fd37eaa460377387d75f0221881fe13cf9e5b400d98b0e3
+    %{
+      script_hex:
+        "522103af40079dabd57915a41fc676c9a1e8e9278b9aa7e3b2cf7db63435e357bd589521024a84c829eb98eb69b37be6adcdc206b462b4c9549a0db2dbc91279a2f031a50a2102a5264fbc1be9b9a7d03d9637a5534ce8d59a06c4c1f30802fe52e7bf6c1dd97153ae",
+      network: :mainnet,
+      wsh_addr: "bc1qamfphjerjc4jdmmnwku26x8e49m2455x65kldefw79j6j24fya9sy5r9jg",
+      sh_addr: ""
+    }
+  ]
+
+  @p2pk_scripts [
+    # from tx df2b060fa2e5e9c8ed5eaf6a45c13753ec8c63282b2688322eba40cd98ea067a
+    "4104678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5fac",
+    # from tx 2d05f0c9c3e1c226e63b5fac240137687544cf631cd616fd34fd188fc9020866
+    "4104e70a02f5af48a1989bf630d92523c9d14c45c75f7d1b998e962bff6ff9995fc5bdb44f1793b37495d80324acba7c8f537caaf8432b8d47987313060cc82d8a93ac",
+    # from tx da69323ec33972675d9594b6569983bfc2257bced36d8df541a2aadfe31db016
+    "21035ce3ee697cd5148e12ab7bb45c1ef4dd5ee2bf4867d9d35135e214e073211344ac"
+  ]
+
+  @p2sh_scripts [
+    # from tx db11e3569da3583f3001514163b5f1c4e0556dd550bfa4518f15095258d43bf3
+    "a9148a7810adbe753308a8ccae63f81841c92554174487",
+    # from tx 6dd1763922d5bf62a90d61b4dc1bce41df3f2dd599cbd94b5a75264b3dd2c7b2
+    "a9148b56848ee759ae7370ca2af7d4d244db2dd3de6b87",
+    "a9140549064a44f4864730c5f80495b062478cd6e68587"
+  ]
+
+  @p2pkh_scripts [
+    # from tx 0a6140bbf75e73f11b90c4dabf71f83394d493d635c2bbf19d207fb821de74f5
+    "76a91408be653b5582bb9c1b85ab1da70906946c90acc588ac",
+    # from tx be626ca78e84876dec63622f9de36264925d8390fbaae65948bf459c623ede7f
+    "76a9140609f52a6954adfdc13ecbcf07713c5a12aee8f988ac",
+    "76a91491c9753821600b37ced3d0b04de88cd2cea06c2588ac",
+    # from tx 6dd1763922d5bf62a90d61b4dc1bce41df3f2dd599cbd94b5a75264b3dd2c7b2
+    "76a9146c25434c537c6e69fa3ebf4ea47f00b5e3e1d6b988ac"
+  ]
+
+  @p2wpkh_scripts [
+    # from tx 16940cf0fd17da81f47fbae29a6e1eaad844fd45e772292022d0f066db43f007
+    "00146756d75cc116c710bdfa4cbc12dd3f9629d5d61f",
+    # from tx 0176631c41a73cf1391822a9dc50a3719e96c33f4f2e51e7f9ea65afd87781b6
+    "00140d3953d2b732f7a293e3c4dc2b6b309f71b9c692",
+    # from tx 6dd1763922d5bf62a90d61b4dc1bce41df3f2dd599cbd94b5a75264b3dd2c7b2
+    "0014c944072f05f3dadf417c90f3f19c3b784562b116"
+  ]
+
+  @p2wsh_scripts [
+    # from tx d3bde81de54f8ace1cf98bab6b06772f752979e3d4e7866691fcb2965d9c766c
+    "0020701a8d401c84fb13e6baf169d59684e17abd9fa216c8cc5b9fc63d622ff8c58d",
+    # from tx c561120cdbe161186a3264aeda32ee964e4615a0831bbd204dd36ff9460d6af7
+    "0020701a8d401c84fb13e6baf169d59684e17abd9fa216c8cc5b9fc63d622ff8c58d"
+  ]
+
   describe "test basics functions" do
     test "test new/0 and empty?/1" do
       s = Script.new()
@@ -12,19 +101,6 @@ defmodule Bitcoinex.ScriptTest do
 
       {:ok, s} = Script.push_op(s, :op_true)
       assert !Script.empty?(s)
-    end
-
-    test "test is_true?/1" do
-      s = Script.new()
-      {:ok, s} = Script.push_op(s, :op_true)
-      assert Script.is_true?(s)
-
-      s1 = Script.new()
-      {:ok, s1} = Script.push_op(s1, 0x51)
-      assert Script.is_true?(s1)
-
-      {:ok, s2} = Script.push_op(s1, :op_true)
-      assert !Script.is_true?(s2)
     end
 
     test "test script_length/1 and byte_length/1" do
@@ -353,6 +429,159 @@ defmodule Bitcoinex.ScriptTest do
       assert p2wpkh == p2wpkh2
     end
 
+    test "test is_multi?" do
+      for ms <- @raw_multisig_scripts do
+        {:ok, multi} = Script.parse_script(ms)
+        assert Script.is_multi?(multi)
+      end
+    end
+
+    test "test create_multi" do
+      # these keys will be added to multisig as compressed keys
+      {:ok, pk1} =
+        Point.parse_public_key(
+          "04a882d414e478039cd5b52a92ffb13dd5e6bd4515497439dffd691a0f12af9575fa349b5694ed3155b136f09e63975a1700c9f4d4df849323dac06cf3bd6458cd"
+        )
+
+      {:ok, pk2} =
+        Point.parse_public_key(
+          "046ce31db9bdd543e72fe3039a1f1c047dab87037c36a669ff90e28da1848f640de68c2fe913d363a51154a0c62d7adea1b822d05035077418267b1a1379790187"
+        )
+
+      {:ok, pk3} =
+        Point.parse_public_key(
+          "0411ffd36c70776538d079fbae117dc38effafb33304af83ce4894589747aee1ef992f63280567f52f5ba870678b4ab4ff6c8ea600bd217870a8b4f1f09f3a8e83"
+        )
+
+      {:ok, multi} = Script.create_multi(2, [pk1, pk2, pk3])
+      assert Script.is_multi?(multi)
+
+      {:ok, pk1} =
+        Point.parse_public_key(
+          "03af40079dabd57915a41fc676c9a1e8e9278b9aa7e3b2cf7db63435e357bd5895"
+        )
+
+      {:ok, pk2} =
+        Point.parse_public_key(
+          "024a84c829eb98eb69b37be6adcdc206b462b4c9549a0db2dbc91279a2f031a50a"
+        )
+
+      {:ok, pk3} =
+        Point.parse_public_key(
+          "02a5264fbc1be9b9a7d03d9637a5534ce8d59a06c4c1f30802fe52e7bf6c1dd971"
+        )
+
+      {:ok, multi} = Script.create_multi(1, [pk1, pk2, pk3])
+      assert Script.is_multi?(multi)
+
+      {:ok, multi} = Script.create_multi(2, [pk1, pk2, pk3])
+      assert Script.is_multi?(multi)
+
+      {:ok, multi} = Script.create_multi(3, [pk1, pk2, pk3])
+      assert Script.is_multi?(multi)
+
+      # m cant be greater than n in m-of-n
+      {:error, _msg} = Script.create_multi(4, [pk1, pk2, pk3])
+      # m cant be 0
+      {:error, _msg} = Script.create_multi(0, [pk1, pk2, pk3])
+      # m cant be greater than n in m-of-n
+      {:error, _msg} = Script.create_multi(0, [])
+    end
+
+    test "test create_p2sh_multi" do
+      {:ok, pk1} =
+        Point.parse_public_key(
+          "04a882d414e478039cd5b52a92ffb13dd5e6bd4515497439dffd691a0f12af9575fa349b5694ed3155b136f09e63975a1700c9f4d4df849323dac06cf3bd6458cd"
+        )
+
+      {:ok, pk2} =
+        Point.parse_public_key(
+          "046ce31db9bdd543e72fe3039a1f1c047dab87037c36a669ff90e28da1848f640de68c2fe913d363a51154a0c62d7adea1b822d05035077418267b1a1379790187"
+        )
+
+      {:ok, pk3} =
+        Point.parse_public_key(
+          "0411ffd36c70776538d079fbae117dc38effafb33304af83ce4894589747aee1ef992f63280567f52f5ba870678b4ab4ff6c8ea600bd217870a8b4f1f09f3a8e83"
+        )
+
+      {:ok, p2sh, multi} = Script.create_p2sh_multi(2, [pk1, pk2, pk3])
+      assert Script.is_p2sh?(p2sh)
+      assert Script.is_multi?(multi)
+
+      {:ok, pk1} =
+        Point.parse_public_key(
+          "03af40079dabd57915a41fc676c9a1e8e9278b9aa7e3b2cf7db63435e357bd5895"
+        )
+
+      {:ok, pk2} =
+        Point.parse_public_key(
+          "024a84c829eb98eb69b37be6adcdc206b462b4c9549a0db2dbc91279a2f031a50a"
+        )
+
+      {:ok, pk3} =
+        Point.parse_public_key(
+          "02a5264fbc1be9b9a7d03d9637a5534ce8d59a06c4c1f30802fe52e7bf6c1dd971"
+        )
+
+      {:ok, p2sh, multi} = Script.create_p2sh_multi(2, [pk1, pk2, pk3])
+      assert Script.is_p2sh?(p2sh)
+      assert Script.is_multi?(multi)
+
+      # m cant be greater than n in m-of-n
+      {:error, _msg} = Script.create_p2sh_multi(4, [pk1, pk2, pk3])
+      # m cant be 0
+      {:error, _msg} = Script.create_p2sh_multi(0, [pk1, pk2, pk3])
+      # m cant be greater than n in m-of-n
+      {:error, _msg} = Script.create_p2sh_multi(0, [])
+    end
+
+    test "test create_p2wsh_multi" do
+      {:ok, pk1} =
+        Point.parse_public_key(
+          "04a882d414e478039cd5b52a92ffb13dd5e6bd4515497439dffd691a0f12af9575fa349b5694ed3155b136f09e63975a1700c9f4d4df849323dac06cf3bd6458cd"
+        )
+
+      {:ok, pk2} =
+        Point.parse_public_key(
+          "046ce31db9bdd543e72fe3039a1f1c047dab87037c36a669ff90e28da1848f640de68c2fe913d363a51154a0c62d7adea1b822d05035077418267b1a1379790187"
+        )
+
+      {:ok, pk3} =
+        Point.parse_public_key(
+          "0411ffd36c70776538d079fbae117dc38effafb33304af83ce4894589747aee1ef992f63280567f52f5ba870678b4ab4ff6c8ea600bd217870a8b4f1f09f3a8e83"
+        )
+
+      {:ok, p2wsh, multi} = Script.create_p2wsh_multi(2, [pk1, pk2, pk3])
+      assert Script.is_p2wsh?(p2wsh)
+      assert Script.is_multi?(multi)
+
+      {:ok, pk1} =
+        Point.parse_public_key(
+          "03af40079dabd57915a41fc676c9a1e8e9278b9aa7e3b2cf7db63435e357bd5895"
+        )
+
+      {:ok, pk2} =
+        Point.parse_public_key(
+          "024a84c829eb98eb69b37be6adcdc206b462b4c9549a0db2dbc91279a2f031a50a"
+        )
+
+      {:ok, pk3} =
+        Point.parse_public_key(
+          "02a5264fbc1be9b9a7d03d9637a5534ce8d59a06c4c1f30802fe52e7bf6c1dd971"
+        )
+
+      {:ok, p2wsh, multi} = Script.create_p2wsh_multi(2, [pk1, pk2, pk3])
+      assert Script.is_p2wsh?(p2wsh)
+      assert Script.is_multi?(multi)
+
+      # m cant be greater than n in m-of-n
+      {:error, _msg} = Script.create_p2wsh_multi(4, [pk1, pk2, pk3])
+      # m cant be 0
+      {:error, _msg} = Script.create_p2wsh_multi(0, [pk1, pk2, pk3])
+      # m cant be greater than n in m-of-n
+      {:error, _msg} = Script.create_p2wsh_multi(0, [])
+    end
+
     test "test create scripts from pubkey" do
       hex = "033b15e1b8c51bb947a134d17addc3eb6abbda551ad02137699636f907ad7e0f1a"
       h160 = hex |> Base.decode16!(case: :lower) |> Utils.hash160()
@@ -385,6 +614,33 @@ defmodule Bitcoinex.ScriptTest do
       {:ok, p2sh_p2wpkh, p2wpkh} = Script.public_key_to_p2sh_p2wpkh(pubkey)
       assert Script.is_p2sh?(p2sh_p2wpkh)
       assert Script.is_p2wpkh?(p2wpkh)
+    end
+
+    test "test get_script_type/1" do
+      for s <- @p2pk_scripts do
+        {:ok, script} = Script.parse_script(s)
+        assert Script.get_script_type(script) == :p2pk
+      end
+
+      for s <- @p2pkh_scripts do
+        {:ok, script} = Script.parse_script(s)
+        assert Script.get_script_type(script) == :p2pkh
+      end
+
+      for s <- @p2sh_scripts do
+        {:ok, script} = Script.parse_script(s)
+        assert Script.get_script_type(script) == :p2sh
+      end
+
+      for s <- @p2wpkh_scripts do
+        {:ok, script} = Script.parse_script(s)
+        assert Script.get_script_type(script) == :p2wpkh
+      end
+
+      for s <- @p2wsh_scripts do
+        {:ok, script} = Script.parse_script(s)
+        assert Script.get_script_type(script) == :p2wsh
+      end
     end
   end
 
@@ -662,6 +918,14 @@ defmodule Bitcoinex.ScriptTest do
       assert Script.to_hex(s) == s_hex
     end
 
+    test "test serialize/parse multisig scripts" do
+      for ms <- @raw_multisig_scripts do
+        {:ok, multi} = Script.parse_script(ms)
+        assert Script.is_multi?(multi)
+        assert Script.to_hex(multi) == ms
+      end
+    end
+
     test "serialize other scripts" do
       # op_0 op_0 op_0 op_0 op_0 op_1
       s_hex = "000000000051"
@@ -800,6 +1064,31 @@ defmodule Bitcoinex.ScriptTest do
       {:ok, s} = Script.create_p2wsh(h256)
       assert Script.to_address(s, :mainnet) == {:ok, addr}
     end
+
+    test "test raw multisig to address" do
+      for multi <- @raw_multisigs_with_data do
+        {:ok, ms} = Script.parse_script(multi.script_hex)
+        {:ok, m, pks} = Script.extract_multi_policy(ms)
+
+        if multi.sh_addr != "" do
+          {:ok, p2sh, multi_script} = Script.create_p2sh_multi(m, pks)
+
+          {:ok, addr} = Script.to_address(p2sh, multi.network)
+
+          assert multi_script == ms
+          assert addr == multi.sh_addr
+        end
+
+        if multi.wsh_addr != "" do
+          {:ok, p2wsh, multi_script} = Script.create_p2wsh_multi(m, pks)
+
+          {:ok, addr} = Script.to_address(p2wsh, multi.network)
+
+          assert multi_script == ms
+          assert addr == multi.wsh_addr
+        end
+      end
+    end
   end
 
   describe "test from_address" do
@@ -901,6 +1190,26 @@ defmodule Bitcoinex.ScriptTest do
       {:ok, script, network} = Script.from_address(addr)
       assert Script.is_p2wpkh?(script)
       assert network == :mainnet
+    end
+  end
+
+  describe "test extract multisig policy" do
+    test "extract policy from multisig script" do
+      for multi <- @raw_multisigs_with_data do
+        {:ok, ms} = Script.parse_script(multi.script_hex)
+        {:ok, m, pks} = Script.extract_multi_policy(ms)
+        {:ok, ms2} = Script.create_multi(m, pks)
+
+        assert ms == ms2
+      end
+
+      for m <- @raw_multisig_scripts do
+        {:ok, ms} = Script.parse_script(m)
+        {:ok, m, pks} = Script.extract_multi_policy(ms)
+        {:ok, ms2} = Script.create_multi(m, pks)
+
+        assert ms == ms2
+      end
     end
   end
 
