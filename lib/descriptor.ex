@@ -50,15 +50,17 @@ defmodule Bitcoinex.Descriptor do
 		# if dkey is passed, returns identity
 		def from_key(dkey = %__MODULE__{}), do: dkey
 		def from_key(pk = %Point{}), do: from_public_key(pk)
-		def from_key(sk = %PrivateKey{}, network), do: from_private_key(sk, network)
+		def from_key(_), do: {:error, "invalid key"}
 
-		def from_key(
-					xkey = %ExtendedKey{},
-					parent_fingerprint \\ <<>>,
-					anc_path = %DerivationPath{} \\ DerivationPath.new(),
-					desc_path = %DerivationPath{} \\ DerivationPath.new()
-				),
-				do: from_extended_key(xkey, parent_fingerprint, anc_path, desc_path)
+		def from_key(sk = %PrivateKey{}, network), do: from_private_key(sk, network)
+		def from_key(xkey = %ExtendedKey{}, pathdata) do
+			defaults = %{parent_fingerprint: <<>>,
+									anc_path: DerivationPath.new(), 
+									desc_path: DerivationPath.new()}
+			data = Map.merge(defaults, pathdata)
+			from_extended_key(xkey, data.parent_fingerprint, data.anc_path, data.desc_path)
+		end
+		def from_key(_, _), do: {:error, "invalid key"}
 
 		def from_public_key(pk = %Point{}) do
 			%__MODULE__{key: pk}
@@ -73,9 +75,9 @@ defmodule Bitcoinex.Descriptor do
 
 		def from_extended_key(
 					xkey = %ExtendedKey{},
-					parent_fingerprint \\ <<>>,
-					anc_path = %DerivationPath{} \\ DerivationPath.new(),
-					desc_path = %DerivationPath{} \\ DerivationPath.new()
+					parent_fingerprint,
+					anc_path = %DerivationPath{},
+					desc_path = %DerivationPath{}
 				) do
 			%__MODULE__{
 				key: xkey,
@@ -197,6 +199,7 @@ defmodule Bitcoinex.Descriptor do
 					:pk | :pkh | :sh | :wpkh | :wsh | :combo | :multi | :sortedmulti | :addr | :raw
 	@descriptor_types ~w(pk pkh sh wpkh wsh combo multi sortedmulti addr raw)a
 	@top_level_only [:sh, :combo, :addr, :raw]
+	@type dkey_type :: DKey.t() | Point.t() | PrivateKey.t()
 
 	@type t :: %__MODULE__{
 					script_type: descriptor_type,
@@ -282,6 +285,7 @@ defmodule Bitcoinex.Descriptor do
 		end
 	end
 
+	@spec serialize_descriptor(t()) :: {:ok, String.t()} | {:error, String.t()}
 	def serialize_descriptor(%__MODULE__{script_type: st, data: data}) do
 		cond do
 			st in [:sh, :wsh] -> serialize_recursive(st, data)
@@ -316,7 +320,7 @@ defmodule Bitcoinex.Descriptor do
 		to_string(script_type) <> "(#{data})"
 	end
 
-	def to_script_type(descriptor) do
+	def get_script_type(descriptor) do
 		case descriptor.script_type do
 			:pk -> :p2pk
 			:pkh -> :p2pkh
@@ -327,7 +331,9 @@ defmodule Bitcoinex.Descriptor do
 			:multi -> :multi
 			:sortedmulti -> :multi
 			# :addr -> 
+				# return exacgt address script type
 			# :raw -> 
+				# return exact script type
 		end
 	end
 
@@ -346,6 +352,9 @@ defmodule Bitcoinex.Descriptor do
 		end
 	end
 
+	# Allow users to easily set an xpub, origin and desc info. this is a weird way
+
+	@spec create_p2pk(dkey_type()) :: {:ok, t()} | {:error, String.t()}
 	def create_p2pk(key) do
 		try do
 			{:ok, %__MODULE__{script_type: :pk, data: DKey.from_key(key)}}
@@ -354,6 +363,7 @@ defmodule Bitcoinex.Descriptor do
 		end
 	end
 
+	@spec create_p2pkh(dkey_type()) :: {:ok, t()} | {:error, String.t()}
 	def create_p2pkh(key) do
 		try do
 			{:ok, %__MODULE__{script_type: :pkh, data: DKey.from_key(key)}}
@@ -362,14 +372,13 @@ defmodule Bitcoinex.Descriptor do
 		end
 	end
 
+	@spec create_p2sh(t()) :: {:ok, t()} | {:error, String.t()}
 	def create_p2sh(descriptor = %__MODULE__{script_type: st}) when st not in @top_level_only do
-		try do
-			{:ok, %__MODULE__{script_type: :sh, data: descriptor}}
-		rescue
-			_ -> {:error, "invalid script"}
-		end
+		{:ok, %__MODULE__{script_type: :sh, data: descriptor}}
 	end
+	def create_p2sh(_), do: {:error, "p2sh descriptors can only contain descriptors."}
 
+	@spec create_p2sh(t()) :: {:ok, t()} | {:error, String.t()}
 	def create_p2wsh(descriptor = %__MODULE__{script_type: st}) when st not in [:wsh | [:wpkh | @top_level_only]] do
 		try do
 			{:ok, %__MODULE__{script_type: :wsh, data: descriptor}}
@@ -378,6 +387,7 @@ defmodule Bitcoinex.Descriptor do
 		end
 	end
 
+	@spec create_p2wpkh(dkey_type()) :: {:ok, t()} | {:error, String.t()}
 	def create_p2wpkh(key) do
 		try do
 			{:ok, %__MODULE__{script_type: :wpkh, data: DKey.from_key(key)}}
@@ -386,6 +396,7 @@ defmodule Bitcoinex.Descriptor do
 		end
 	end
 
+	@spec create_p2wpkh(dkey_type()) :: {:ok, t()} | {:error, String.t()}
 	def create_combo(key) do
 		try do
 			{:ok, %__MODULE__{script_type: :combo, data: DKey.from_key(key)}}
@@ -394,6 +405,7 @@ defmodule Bitcoinex.Descriptor do
 		end
 	end
 
+	@spec create_multi({non_neg_integer(), list(dkey_type())}) :: {:ok, t()} | {:error, String.t()}
 	def create_multi({m, keys}) do
 		try do
 			{:ok, %__MODULE__{script_type: :multi, data: {m, Enum.map(keys, &DKey.from_key/1)}}}
@@ -402,6 +414,7 @@ defmodule Bitcoinex.Descriptor do
 		end
 	end
 
+	@spec create_sortedmulti({non_neg_integer(), list(dkey_type())}) :: {:ok, t()} | {:error, String.t()}
 	def create_sortedmulti({m, keys}) do
 		try do
 			{:ok, %__MODULE__{script_type: :sortedmulti, data: {m, Enum.map(keys, &DKey.from_key/1)}}}
@@ -410,6 +423,7 @@ defmodule Bitcoinex.Descriptor do
 		end
 	end
 
+	@spec create_addr(String.t()) :: {:ok, t()} | {:error, String.t()}
 	def create_addr(addr_str) do
 		case Script.from_address(addr_str) do
 			# check address is valid
