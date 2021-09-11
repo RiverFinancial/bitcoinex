@@ -32,7 +32,7 @@ defmodule Bitcoinex.Transaction do
     TxID is sha256(sha256(nVersion | txins | txouts | nLockTime))
   """
   def transaction_id(txn) do
-    legacy_txn = TxUtils.serialize(txn)
+    legacy_txn = TxUtils.serialize(%{txn | witnesses: nil})
 
     Base.encode16(
       <<:binary.decode_unsigned(
