@@ -40,6 +40,8 @@ defmodule Bitcoinex.ExtendedKey do
     def min_hardened_child_num(), do: @min_hardened_child_num
     def max_hardened_child_num(), do: @max_hardened_child_num
 
+    def new(), do: %__MODULE__{child_nums: []}
+
     @spec to_string(t()) :: {:ok, String.t()} | {:error, String.t()}
     def to_string(%__MODULE__{child_nums: path}), do: tto_string(path, "")
 
@@ -49,6 +51,9 @@ defmodule Bitcoinex.ExtendedKey do
       cond do
         l == :any ->
           tto_string(rest, path_acc <> "*/")
+
+        l == :anyh ->
+          tto_string(rest, path_acc <> "*'/")
 
         l > @max_hardened_child_num ->
           {:error, "index cannot be greater than #{@max_hardened_child_num}"}
@@ -88,6 +93,8 @@ defmodule Bitcoinex.ExtendedKey do
         [""] -> []
         ["m" | rest] -> tfrom_string(rest)
         ["*" | rest] -> [:any | tfrom_string(rest)]
+        ["*'" | rest] -> [:anyh | tfrom_string(rest)]
+        ["*h" | rest] -> [:anyh | tfrom_string(rest)]
         [i | rest] -> [str_to_level(i) | tfrom_string(rest)]
       end
     end
@@ -211,6 +218,26 @@ defmodule Bitcoinex.ExtendedKey do
 
   @spec get_parent_fingerprint(t()) :: binary
   def get_parent_fingerprint(%__MODULE__{parent_fingerprint: pfp}), do: pfp
+
+  @spec get_fingerprint(t()) :: binary
+  def get_fingerprint(xkey = %__MODULE__{}) do
+    if xkey.prefix in @prv_prefixes do
+      {:ok, prvkey} =
+        xkey.key
+        |> :binary.decode_unsigned()
+        |> PrivateKey.new()
+
+      prvkey
+      |> PrivateKey.to_point()
+      |> Point.sec()
+      |> Bitcoinex.Utils.hash160()
+      |> :binary.part(0, 4)
+    else
+      xkey.key
+      |> Bitcoinex.Utils.hash160()
+      |> :binary.part(0, 4)
+    end
+  end
 
   @spec get_child_num(t()) :: binary
   def get_child_num(%__MODULE__{child_num: child_num}), do: child_num
