@@ -143,7 +143,7 @@ defmodule Bitcoinex.Transaction.Utils do
     end
   end
 
-  @spec serialize(Transaction.t()) :: iolist()
+  @spec serialize(%Transaction{witnesses: nil}) :: binary
   def serialize(%Transaction{witnesses: witness} = txn)
       when is_list(witness) and length(witness) > 0 do
     version = <<txn.version::little-size(32)>>
@@ -160,7 +160,7 @@ defmodule Bitcoinex.Transaction.Utils do
       marker <> flag <> tx_in_count <> inputs <> tx_out_count <> outputs <> witness <> lock_time
   end
 
-  @spec serialize(Transaction.t()) :: iolist()
+  @spec serialize(Transaction.t()) :: binary
   def serialize(txn) do
     version = <<txn.version::little-size(32)>>
     tx_in_count = serialize_compact_size_unsigned_int(length(txn.inputs))
@@ -226,7 +226,7 @@ defmodule Bitcoinex.Transaction.Witness do
     witness
   end
 
-  @spec serialize_witness(list(Witness.t())) :: iolist()
+  @spec serialize_witness(list(Witness.t())) :: binary
   def serialize_witness(witnesses) do
     serialize_witness(witnesses, <<>>)
   end
@@ -237,7 +237,7 @@ defmodule Bitcoinex.Transaction.Witness do
     [witness | witnesses] = witnesses
 
     serialized_witness =
-      if length(witness.txinwitness) == 0 do
+      if Enum.empty?(witness.txinwitness) do
         <<0x0::big-size(8)>>
       else
         stack_len = TxUtils.serialize_compact_size_unsigned_int(length(witness.txinwitness))

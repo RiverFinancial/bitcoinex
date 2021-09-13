@@ -41,7 +41,7 @@ defmodule Bitcoinex.PSBT do
     end
   end
 
-  @spec serialize(%Bitcoinex.PSBT{}) :: {:ok, binary}
+  @spec serialize(%Bitcoinex.PSBT{}) :: binary
   defp serialize(packet) do
     global = Global.serialize_global(packet.global)
     inputs = In.serialize_inputs(packet.inputs)
@@ -52,7 +52,7 @@ defmodule Bitcoinex.PSBT do
       global <> inputs <> outputs
   end
 
-  @spec encode_b64(%Bitcoinex.PSBT{}) :: {:ok, String.t()}
+  @spec encode_b64(%Bitcoinex.PSBT{}) :: String.t()
   def encode_b64(packet) do
     serialize(packet) |> Base.encode64()
   end
@@ -318,7 +318,7 @@ defmodule Bitcoinex.PSBT.In do
         val_len = TxUtils.serialize_compact_size_unsigned_int(byte_size(val))
         key_len <> key <> val_len <> val
 
-      :psbt_in_sighash_type ->
+      :sighash_type ->
         key = <<@psbt_in_partial_sig::big-size(8)>>
         key_len = TxUtils.serialize_compact_size_unsigned_int(byte_size(key))
         val = <<value::little-size(32)>>
@@ -367,9 +367,6 @@ defmodule Bitcoinex.PSBT.In do
 
         val_len = TxUtils.serialize_compact_size_unsigned_int(byte_size(val))
         key_len <> key <> val_len <> val
-
-      _ ->
-        <<>>
     end
   end
 
@@ -597,9 +594,6 @@ defmodule Bitcoinex.PSBT.Out do
 
         val_len = TxUtils.serialize_compact_size_unsigned_int(byte_size(val))
         key_len <> key <> val_len <> val
-
-      _ ->
-        <<>>
     end
   end
 
