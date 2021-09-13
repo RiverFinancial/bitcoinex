@@ -236,16 +236,22 @@ defmodule Bitcoinex.Transaction.Witness do
   defp serialize_witness(witnesses, serialized_witnesses) do
     [witness | witnesses] = witnesses
 
-    stack_len = TxUtils.serialize_compact_size_unsigned_int(length(witness.txinwitness))
+    serialized_witness =
+      if length(witness.txinwitness) == 0 do
+        <<0x0::big-size(8)>>
+      else
+        stack_len = TxUtils.serialize_compact_size_unsigned_int(length(witness.txinwitness))
 
-    field =
-      Enum.reduce(witness.txinwitness, <<>>, fn v, acc ->
-        {:ok, item} = Base.decode16(v, case: :lower)
-        item_len = TxUtils.serialize_compact_size_unsigned_int(byte_size(item))
-        acc <> item_len <> item
-      end)
+        field =
+          Enum.reduce(witness.txinwitness, <<>>, fn v, acc ->
+            {:ok, item} = Base.decode16(v, case: :lower)
+            item_len = TxUtils.serialize_compact_size_unsigned_int(byte_size(item))
+            acc <> item_len <> item
+          end)
 
-    serialized_witness = stack_len <> field
+        stack_len <> field
+      end
+
     serialize_witness(witnesses, serialized_witnesses <> serialized_witness)
   end
 
