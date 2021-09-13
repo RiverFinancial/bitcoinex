@@ -81,7 +81,20 @@ defmodule Bitcoinex.PSBTTest do
           }
         }
       ],
-      expected_out: []
+      expected_out: [
+        %Bitcoinex.PSBT.Out{
+          bip32_derivation: nil,
+          proprietary: nil,
+          redeem_script: nil,
+          witness_script: nil
+        },
+        %Bitcoinex.PSBT.Out{
+          bip32_derivation: nil,
+          proprietary: nil,
+          redeem_script: nil,
+          witness_script: nil
+        }
+      ]
     },
     %{
       psbt:
@@ -149,7 +162,20 @@ defmodule Bitcoinex.PSBTTest do
           }
         }
       ],
-      expected_out: []
+      expected_out: [
+        %Bitcoinex.PSBT.Out{
+          bip32_derivation: nil,
+          proprietary: nil,
+          redeem_script: nil,
+          witness_script: nil
+        },
+        %Bitcoinex.PSBT.Out{
+          bip32_derivation: nil,
+          proprietary: nil,
+          redeem_script: nil,
+          witness_script: nil
+        }
+      ]
     },
     %{
       psbt:
@@ -176,22 +202,33 @@ defmodule Bitcoinex.PSBTTest do
           witnesses: nil
         },
         version: nil,
-        xpub: %{
-          derivation: "d90c6a4fae00008001000080",
-          xpub:
-            "tpubDBkJeJo2X94YsvtBEU1eKoibEWiNv51nW5iHhs6VZp59jsE6nen8KZMFyGHuGbCvqjRqirgeMcfpVBkttpUUT6brm4duzSGoZeTbhqCNUu6"
-        }
+        xpub: [
+          %{
+            derivation: [2_147_483_822, 2_147_483_648],
+            master_pfp: 1_332_350_169,
+            xpub:
+              "tpubDBkJeJo2X94Yq3RVz65DoUgyLUkaDrkfyrn2VcgyCRSKCRonvKvCF2FpYDGJWDkdRHBajXJGpc63GnumUt63ySvqCu2XaTRGVTKMYGuFk9H"
+          },
+          %{
+            derivation: [2_147_483_822, 2_147_483_649],
+            master_pfp: 1_332_350_169,
+            xpub:
+              "tpubDBkJeJo2X94YsvtBEU1eKoibEWiNv51nW5iHhs6VZp59jsE6nen8KZMFyGHuGbCvqjRqirgeMcfpVBkttpUUT6brm4duzSGoZeTbhqCNUu6"
+          }
+        ]
       },
       expected_in: [
         %Bitcoinex.PSBT.In{
           bip32_derivation: [
             %{
-              derivation: "d90c6a4fae0000800000008000000000",
-              public_key: "029da12cdb5b235692b91536afefe5c91c3ab9473d8e43b533836ab456299c8871"
+              derivation: [2_147_483_822, 2_147_483_648, 0],
+              public_key: "029da12cdb5b235692b91536afefe5c91c3ab9473d8e43b533836ab456299c8871",
+              pfp: 1_332_350_169
             },
             %{
-              derivation: "d90c6a4fae0000800100008000000000",
-              public_key: "03372b34234ed7cf9c1fea5d05d441557927be9542b162eb02e1ab2ce80224c00b"
+              derivation: [2_147_483_822, 2_147_483_649, 0],
+              public_key: "03372b34234ed7cf9c1fea5d05d441557927be9542b162eb02e1ab2ce80224c00b",
+              pfp: 1_332_350_169
             }
           ],
           final_scriptsig: nil,
@@ -215,8 +252,9 @@ defmodule Bitcoinex.PSBTTest do
         %Out{
           bip32_derivation: [
             %{
-              derivation: "ede45cc5000000800000008001000080",
-              public_key: "039eff1f547a1d5f92dfa2ba7af6ac971a4bd03ba4a734b03156a256b8ad3a1ef9"
+              derivation: [2_147_483_648, 2_147_483_648, 2_147_483_649],
+              public_key: "039eff1f547a1d5f92dfa2ba7af6ac971a4bd03ba4a734b03156a256b8ad3a1ef9",
+              pfp: 3_311_199_469
             }
           ],
           proprietary: nil,
@@ -256,12 +294,14 @@ defmodule Bitcoinex.PSBTTest do
         %Bitcoinex.PSBT.In{
           bip32_derivation: [
             %{
-              derivation: "b4a6ba67000000800000008004000080",
-              public_key: "03b1341ccba7683b6af4f1238cd6e97e7167d569fac47f1e48d47541844355bd46"
+              derivation: [2_147_483_648, 2_147_483_648, 2_147_483_652],
+              public_key: "03b1341ccba7683b6af4f1238cd6e97e7167d569fac47f1e48d47541844355bd46",
+              pfp: 1_740_285_620
             },
             %{
-              derivation: "b4a6ba67000000800000008005000080",
-              public_key: "03de55d1e1dac805e3f8a58c1fbf9b94c02f3dbaafe127fefca4995f26f82083bd"
+              derivation: [2_147_483_648, 2_147_483_648, 2_147_483_653],
+              public_key: "03de55d1e1dac805e3f8a58c1fbf9b94c02f3dbaafe127fefca4995f26f82083bd",
+              pfp: 1_740_285_620
             }
           ],
           final_scriptsig: nil,
@@ -284,7 +324,14 @@ defmodule Bitcoinex.PSBTTest do
           }
         }
       ],
-      expected_out: []
+      expected_out: [
+        %Bitcoinex.PSBT.Out{
+          bip32_derivation: nil,
+          proprietary: nil,
+          redeem_script: nil,
+          witness_script: nil
+        }
+      ]
     },
     %{
       # finalized psbt
@@ -379,22 +426,31 @@ defmodule Bitcoinex.PSBTTest do
         %Bitcoinex.PSBT.Out{
           bip32_derivation: [
             %{
-              derivation: "000000000000008002000080020000000000000000000000010000000d000000",
-              public_key: "023e1a92f74483a4c12a196d6c0253ac589cfadd5964ff3e6c63aef5d577051ed4"
+              derivation: [2_147_483_648, 2_147_483_650, 2, 0, 0, 1, 13],
+              public_key: "023e1a92f74483a4c12a196d6c0253ac589cfadd5964ff3e6c63aef5d577051ed4",
+              pfp: 0
             },
             %{
-              derivation: "000000000000008002000080020000000000000000000000010000000d000000",
-              public_key: "024d0e39b33ab57782a98fd06a7d0653385e509ee3b74dc45559e6db6391d31378"
+              derivation: [2_147_483_648, 2_147_483_650, 2, 0, 0, 1, 13],
+              public_key: "024d0e39b33ab57782a98fd06a7d0653385e509ee3b74dc45559e6db6391d31378",
+              pfp: 0
             },
             %{
-              derivation: "000000000000008002000080020000000000000000000000010000000d000000",
-              public_key: "036c0bae6bcb02e47c857c480ed1d23888c8ad6a66b83ab111cb6b9242afb1c725"
+              derivation: [2_147_483_648, 2_147_483_650, 2, 0, 0, 1, 13],
+              public_key: "036c0bae6bcb02e47c857c480ed1d23888c8ad6a66b83ab111cb6b9242afb1c725",
+              pfp: 0
             }
           ],
           proprietary: nil,
           redeem_script: nil,
           witness_script:
             "5221023e1a92f74483a4c12a196d6c0253ac589cfadd5964ff3e6c63aef5d577051ed421024d0e39b33ab57782a98fd06a7d0653385e509ee3b74dc45559e6db6391d3137821036c0bae6bcb02e47c857c480ed1d23888c8ad6a66b83ab111cb6b9242afb1c72553ae"
+        },
+        %Bitcoinex.PSBT.Out{
+          bip32_derivation: nil,
+          proprietary: nil,
+          redeem_script: nil,
+          witness_script: nil
         }
       ]
     },
@@ -425,6 +481,7 @@ defmodule Bitcoinex.PSBTTest do
             assert valid_psbt.expected_global == psbt.global
             assert valid_psbt.expected_in == psbt.inputs
             assert valid_psbt.expected_out == psbt.outputs
+            assert valid_psbt.psbt == PSBT.encode_b64(psbt)
 
           {:error, _} ->
             assert :error != :error
