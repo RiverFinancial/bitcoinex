@@ -296,7 +296,7 @@ defmodule Bitcoinex.Script do
 
   @doc """
   	display_script returns a human readable string of the script, with
-  	op_codes shown by name rather than number. 
+  	op_codes shown by name rather than number.
   """
   @spec display_script(t()) :: String.t()
   def display_script(script) do
@@ -757,5 +757,11 @@ defmodule Bitcoinex.Script do
       _ ->
         {:error, "non standard script type"}
     end
+  end
+end
+
+defimpl String.Chars, for: Bitcoinex.Script do
+  def to_string(script) do
+    Bitcoinex.Script.display_script(script)
   end
 end
