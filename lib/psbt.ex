@@ -104,6 +104,12 @@ defmodule Bitcoinex.PSBT.Utils do
 
     {kv, psbt}
   end
+
+  def serialize_kv(key, val) do
+    key_len = TxUtils.serialize_compact_size_unsigned_int(byte_size(key))
+    val_len = TxUtils.serialize_compact_size_unsigned_int(byte_size(val))
+    key_len <> key <> val_len <> val
+  end
 end
 
 defmodule Bitcoinex.PSBT.Global do
@@ -194,32 +200,19 @@ defmodule Bitcoinex.PSBT.Global do
   end
 
   defp serialize_kv(:unsigned_tx, value) when value != nil do
-    key = <<@psbt_global_unsigned_tx::big-size(8)>>
-    key_len = TxUtils.serialize_compact_size_unsigned_int(byte_size(key))
-    val = TxUtils.serialize(value)
-    val_len = TxUtils.serialize_compact_size_unsigned_int(byte_size(val))
-    key_len <> key <> val_len <> val
+    PsbtUtils.serialize_kv(<<@psbt_global_unsigned_tx::big-size(8)>>, TxUtils.serialize(value))
   end
 
   defp serialize_kv(:xpub, value) when value != nil do
     key = <<@psbt_global_xpub::big-size(8)>>
     {:ok, key_data} = Base58.decode(value.xpub)
 
-    key = key <> key_data
-
-    key_len = TxUtils.serialize_compact_size_unsigned_int(byte_size(key))
-
     val =
       <<value.master_pfp::little-size(32)>> <>
         (for(chunk <- value.derivation, do: <<chunk::little-size(32)>>)
          |> :erlang.list_to_binary())
 
-    val_len = TxUtils.serialize_compact_size_unsigned_int(byte_size(val))
-    key_len <> key <> val_len <> val
-  end
-
-  defp serialize_kv(_key, _value) do
-    <<>>
+    PsbtUtils.serialize_kv(key <> key_data, val)
   end
 
   def serialize_global(global) do
@@ -281,93 +274,67 @@ defmodule Bitcoinex.PSBT.In do
   end
 
   defp serialize_kv(:non_witness_utxo, value) when value != nil do
-    key = <<@psbt_in_non_witness_utxo::big-size(8)>>
-    key_len = TxUtils.serialize_compact_size_unsigned_int(byte_size(key))
-    val = TxUtils.serialize(value)
-    val_len = TxUtils.serialize_compact_size_unsigned_int(byte_size(val))
-    key_len <> key <> val_len <> val
+    PsbtUtils.serialize_kv(<<@psbt_in_non_witness_utxo::big-size(8)>>, TxUtils.serialize(value))
   end
 
   defp serialize_kv(:witness_utxo, value) when value != nil do
-    key = <<@psbt_in_witness_utxo::big-size(8)>>
-    key_len = TxUtils.serialize_compact_size_unsigned_int(byte_size(key))
     script = Base.decode16!(value.script_pub_key, case: :lower)
 
     val =
       <<value.value::little-size(64)>> <>
         TxUtils.serialize_compact_size_unsigned_int(byte_size(script)) <> script
 
-    val_len = TxUtils.serialize_compact_size_unsigned_int(byte_size(val))
-    key_len <> key <> val_len <> val
+    PsbtUtils.serialize_kv(<<@psbt_in_witness_utxo::big-size(8)>>, val)
   end
 
   defp serialize_kv(:partial_sig, value) when value != nil do
-    key = <<@psbt_in_partial_sig::big-size(8)>>
     key_data = Base.decode16!(value.public_key, case: :lower)
-    key = key <> key_data
-
-    key_len = TxUtils.serialize_compact_size_unsigned_int(byte_size(key))
-
     val = Base.decode16!(value.signature, case: :lower)
 
-    val_len = TxUtils.serialize_compact_size_unsigned_int(byte_size(val))
-    key_len <> key <> val_len <> val
+    PsbtUtils.serialize_kv(<<@psbt_in_partial_sig::big-size(8)>> <> key_data, val)
   end
 
   defp serialize_kv(:sighash_type, value) when value != nil do
-    key = <<@psbt_in_partial_sig::big-size(8)>>
-    key_len = TxUtils.serialize_compact_size_unsigned_int(byte_size(key))
-    val = <<value::little-size(32)>>
-    val_len = TxUtils.serialize_compact_size_unsigned_int(byte_size(val))
-    key_len <> key <> val_len <> val
+    PsbtUtils.serialize_kv(<<@psbt_in_sighash_type::big-size(8)>>, <<value::little-size(32)>>)
   end
 
   defp serialize_kv(:final_scriptsig, value) when value != nil do
-    key = <<@psbt_in_final_scriptsig::big-size(8)>>
-    key_len = TxUtils.serialize_compact_size_unsigned_int(byte_size(key))
-    val = Base.decode16!(value, case: :lower)
-    val_len = TxUtils.serialize_compact_size_unsigned_int(byte_size(val))
-    key_len <> key <> val_len <> val
+    PsbtUtils.serialize_kv(
+      <<@psbt_in_final_scriptsig::big-size(8)>>,
+      Base.decode16!(value, case: :lower)
+    )
   end
 
   defp serialize_kv(:redeem_script, value) when value != nil do
-    key = <<@psbt_in_redeem_script::big-size(8)>>
-    key_len = TxUtils.serialize_compact_size_unsigned_int(byte_size(key))
-    val = Base.decode16!(value, case: :lower)
-    val_len = TxUtils.serialize_compact_size_unsigned_int(byte_size(val))
-    key_len <> key <> val_len <> val
+    PsbtUtils.serialize_kv(
+      <<@psbt_in_redeem_script::big-size(8)>>,
+      Base.decode16!(value, case: :lower)
+    )
   end
 
   defp serialize_kv(:witness_script, value) when value != nil do
-    key = <<@psbt_in_witness_script::big-size(8)>>
-    key_len = TxUtils.serialize_compact_size_unsigned_int(byte_size(key))
-    val = Base.decode16!(value, case: :lower)
-    val_len = TxUtils.serialize_compact_size_unsigned_int(byte_size(val))
-    key_len <> key <> val_len <> val
+    PsbtUtils.serialize_kv(
+      <<@psbt_in_witness_script::big-size(8)>>,
+      Base.decode16!(value, case: :lower)
+    )
   end
 
   defp serialize_kv(:final_scriptwitness, value) when value != nil do
-    key = <<@psbt_in_final_scriptwitness::big-size(8)>>
-    key_len = TxUtils.serialize_compact_size_unsigned_int(byte_size(key))
-    val = Witness.serialize_witness([value])
-    val_len = TxUtils.serialize_compact_size_unsigned_int(byte_size(val))
-    key_len <> key <> val_len <> val
+    PsbtUtils.serialize_kv(
+      <<@psbt_in_final_scriptwitness::big-size(8)>>,
+      Witness.serialize_witness([value])
+    )
   end
 
   defp serialize_kv(:bip32_derivation, value) when value != nil do
-    key = <<@psbt_in_bip32_derivation::big-size(8)>>
     key_data = Base.decode16!(value.public_key, case: :lower)
-
-    key = key <> key_data
-    key_len = TxUtils.serialize_compact_size_unsigned_int(byte_size(key))
 
     val =
       <<value.pfp::little-size(32)>> <>
         (for(chunk <- value.derivation, do: <<chunk::little-size(32)>>)
          |> :erlang.list_to_binary())
 
-    val_len = TxUtils.serialize_compact_size_unsigned_int(byte_size(val))
-    key_len <> key <> val_len <> val
+    PsbtUtils.serialize_kv(<<@psbt_in_bip32_derivation::big-size(8)>> <> key_data, val)
   end
 
   defp serialize_kv(_key, _value) do
@@ -388,13 +355,27 @@ defmodule Bitcoinex.PSBT.In do
     [input | inputs] = inputs
 
     serialized_input =
-      serialize_kv(:non_witness_utxo, input.non_witness_utxo) <>
-        serialize_kv(:witness_utxo, input.witness_utxo) <>
-        serialize_kv(:sighash_type, input.sighash_type) <>
-        serialize_kv(:partial_sig, input.partial_sig) <>
-        serialize_kv(:redeem_script, input.redeem_script) <>
-        serialize_kv(:final_scriptsig, input.final_scriptsig) <>
-        serialize_kv(:witness_script, input.witness_script)
+      Enum.reduce(
+        [
+          :non_witness_utxo,
+          :witness_utxo,
+          :sighash_type,
+          :partial_sig,
+          :redeem_script,
+          :final_scriptsig,
+          :witness_script
+        ],
+        <<>>,
+        fn k, acc ->
+          case Map.get(input, k) do
+            nil ->
+              acc
+
+            v ->
+              acc <> serialize_kv(k, v)
+          end
+        end
+      )
 
     bip32 =
       if input.bip32_derivation != nil do
@@ -543,7 +524,6 @@ defmodule Bitcoinex.PSBT.Out do
   """
   alias Bitcoinex.PSBT.Out
   alias Bitcoinex.PSBT.Utils, as: PsbtUtils
-  alias Bitcoinex.Transaction.Utils, as: TxUtils
 
   defstruct [
     :redeem_script,
@@ -565,35 +545,28 @@ defmodule Bitcoinex.PSBT.Out do
   end
 
   defp serialize_kv(:redeem_script, value) when value != nil do
-    key = <<@psbt_out_redeem_script::big-size(8)>>
-    key_len = TxUtils.serialize_compact_size_unsigned_int(byte_size(key))
-    val = Base.decode16!(value, case: :lower)
-    val_len = TxUtils.serialize_compact_size_unsigned_int(byte_size(val))
-    key_len <> key <> val_len <> val
+    PsbtUtils.serialize_kv(
+      <<@psbt_out_redeem_script::big-size(8)>>,
+      Base.decode16!(value, case: :lower)
+    )
   end
 
   defp serialize_kv(:witness_script, value) when value != nil do
-    key = <<@psbt_out_scriptwitness::big-size(8)>>
-    key_len = TxUtils.serialize_compact_size_unsigned_int(byte_size(key))
-    val = Base.decode16!(value, case: :lower)
-    val_len = TxUtils.serialize_compact_size_unsigned_int(byte_size(val))
-    key_len <> key <> val_len <> val
+    PsbtUtils.serialize_kv(
+      <<@psbt_out_scriptwitness::big-size(8)>>,
+      Base.decode16!(value, case: :lower)
+    )
   end
 
   defp serialize_kv(:bip32_derivation, value) when value != nil do
-    key = <<@psbt_out_bip32_derivation::big-size(8)>>
     key_data = Base.decode16!(value.public_key, case: :lower)
-    key = key <> key_data
-
-    key_len = TxUtils.serialize_compact_size_unsigned_int(byte_size(key))
 
     val =
       <<value.pfp::little-size(32)>> <>
         (for(chunk <- value.derivation, do: <<chunk::little-size(32)>>)
          |> :erlang.list_to_binary())
 
-    val_len = TxUtils.serialize_compact_size_unsigned_int(byte_size(val))
-    key_len <> key <> val_len <> val
+    PsbtUtils.serialize_kv(<<@psbt_out_bip32_derivation::big-size(8)>> <> key_data, val)
   end
 
   defp serialize_kv(_key, _value) do
