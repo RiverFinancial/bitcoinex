@@ -32,7 +32,7 @@ defmodule Bitcoinex.Transaction do
     TxID is sha256(sha256(nVersion | txins | txouts | nLockTime))
   """
   def transaction_id(txn) do
-    legacy_txn = TxUtils.serialize_legacy(txn)
+    legacy_txn = TxUtils.serialize(%{txn | witnesses: nil})
 
     Base.encode16(
       <<:binary.decode_unsigned(
@@ -113,6 +113,7 @@ defmodule Bitcoinex.Transaction.Utils do
   alias Bitcoinex.Transaction
   alias Bitcoinex.Transaction.In
   alias Bitcoinex.Transaction.Out
+  alias Bitcoinex.Transaction.Witness
 
   @doc """
     Returns the Variable Length Integer used in serialization.
@@ -142,26 +143,32 @@ defmodule Bitcoinex.Transaction.Utils do
     end
   end
 
-  @doc """
-    Serializes a transaction without the witness structure.
-  """
-  @spec serialize_legacy(Transaction.t()) :: iolist()
-  def serialize_legacy(txn) do
+  @spec serialize(%Transaction{witnesses: any}) :: binary
+  def serialize(%Transaction{witnesses: witness} = txn)
+      when is_list(witness) and length(witness) > 0 do
     version = <<txn.version::little-size(32)>>
+    marker = <<0x00::big-size(8)>>
+    flag = <<0x01::big-size(8)>>
     tx_in_count = serialize_compact_size_unsigned_int(length(txn.inputs))
-    inputs = In.serialize_inputs(txn.inputs)
+    inputs = In.serialize_inputs(txn.inputs) |> :erlang.list_to_binary()
     tx_out_count = serialize_compact_size_unsigned_int(length(txn.outputs))
-    outputs = Out.serialize_outputs(txn.outputs)
+    outputs = Out.serialize_outputs(txn.outputs) |> :erlang.list_to_binary()
+    witness = Witness.serialize_witness(txn.witnesses)
     lock_time = <<txn.lock_time::little-size(32)>>
 
-    [
-      version,
-      tx_in_count,
-      inputs,
-      tx_out_count,
-      outputs,
-      lock_time
-    ]
+    version <>
+      marker <> flag <> tx_in_count <> inputs <> tx_out_count <> outputs <> witness <> lock_time
+  end
+
+  def serialize(txn) do
+    version = <<txn.version::little-size(32)>>
+    tx_in_count = serialize_compact_size_unsigned_int(length(txn.inputs))
+    inputs = In.serialize_inputs(txn.inputs) |> :erlang.list_to_binary()
+    tx_out_count = serialize_compact_size_unsigned_int(length(txn.outputs))
+    outputs = Out.serialize_outputs(txn.outputs) |> :erlang.list_to_binary()
+    lock_time = <<txn.lock_time::little-size(32)>>
+
+    version <> tx_in_count <> inputs <> tx_out_count <> outputs <> lock_time
   end
 
   @doc """
@@ -216,6 +223,35 @@ defmodule Bitcoinex.Transaction.Witness do
       end
 
     witness
+  end
+
+  @spec serialize_witness(list(Witness.t())) :: binary
+  def serialize_witness(witnesses) do
+    serialize_witness(witnesses, <<>>)
+  end
+
+  defp serialize_witness([], serialized_witnesses), do: serialized_witnesses
+
+  defp serialize_witness(witnesses, serialized_witnesses) do
+    [witness | witnesses] = witnesses
+
+    serialized_witness =
+      if Enum.empty?(witness.txinwitness) do
+        <<0x0::big-size(8)>>
+      else
+        stack_len = TxUtils.serialize_compact_size_unsigned_int(length(witness.txinwitness))
+
+        field =
+          Enum.reduce(witness.txinwitness, <<>>, fn v, acc ->
+            {:ok, item} = Base.decode16(v, case: :lower)
+            item_len = TxUtils.serialize_compact_size_unsigned_int(byte_size(item))
+            acc <> item_len <> item
+          end)
+
+        stack_len <> field
+      end
+
+    serialize_witness(witnesses, serialized_witnesses <> serialized_witness)
   end
 
   def parse_witness(0, remaining), do: {nil, remaining}
