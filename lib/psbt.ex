@@ -295,7 +295,7 @@ defmodule Bitcoinex.PSBT.In do
   end
 
   defp serialize_kv(:sighash_type, value) when value != nil do
-    PsbtUtils.serialize_kv(<<@psbt_in_sighash_type::big-size(8)>>, <<value::little-size(32)>>)
+    PsbtUtils.serialize_kv(<<@psbt_in_sighash_type::big-size(8)>>, value)
   end
 
   defp serialize_kv(:final_scriptsig, value) when value != nil do
