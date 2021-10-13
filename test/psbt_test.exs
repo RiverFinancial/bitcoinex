@@ -470,6 +470,108 @@ defmodule Bitcoinex.PSBTTest do
       },
       expected_in: [],
       expected_out: []
+    },
+    %{
+      psbt:
+        "cHNidP8BAHUCAAAAASaBcTce3/KF6Tet7qSze3gADAVmy7OtZGQXE8pCFxv2AAAAAAD+////AtPf9QUAAAAAGXapFNDFmQPFusKGh2DpD9UhpGZap2UgiKwA4fUFAAAAABepFDVF5uM7gyxHBQ8k0+65PJwDlIvHh7MuEwAAAQD9pQEBAAAAAAECiaPHHqtNIOA3G7ukzGmPopXJRjr6Ljl/hTPMti+VZ+UBAAAAFxYAFL4Y0VKpsBIDna89p95PUzSe7LmF/////4b4qkOnHf8USIk6UwpyN+9rRgi7st0tAXHmOuxqSJC0AQAAABcWABT+Pp7xp0XpdNkCxDVZQ6vLNL1TU/////8CAMLrCwAAAAAZdqkUhc/xCX/Z4Ai7NK9wnGIZeziXikiIrHL++E4sAAAAF6kUM5cluiHv1irHU6m80GfWx6ajnQWHAkcwRAIgJxK+IuAnDzlPVoMR3HyppolwuAJf3TskAinwf4pfOiQCIAGLONfc0xTnNMkna9b7QPZzMlvEuqFEyADS8vAtsnZcASED0uFWdJQbrUqZY3LLh+GFbTZSYG2YVi/jnF6efkE/IQUCSDBFAiEA0SuFLYXc2WHS9fSrZgZU327tzHlMDDPOXMMJ/7X85Y0CIGczio4OFyXBl/saiK9Z9R5E5CVbIBZ8hoQDHAXR8lkqASECI7cr7vCWXRC+B3jv7NYfysb3mk6haTkzgHNEZPhPKrMAAAAAAQMEAQAAAAAAAA==",
+      expected_global: %Global{
+        proprietary: nil,
+        unsigned_tx: %Bitcoinex.Transaction{
+          inputs: [
+            %Bitcoinex.Transaction.In{
+              prev_txid: "f61b1742ca13176464adb3cb66050c00787bb3a4eead37e985f2df1e37718126",
+              prev_vout: 0,
+              script_sig: "",
+              sequence_no: 4_294_967_294
+            }
+          ],
+          lock_time: 1_257_139,
+          outputs: [
+            %Bitcoinex.Transaction.Out{
+              script_pub_key: "76a914d0c59903c5bac2868760e90fd521a4665aa7652088ac",
+              value: 99_999_699
+            },
+            %Bitcoinex.Transaction.Out{
+              script_pub_key: "a9143545e6e33b832c47050f24d3eeb93c9c03948bc787",
+              value: 100_000_000
+            }
+          ],
+          witnesses: nil,
+          version: 2
+        },
+        version: nil,
+        xpub: nil
+      },
+      expected_in: [
+        %Bitcoinex.PSBT.In{
+          bip32_derivation: nil,
+          final_scriptsig: nil,
+          final_scriptwitness: nil,
+          non_witness_utxo: %Bitcoinex.Transaction{
+            inputs: [
+              %Bitcoinex.Transaction.In{
+                prev_txid: "e567952fb6cc33857f392efa3a46c995a28f69cca4bb1b37e0204dab1ec7a389",
+                prev_vout: 1,
+                script_sig: "160014be18d152a9b012039daf3da7de4f53349eecb985",
+                sequence_no: 4_294_967_295
+              },
+              %Bitcoinex.Transaction.In{
+                prev_txid: "b490486aec3ae671012dddb2bb08466bef37720a533a894814ff1da743aaf886",
+                prev_vout: 1,
+                script_sig: "160014fe3e9ef1a745e974d902c4355943abcb34bd5353",
+                sequence_no: 4_294_967_295
+              }
+            ],
+            lock_time: 0,
+            outputs: [
+              %Bitcoinex.Transaction.Out{
+                script_pub_key: "76a91485cff1097fd9e008bb34af709c62197b38978a4888ac",
+                value: 200_000_000
+              },
+              %Bitcoinex.Transaction.Out{
+                script_pub_key: "a914339725ba21efd62ac753a9bcd067d6c7a6a39d0587",
+                value: 190_303_501_938
+              }
+            ],
+            version: 1,
+            witnesses: [
+              %Bitcoinex.Transaction.Witness{
+                txinwitness: [
+                  "304402202712be22e0270f394f568311dc7ca9a68970b8025fdd3b240229f07f8a5f3a240220018b38d7dcd314e734c9276bd6fb40f673325bc4baa144c800d2f2f02db2765c01",
+                  "03d2e15674941bad4a996372cb87e1856d3652606d98562fe39c5e9e7e413f2105"
+                ]
+              },
+              %Bitcoinex.Transaction.Witness{
+                txinwitness: [
+                  "3045022100d12b852d85dcd961d2f5f4ab660654df6eedcc794c0c33ce5cc309ffb5fce58d022067338a8e0e1725c197fb1a88af59f51e44e4255b20167c8684031c05d1f2592a01",
+                  "0223b72beef0965d10be0778efecd61fcac6f79a4ea169393380734464f84f2ab3"
+                ]
+              }
+            ]
+          },
+          partial_sig: nil,
+          por_commitment: nil,
+          proprietary: nil,
+          redeem_script: nil,
+          sighash_type: <<1, 0, 0, 0>>,
+          witness_script: nil,
+          witness_utxo: nil
+        }
+      ],
+      expected_out: [
+        %Bitcoinex.PSBT.Out{
+          bip32_derivation: nil,
+          proprietary: nil,
+          redeem_script: nil,
+          witness_script: nil
+        },
+        %Bitcoinex.PSBT.Out{
+          bip32_derivation: nil,
+          proprietary: nil,
+          redeem_script: nil,
+          witness_script: nil
+        }
+      ]
     }
   ]
 
