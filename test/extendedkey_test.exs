@@ -125,21 +125,21 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
     %{
       str: "84/0/0/2/1/",
       deriv: %ExtendedKey.DerivationPath{child_nums: [84, 0, 0, 2, 1]},
-      bin: <<84,0,0,0, 0,0,0,0, 0,0,0,0, 2,0,0,0, 1,0,0,0>>
+      bin: <<84, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 1, 0, 0, 0>>
     },
     %{
       str: "84'/0'/",
       deriv: %ExtendedKey.DerivationPath{
         child_nums: [84 + @min_hardened_child_num, 0 + @min_hardened_child_num]
       },
-      bin: <<84,0,0,128, 0,0,0,128>>
+      bin: <<84, 0, 0, 128, 0, 0, 0, 128>>
     },
     %{
       str: "84'/0'/",
       deriv: %ExtendedKey.DerivationPath{
         child_nums: [84 + @min_hardened_child_num, 0 + @min_hardened_child_num]
       },
-      bin: <<84,0,0,128, 0,0,0,128>>
+      bin: <<84, 0, 0, 128, 0, 0, 0, 128>>
     },
     %{
       str: "84'/0'/1/2/2147483647/",
@@ -152,7 +152,7 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
           2_147_483_647
         ]
       },
-      bin: <<84,0,0,128, 0,0,0,128, 1,0,0,0, 2,0,0,0, 255, 255, 255, 127 >>
+      bin: <<84, 0, 0, 128, 0, 0, 0, 128, 1, 0, 0, 0, 2, 0, 0, 0, 255, 255, 255, 127>>
     }
   ]
 
@@ -160,7 +160,7 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
     %{
       str: "84/0/0/2/1/",
       deriv: %ExtendedKey.DerivationPath{child_nums: [84, 0, 0, 2, 1]},
-      bin: <<84,0,0,0, 0,0,0,0, 0,0,0,0, 2,0,0,0, 1,0,0,0>>
+      bin: <<84, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 1, 0, 0, 0>>
     },
     %{
       str: "m/84'/0'/0'/2/1",
@@ -173,35 +173,35 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
           1
         ]
       },
-      bin: <<84,0,0,128, 0,0,0,128, 0,0,0,128, 2,0,0,0, 1,0,0,0>>
+      bin: <<84, 0, 0, 128, 0, 0, 0, 128, 0, 0, 0, 128, 2, 0, 0, 0, 1, 0, 0, 0>>
     },
     %{
       str: "m/84'/0'/",
       deriv: %ExtendedKey.DerivationPath{
         child_nums: [84 + @min_hardened_child_num, 0 + @min_hardened_child_num]
       },
-      bin: <<84,0,0,128, 0,0,0,128>>
+      bin: <<84, 0, 0, 128, 0, 0, 0, 128>>
     },
     %{
       str: "m/84'/0'",
       deriv: %ExtendedKey.DerivationPath{
         child_nums: [84 + @min_hardened_child_num, 0 + @min_hardened_child_num]
       },
-      bin: <<84,0,0,128, 0,0,0,128>>
+      bin: <<84, 0, 0, 128, 0, 0, 0, 128>>
     },
     %{
       str: "84'/0'",
       deriv: %ExtendedKey.DerivationPath{
         child_nums: [84 + @min_hardened_child_num, 0 + @min_hardened_child_num]
       },
-      bin: <<84,0,0,128, 0,0,0,128>>
+      bin: <<84, 0, 0, 128, 0, 0, 0, 128>>
     },
     %{
       str: "84'/0'/",
       deriv: %ExtendedKey.DerivationPath{
         child_nums: [84 + @min_hardened_child_num, 0 + @min_hardened_child_num]
       },
-      bin: <<84,0,0,128, 0,0,0,128>>
+      bin: <<84, 0, 0, 128, 0, 0, 0, 128>>
     },
     %{
       str: "84'/0'/1/2/2147483647",
@@ -214,7 +214,7 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
           2_147_483_647
         ]
       },
-      bin: <<84,0,0,128, 0,0,0,128, 1,0,0,0, 2,0,0,0, 255,255,255,127>>
+      bin: <<84, 0, 0, 128, 0, 0, 0, 128, 1, 0, 0, 0, 2, 0, 0, 0, 255, 255, 255, 127>>
     },
     %{
       str: "m/84h/0h/0h/2/1",
@@ -227,28 +227,28 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
           1
         ]
       },
-      bin: <<84,0,0,128, 0,0,0,128, 0,0,0,128, 2,0,0,0, 1,0,0,0>>
+      bin: <<84, 0, 0, 128, 0, 0, 0, 128, 0, 0, 0, 128, 2, 0, 0, 0, 1, 0, 0, 0>>
     },
     %{
       str: "m/84h/0h/",
       deriv: %ExtendedKey.DerivationPath{
         child_nums: [84 + @min_hardened_child_num, 0 + @min_hardened_child_num]
       },
-      bin: <<84,0,0,128, 0,0,0,128>>
+      bin: <<84, 0, 0, 128, 0, 0, 0, 128>>
     },
     %{
       str: "84h/0h",
       deriv: %ExtendedKey.DerivationPath{
         child_nums: [84 + @min_hardened_child_num, 0 + @min_hardened_child_num]
       },
-      bin: <<84,0,0,128, 0,0,0,128>>
+      bin: <<84, 0, 0, 128, 0, 0, 0, 128>>
     },
     %{
       str: "84h/0h/",
       deriv: %ExtendedKey.DerivationPath{
         child_nums: [84 + @min_hardened_child_num, 0 + @min_hardened_child_num]
       },
-      bin: <<84,0,0,128, 0,0,0,128>>
+      bin: <<84, 0, 0, 128, 0, 0, 0, 128>>
     }
   ]
 
@@ -415,8 +415,7 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
       assert ExtendedKey.derive_extended_key(seed, deriv) == {:ok, xprv}
 
       # derive xprv_m_0h_1_2h_2_1000000000
-      {:ok, xprv_m_0h_1_2h_2_1000000000} =
-        t.xprv_m_0h_1_2h_2_1000000000 |> ExtendedKey.parse()
+      {:ok, xprv_m_0h_1_2h_2_1000000000} = t.xprv_m_0h_1_2h_2_1000000000 |> ExtendedKey.parse()
 
       deriv = %ExtendedKey.DerivationPath{
         child_nums: [@min_hardened_child_num, 1, @min_hardened_child_num + 2, 2, 1_000_000_000]
@@ -725,7 +724,9 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
   describe "Derivation Path parse/ser testing" do
     test "path_from_string/1" do
       for t <- @derivation_paths_to_parse do
-        if ExtendedKey.DerivationPath.path_from_string(t.str) != {:ok, t.deriv}, do: IO.puts t.str
+        if ExtendedKey.DerivationPath.path_from_string(t.str) != {:ok, t.deriv},
+          do: IO.puts(t.str)
+
         assert ExtendedKey.DerivationPath.path_from_string(t.str) == {:ok, t.deriv}
       end
     end

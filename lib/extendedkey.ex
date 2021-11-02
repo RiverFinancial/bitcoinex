@@ -92,10 +92,13 @@ defmodule Bitcoinex.ExtendedKey do
     end
 
     defp tto_bin([], path_acc), do: path_acc
+
     defp tto_bin([lvl | rest], path_acc) do
       cond do
         lvl == :any or lvl == :anyh ->
-          raise(ArgumentError, message: "Derivation Path with wildcard cannot be encoded to binary.")
+          raise(ArgumentError,
+            message: "Derivation Path with wildcard cannot be encoded to binary."
+          )
 
         lvl > @max_hardened_child_num ->
           raise(ArgumentError, message: "index cannot be greater than #{@max_hardened_child_num}")
@@ -104,10 +107,11 @@ defmodule Bitcoinex.ExtendedKey do
           raise(ArgumentError, message: "index cannot be less than #{@min_non_hardened_child_num}")
 
         true ->
-          lvlbin = 
+          lvlbin =
             lvl
-            |> :binary.encode_unsigned(:little) 
+            |> :binary.encode_unsigned(:little)
             |> Bitcoinex.Utils.pad(4, :trailing)
+
           tto_bin(rest, path_acc <> lvlbin)
       end
     end
@@ -119,13 +123,14 @@ defmodule Bitcoinex.ExtendedKey do
     @spec path_from_string(String.t()) :: {:ok, t()} | {:error, String.t()}
     def path_from_string(pathstr) do
       try do
-        {:ok, %__MODULE__{child_nums: 
-          pathstr
-            |> String.split("/")
-            |> tfrom_string([])
-            |> Enum.reverse()
-          }
-        }
+        {:ok,
+         %__MODULE__{
+           child_nums:
+             pathstr
+             |> String.split("/")
+             |> tfrom_string([])
+             |> Enum.reverse()
+         }}
       rescue
         e in ArgumentError -> {:error, e.message}
       end
@@ -133,32 +138,48 @@ defmodule Bitcoinex.ExtendedKey do
 
     defp tfrom_string(path_list, child_nums) do
       case path_list do
-        [] -> child_nums
-        [""] -> child_nums
-        ["m" | rest] -> 
+        [] ->
+          child_nums
+
+        [""] ->
+          child_nums
+
+        ["m" | rest] ->
           if child_nums != [] do
-            raise(ArgumentError, message: "m can only be present at the begining of a derivation path.")
+            raise(ArgumentError,
+              message: "m can only be present at the begining of a derivation path."
+            )
           else
-             tfrom_string(rest, child_nums)
+            tfrom_string(rest, child_nums)
           end
-        ["*" | rest] -> tfrom_string(rest, [:any | child_nums])
-        ["*'" | rest] -> tfrom_string(rest, [:anyh | child_nums])
-        ["*h" | rest] -> tfrom_string(rest, [:anyh | child_nums])
-        [i | rest] -> tfrom_string(rest, [str_to_level(i) | child_nums])
+
+        ["*" | rest] ->
+          tfrom_string(rest, [:any | child_nums])
+
+        ["*'" | rest] ->
+          tfrom_string(rest, [:anyh | child_nums])
+
+        ["*h" | rest] ->
+          tfrom_string(rest, [:anyh | child_nums])
+
+        [i | rest] ->
+          tfrom_string(rest, [str_to_level(i) | child_nums])
       end
     end
 
     @spec from_bin(binary) :: {:ok, t()} | {:error, String.t()}
-    def from_bin(bin) do 
-      try do 
+    def from_bin(bin) do
+      try do
         {:ok, %__MODULE__{child_nums: Enum.reverse(tfrom_bin(bin, []))}}
       rescue
         _e in ArgumentError -> {:error, "invalid binary encoding of derivation path"}
       end
     end
-    
+
     defp tfrom_bin(<<>>, child_nums), do: child_nums
-    defp tfrom_bin(<<level::little-unsigned-32, bin::binary>>, child_nums), do: tfrom_bin(bin, [level | child_nums])
+
+    defp tfrom_bin(<<level::little-unsigned-32, bin::binary>>, child_nums),
+      do: tfrom_bin(bin, [level | child_nums])
 
     defp str_to_level(level) do
       {num, is_hardened} =
@@ -172,7 +193,7 @@ defmodule Bitcoinex.ExtendedKey do
 
       nnum = String.to_integer(num)
 
-      #TODO benchmark and make this two comparisons
+      # TODO benchmark and make this two comparisons
       if nnum in @min_non_hardened_child_num..@max_non_hardened_child_num do
         if is_hardened do
           nnum + @min_hardened_child_num
@@ -186,6 +207,8 @@ defmodule Bitcoinex.ExtendedKey do
 
     def add(%__MODULE__{child_nums: path1}, %__MODULE__{child_nums: path2}),
       do: %__MODULE__{child_nums: path1 ++ path2}
+
+    def depth(%__MODULE__{child_nums: child_nums}), do: length(child_nums)
   end
 
   @type t :: %__MODULE__{
@@ -307,8 +330,22 @@ defmodule Bitcoinex.ExtendedKey do
   # PARSE & SERIALIZE 
 
   @doc """
+    parse! calls parse, which takes binary or string representation 
+    of an extended key and parses it to an extended key object.
+    parse! raises ArgumentError on failure. 
+  """
+  @spec parse!(binary) :: t()
+  def parse!(xpub) do
+    case parse(xpub) do
+      {:ok, res} -> res
+      {:error, msg} -> raise(ArgumentError, message: msg)
+    end
+  end
+
+  @doc """
     parse takes binary or string representation 
     of an extended key and parses it to an extended key object
+    returns {:error, msg} on failure
   """
   @spec parse(binary) :: {:ok, t()} | {:error, String.t()}
   def parse(
@@ -345,6 +382,17 @@ defmodule Bitcoinex.ExtendedKey do
     end
   end
 
+  # parse without checksum (used for PSBT encodings)
+  def parse(
+        xkey =
+          <<_prefix::binary-size(4), _depth::binary-size(1), _parent_fingerprint::binary-size(4),
+            _child_num::binary-size(4), _chaincode::binary-size(32), _key::binary-size(33)>>
+      ) do
+    xkey
+    |> Base58.append_checksum()
+    |> parse()
+  end
+
   # parse from string
   def parse(xkey) do
     case Base58.decode(xkey) do
@@ -373,6 +421,17 @@ defmodule Bitcoinex.ExtendedKey do
     (xkey.prefix <>
        xkey.depth <> xkey.parent_fingerprint <> xkey.child_num <> xkey.chaincode <> xkey.key)
     |> Base58.append_checksum()
+  end
+
+  @doc """
+    serialize takes an extended key
+    and returns the binary without the checksum appended
+    (used for PSBT encoding)
+  """
+  @spec serialize(t(), atom) :: binary
+  def serialize(xkey = %__MODULE__{}, :no_checksum) do
+    xkey.prefix <>
+      xkey.depth <> xkey.parent_fingerprint <> xkey.child_num <> xkey.chaincode <> xkey.key
   end
 
   @doc """

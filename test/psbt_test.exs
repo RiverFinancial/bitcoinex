@@ -209,7 +209,9 @@ defmodule Bitcoinex.PSBTTest do
             },
             master_pfp: 1_332_350_169,
             xpub:
-              "tpubDBkJeJo2X94Yq3RVz65DoUgyLUkaDrkfyrn2VcgyCRSKCRonvKvCF2FpYDGJWDkdRHBajXJGpc63GnumUt63ySvqCu2XaTRGVTKMYGuFk9H"
+              Bitcoinex.ExtendedKey.parse!(
+                "tpubDBkJeJo2X94Yq3RVz65DoUgyLUkaDrkfyrn2VcgyCRSKCRonvKvCF2FpYDGJWDkdRHBajXJGpc63GnumUt63ySvqCu2XaTRGVTKMYGuFk9H"
+              )
           },
           %{
             derivation: %Bitcoinex.ExtendedKey.DerivationPath{
@@ -217,7 +219,9 @@ defmodule Bitcoinex.PSBTTest do
             },
             master_pfp: 1_332_350_169,
             xpub:
-              "tpubDBkJeJo2X94YsvtBEU1eKoibEWiNv51nW5iHhs6VZp59jsE6nen8KZMFyGHuGbCvqjRqirgeMcfpVBkttpUUT6brm4duzSGoZeTbhqCNUu6"
+              Bitcoinex.ExtendedKey.parse!(
+                "tpubDBkJeJo2X94YsvtBEU1eKoibEWiNv51nW5iHhs6VZp59jsE6nen8KZMFyGHuGbCvqjRqirgeMcfpVBkttpUUT6brm4duzSGoZeTbhqCNUu6"
+              )
           }
         ]
       },

@@ -120,7 +120,7 @@ defmodule Bitcoinex.PSBT.Global do
   alias Bitcoinex.Transaction
   alias Bitcoinex.Transaction.Utils, as: TxUtils
   alias Bitcoinex.PSBT.Utils, as: PsbtUtils
-  alias Bitcoinex.Base58
+  alias Bitcoinex.ExtendedKey
   alias Bitcoinex.ExtendedKey.DerivationPath, as: DerivationPath
 
   defstruct [
@@ -160,13 +160,20 @@ defmodule Bitcoinex.PSBT.Global do
     <<master::little-unsigned-32, paths::binary>> = value
 
     {:ok, indexes} = DerivationPath.parse(paths, :from_bin)
+    {:ok, xpub} = ExtendedKey.parse(xpub)
+
+    if :binary.decode_unsigned(xpub.depth) != DerivationPath.depth(indexes),
+      do:
+        raise(ArgumentError,
+          message: "invalid xpub in PSBT: depth does not match number of indexes provided"
+        )
 
     global_xpub =
       case global.xpub do
         nil ->
           [
             %{
-              xpub: Base58.encode(xpub),
+              xpub: xpub,
               master_pfp: master,
               derivation: indexes
             }
@@ -176,7 +183,7 @@ defmodule Bitcoinex.PSBT.Global do
           global.xpub ++
             [
               %{
-                xpub: Base58.encode(xpub),
+                xpub: xpub,
                 master_pfp: master,
                 derivation: indexes
               }
@@ -206,10 +213,10 @@ defmodule Bitcoinex.PSBT.Global do
 
   defp serialize_kv(:xpub, value) when value != nil do
     key = <<@psbt_global_xpub::big-size(8)>>
-    {:ok, key_data} = Base58.decode(value.xpub)
+    key_data = ExtendedKey.serialize(value.xpub, :no_checksum)
 
     {:ok, deriv_bin} = DerivationPath.serialize(value.derivation, :to_bin)
-    
+
     val = <<value.master_pfp::little-size(32)>> <> deriv_bin
 
     PsbtUtils.serialize_kv(key <> key_data, val)
@@ -331,7 +338,7 @@ defmodule Bitcoinex.PSBT.In do
     key_data = Base.decode16!(value.public_key, case: :lower)
 
     {:ok, deriv_bin} = DerivationPath.serialize(value.derivation, :to_bin)
-    
+
     val = <<value.pfp::little-size(32)>> <> deriv_bin
 
     PsbtUtils.serialize_kv(<<@psbt_in_bip32_derivation::big-size(8)>> <> key_data, val)
@@ -561,9 +568,9 @@ defmodule Bitcoinex.PSBT.Out do
 
   defp serialize_kv(:bip32_derivation, value) when value != nil do
     key_data = Base.decode16!(value.public_key, case: :lower)
-    
+
     {:ok, deriv_bin} = DerivationPath.serialize(value.derivation, :to_bin)
-    
+
     val = <<value.pfp::little-size(32)>> <> deriv_bin
 
     PsbtUtils.serialize_kv(<<@psbt_out_bip32_derivation::big-size(8)>> <> key_data, val)
