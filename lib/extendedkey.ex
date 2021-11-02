@@ -42,8 +42,12 @@ defmodule Bitcoinex.ExtendedKey do
 
     def new(), do: %__MODULE__{child_nums: []}
 
-    @spec to_string(t()) :: {:ok, String.t()} | {:error, String.t()}
-    def to_string(%__MODULE__{child_nums: path}), do: tto_string(path, "")
+    @spec serialize(t(), atom) :: {:ok, String.t()} | {:ok, binary} | {:error, String.t()}
+    def serialize(dp = %__MODULE__{}, :to_string), do: path_to_string(dp)
+    def serialize(dp = %__MODULE__{}, :to_bin), do: to_bin(dp)
+
+    @spec path_to_string(t()) :: {:ok, String.t()} | {:error, String.t()}
+    def path_to_string(%__MODULE__{child_nums: path}), do: tto_string(path, "")
 
     defp tto_string([], path_acc), do: {:ok, path_acc}
 
@@ -78,26 +82,83 @@ defmodule Bitcoinex.ExtendedKey do
       end
     end
 
-    @spec from_string(String.t()) :: {:ok, t()} | {:error, String.t()}
-    def from_string(pathstr) do
+    @spec to_bin(t()) :: {:ok, binary} | {:error, String.t()}
+    def to_bin(%__MODULE__{child_nums: child_nums}) do
       try do
-        {:ok, %__MODULE__{child_nums: tfrom_string(String.split(pathstr, "/"))}}
+        {:ok, tto_bin(child_nums, <<>>)}
       rescue
         e in ArgumentError -> {:error, e.message}
       end
     end
 
-    defp tfrom_string(path_list) do
-      case path_list do
-        [] -> []
-        [""] -> []
-        ["m" | rest] -> tfrom_string(rest)
-        ["*" | rest] -> [:any | tfrom_string(rest)]
-        ["*'" | rest] -> [:anyh | tfrom_string(rest)]
-        ["*h" | rest] -> [:anyh | tfrom_string(rest)]
-        [i | rest] -> [str_to_level(i) | tfrom_string(rest)]
+    defp tto_bin([], path_acc), do: path_acc
+    defp tto_bin([lvl | rest], path_acc) do
+      cond do
+        lvl == :any or lvl == :anyh ->
+          raise(ArgumentError, message: "Derivation Path with wildcard cannot be encoded to binary.")
+
+        lvl > @max_hardened_child_num ->
+          raise(ArgumentError, message: "index cannot be greater than #{@max_hardened_child_num}")
+
+        lvl < @min_non_hardened_child_num ->
+          raise(ArgumentError, message: "index cannot be less than #{@min_non_hardened_child_num}")
+
+        true ->
+          lvlbin = 
+            lvl
+            |> :binary.encode_unsigned(:little) 
+            |> Bitcoinex.Utils.pad(4, :trailing)
+          tto_bin(rest, path_acc <> lvlbin)
       end
     end
+
+    @spec parse(binary, atom) :: {:ok, t()} | {:error, String.t()}
+    def parse(dp, :from_bin), do: from_bin(dp)
+    def parse(dp, :from_string), do: path_from_string(dp)
+
+    @spec path_from_string(String.t()) :: {:ok, t()} | {:error, String.t()}
+    def path_from_string(pathstr) do
+      try do
+        {:ok, %__MODULE__{child_nums: 
+          pathstr
+            |> String.split("/")
+            |> tfrom_string([])
+            |> Enum.reverse()
+          }
+        }
+      rescue
+        e in ArgumentError -> {:error, e.message}
+      end
+    end
+
+    defp tfrom_string(path_list, child_nums) do
+      case path_list do
+        [] -> child_nums
+        [""] -> child_nums
+        ["m" | rest] -> 
+          if child_nums != [] do
+            raise(ArgumentError, message: "m can only be present at the begining of a derivation path.")
+          else
+             tfrom_string(rest, child_nums)
+          end
+        ["*" | rest] -> tfrom_string(rest, [:any | child_nums])
+        ["*'" | rest] -> tfrom_string(rest, [:anyh | child_nums])
+        ["*h" | rest] -> tfrom_string(rest, [:anyh | child_nums])
+        [i | rest] -> tfrom_string(rest, [str_to_level(i) | child_nums])
+      end
+    end
+
+    @spec from_bin(binary) :: {:ok, t()} | {:error, String.t()}
+    def from_bin(bin) do 
+      try do 
+        {:ok, %__MODULE__{child_nums: Enum.reverse(tfrom_bin(bin, []))}}
+      rescue
+        _e in ArgumentError -> {:error, "invalid binary encoding of derivation path"}
+      end
+    end
+    
+    defp tfrom_bin(<<>>, child_nums), do: child_nums
+    defp tfrom_bin(<<level::little-unsigned-32, bin::binary>>, child_nums), do: tfrom_bin(bin, [level | child_nums])
 
     defp str_to_level(level) do
       {num, is_hardened} =
@@ -111,6 +172,7 @@ defmodule Bitcoinex.ExtendedKey do
 
       nnum = String.to_integer(num)
 
+      #TODO benchmark and make this two comparisons
       if nnum in @min_non_hardened_child_num..@max_non_hardened_child_num do
         if is_hardened do
           nnum + @min_hardened_child_num

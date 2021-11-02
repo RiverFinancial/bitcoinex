@@ -121,6 +121,7 @@ defmodule Bitcoinex.PSBT.Global do
   alias Bitcoinex.Transaction.Utils, as: TxUtils
   alias Bitcoinex.PSBT.Utils, as: PsbtUtils
   alias Bitcoinex.Base58
+  alias Bitcoinex.ExtendedKey.DerivationPath, as: DerivationPath
 
   defstruct [
     :unsigned_tx,
@@ -143,7 +144,7 @@ defmodule Bitcoinex.PSBT.Global do
     {txn_len, psbt} = TxUtils.get_counter(psbt)
 
     <<txn_bytes::binary-size(txn_len), psbt::binary>> = psbt
-    # todo, different decode function for txn, directly in bytes
+    # TODO, different decode function for txn, directly in bytes
     case Transaction.decode(Base.encode16(txn_bytes, case: :lower)) do
       {:ok, txn} ->
         {%Global{global | unsigned_tx: txn}, psbt}
@@ -158,7 +159,7 @@ defmodule Bitcoinex.PSBT.Global do
 
     <<master::little-unsigned-32, paths::binary>> = value
 
-    indexes = for <<chunk::little-unsigned-32 <- paths>>, do: chunk
+    {:ok, indexes} = DerivationPath.parse(paths, :from_bin)
 
     global_xpub =
       case global.xpub do
@@ -207,10 +208,9 @@ defmodule Bitcoinex.PSBT.Global do
     key = <<@psbt_global_xpub::big-size(8)>>
     {:ok, key_data} = Base58.decode(value.xpub)
 
-    val =
-      <<value.master_pfp::little-size(32)>> <>
-        (for(chunk <- value.derivation, do: <<chunk::little-size(32)>>)
-         |> :erlang.list_to_binary())
+    {:ok, deriv_bin} = DerivationPath.serialize(value.derivation, :to_bin)
+    
+    val = <<value.master_pfp::little-size(32)>> <> deriv_bin
 
     PsbtUtils.serialize_kv(key <> key_data, val)
   end
@@ -241,6 +241,7 @@ defmodule Bitcoinex.PSBT.In do
   alias Bitcoinex.PSBT.In
   alias Bitcoinex.PSBT.Utils, as: PsbtUtils
   alias Bitcoinex.Transaction.Utils, as: TxUtils
+  alias Bitcoinex.ExtendedKey.DerivationPath, as: DerivationPath
 
   defstruct [
     :non_witness_utxo,
@@ -329,10 +330,9 @@ defmodule Bitcoinex.PSBT.In do
   defp serialize_kv(:bip32_derivation, value) when value != nil do
     key_data = Base.decode16!(value.public_key, case: :lower)
 
-    val =
-      <<value.pfp::little-size(32)>> <>
-        (for(chunk <- value.derivation, do: <<chunk::little-size(32)>>)
-         |> :erlang.list_to_binary())
+    {:ok, deriv_bin} = DerivationPath.serialize(value.derivation, :to_bin)
+    
+    val = <<value.pfp::little-size(32)>> <> deriv_bin
 
     PsbtUtils.serialize_kv(<<@psbt_in_bip32_derivation::big-size(8)>> <> key_data, val)
   end
@@ -464,7 +464,7 @@ defmodule Bitcoinex.PSBT.In do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
 
     <<pfp::little-unsigned-32, paths::binary>> = value
-    indexes = for <<chunk::little-unsigned-32 <- paths>>, do: chunk
+    {:ok, indexes} = DerivationPath.parse(paths, :from_bin)
 
     bip32_derivation =
       case input.bip32_derivation do
@@ -524,6 +524,7 @@ defmodule Bitcoinex.PSBT.Out do
   """
   alias Bitcoinex.PSBT.Out
   alias Bitcoinex.PSBT.Utils, as: PsbtUtils
+  alias Bitcoinex.ExtendedKey.DerivationPath, as: DerivationPath
 
   defstruct [
     :redeem_script,
@@ -560,11 +561,10 @@ defmodule Bitcoinex.PSBT.Out do
 
   defp serialize_kv(:bip32_derivation, value) when value != nil do
     key_data = Base.decode16!(value.public_key, case: :lower)
-
-    val =
-      <<value.pfp::little-size(32)>> <>
-        (for(chunk <- value.derivation, do: <<chunk::little-size(32)>>)
-         |> :erlang.list_to_binary())
+    
+    {:ok, deriv_bin} = DerivationPath.serialize(value.derivation, :to_bin)
+    
+    val = <<value.pfp::little-size(32)>> <> deriv_bin
 
     PsbtUtils.serialize_kv(<<@psbt_out_bip32_derivation::big-size(8)>> <> key_data, val)
   end
@@ -652,7 +652,7 @@ defmodule Bitcoinex.PSBT.Out do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
 
     <<pfp::little-unsigned-32, paths::binary>> = value
-    indexes = for <<chunk::little-unsigned-32 <- paths>>, do: chunk
+    {:ok, indexes} = DerivationPath.parse(paths, :from_bin)
 
     bip32_derivation =
       case output.bip32_derivation do
