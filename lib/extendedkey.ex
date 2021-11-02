@@ -307,11 +307,11 @@ defmodule Bitcoinex.ExtendedKey do
   # PARSE & SERIALIZE 
 
   @doc """
-    parse_extended_key takes binary or string representation 
+    parse takes binary or string representation 
     of an extended key and parses it to an extended key object
   """
-  @spec parse_extended_key(binary) :: {:ok, t()} | {:error, String.t()}
-  def parse_extended_key(
+  @spec parse(binary) :: {:ok, t()} | {:error, String.t()}
+  def parse(
         xkey =
           <<prefix::binary-size(4), depth::binary-size(1), parent_fingerprint::binary-size(4),
             child_num::binary-size(4), chaincode::binary-size(32), key::binary-size(33),
@@ -346,7 +346,7 @@ defmodule Bitcoinex.ExtendedKey do
   end
 
   # parse from string
-  def parse_extended_key(xkey) do
+  def parse(xkey) do
     case Base58.decode(xkey) do
       {:error, _} ->
         {:error, "error parsing key"}
@@ -354,7 +354,7 @@ defmodule Bitcoinex.ExtendedKey do
       {:ok, xkey} ->
         xkey
         |> Base58.append_checksum()
-        |> parse_extended_key()
+        |> parse()
     end
   end
 
@@ -365,11 +365,11 @@ defmodule Bitcoinex.ExtendedKey do
   end
 
   @doc """
-    serialize_extended_key takes an extended key
+    serialize takes an extended key
     and returns the binary
   """
-  @spec serialize_extended_key(t()) :: binary
-  def serialize_extended_key(xkey) do
+  @spec serialize(t()) :: binary
+  def serialize(xkey) do
     (xkey.prefix <>
        xkey.depth <> xkey.parent_fingerprint <> xkey.child_num <> xkey.chaincode <> xkey.key)
     |> Base58.append_checksum()
@@ -378,10 +378,10 @@ defmodule Bitcoinex.ExtendedKey do
   @doc """
     display returns the extended key as a string
   """
-  @spec display_extended_key(t()) :: String.t()
-  def display_extended_key(xkey) do
+  @spec display(t()) :: String.t()
+  def display(xkey) do
     xkey
-    |> serialize_extended_key()
+    |> serialize()
     |> Base58.encode_base()
   end
 
@@ -401,7 +401,7 @@ defmodule Bitcoinex.ExtendedKey do
 
       (prefix <> depth_fingerprint_childnum <> chaincode <> <<0>> <> key)
       |> Base58.append_checksum()
-      |> parse_extended_key()
+      |> parse()
     else
       {:error, "invalid extended private key prefix"}
     end
@@ -430,7 +430,7 @@ defmodule Bitcoinex.ExtendedKey do
         |> Kernel.<>(xprv.chaincode)
         |> Kernel.<>(pubkey)
         |> Base58.append_checksum()
-        |> parse_extended_key()
+        |> parse()
       rescue
         _ in MatchError -> {:error, "invalid private key"}
       end
@@ -537,7 +537,7 @@ defmodule Bitcoinex.ExtendedKey do
             (xkey.prefix <>
                child_depth <> fingerprint <> i <> child_chaincode <> Point.sec(pubkey))
             |> Base58.append_checksum()
-            |> parse_extended_key()
+            |> parse()
           end
         end
     end
@@ -588,7 +588,7 @@ defmodule Bitcoinex.ExtendedKey do
 
       (xkey.prefix <> child_depth <> fingerprint <> i <> child_chaincode <> <<0>> <> child_key)
       |> Base58.append_checksum()
-      |> parse_extended_key()
+      |> parse()
     rescue
       _ in MatchError -> {:error, "invalid private key in extended private key"}
     end

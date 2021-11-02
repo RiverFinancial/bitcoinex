@@ -266,15 +266,15 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
 
   # Extended Key Testing
 
-  describe "parse_extended_key/1" do
+  describe "parse/1" do
     test "successfully parse extended xprv" do
       t = @bip32_test_case_1
       # priv
-      assert ExtendedKey.parse_extended_key(t.xprv_m) == {:ok, t.xprv_m_obj}
-      assert ExtendedKey.display_extended_key(t.xprv_m_obj) == t.xprv_m
+      assert ExtendedKey.parse(t.xprv_m) == {:ok, t.xprv_m_obj}
+      assert ExtendedKey.display(t.xprv_m_obj) == t.xprv_m
       # pub
-      assert ExtendedKey.parse_extended_key(t.xpub_m) == {:ok, t.xpub_m_obj}
-      assert ExtendedKey.display_extended_key(t.xpub_m_obj) == t.xpub_m
+      assert ExtendedKey.parse(t.xpub_m) == {:ok, t.xpub_m_obj}
+      assert ExtendedKey.display(t.xpub_m_obj) == t.xpub_m
     end
   end
 
@@ -290,100 +290,100 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
     test "BIP32 tests 1: successfully convert xprv to xpub." do
       t = @bip32_test_case_1
 
-      {:ok, xprv} = ExtendedKey.parse_extended_key(t.xprv_m)
-      {:ok, xpub} = ExtendedKey.parse_extended_key(t.xpub_m)
+      {:ok, xprv} = ExtendedKey.parse(t.xprv_m)
+      {:ok, xpub} = ExtendedKey.parse(t.xpub_m)
       assert ExtendedKey.to_extended_public_key(xprv) == {:ok, xpub}
 
-      {:ok, xprv} = ExtendedKey.parse_extended_key(t.xprv_m_0h)
-      {:ok, xpub} = ExtendedKey.parse_extended_key(t.xpub_m_0h)
+      {:ok, xprv} = ExtendedKey.parse(t.xprv_m_0h)
+      {:ok, xpub} = ExtendedKey.parse(t.xpub_m_0h)
       assert ExtendedKey.to_extended_public_key(xprv) == {:ok, xpub}
 
-      {:ok, xprv} = ExtendedKey.parse_extended_key(t.xprv_m_0h_1)
-      {:ok, xpub} = ExtendedKey.parse_extended_key(t.xpub_m_0h_1)
+      {:ok, xprv} = ExtendedKey.parse(t.xprv_m_0h_1)
+      {:ok, xpub} = ExtendedKey.parse(t.xpub_m_0h_1)
       assert ExtendedKey.to_extended_public_key(xprv) == {:ok, xpub}
 
-      {:ok, xprv} = ExtendedKey.parse_extended_key(t.xprv_m_0h_1_2h)
-      {:ok, xpub} = ExtendedKey.parse_extended_key(t.xpub_m_0h_1_2h)
+      {:ok, xprv} = ExtendedKey.parse(t.xprv_m_0h_1_2h)
+      {:ok, xpub} = ExtendedKey.parse(t.xpub_m_0h_1_2h)
       assert ExtendedKey.to_extended_public_key(xprv) == {:ok, xpub}
 
-      {:ok, xprv} = ExtendedKey.parse_extended_key(t.xprv_m_0h_1_2h_2)
-      {:ok, xpub} = ExtendedKey.parse_extended_key(t.xpub_m_0h_1_2h_2)
+      {:ok, xprv} = ExtendedKey.parse(t.xprv_m_0h_1_2h_2)
+      {:ok, xpub} = ExtendedKey.parse(t.xpub_m_0h_1_2h_2)
       assert ExtendedKey.to_extended_public_key(xprv) == {:ok, xpub}
 
-      {:ok, xprv} = ExtendedKey.parse_extended_key(t.xprv_m_0h_1_2h_2_1000000000)
-      {:ok, xpub} = ExtendedKey.parse_extended_key(t.xpub_m_0h_1_2h_2_1000000000)
+      {:ok, xprv} = ExtendedKey.parse(t.xprv_m_0h_1_2h_2_1000000000)
+      {:ok, xpub} = ExtendedKey.parse(t.xpub_m_0h_1_2h_2_1000000000)
       assert ExtendedKey.to_extended_public_key(xprv) == {:ok, xpub}
     end
 
     test "BIP32 tests 1: derive prv keys in sequence" do
       t = @bip32_test_case_1
       # derive prv child from prv parent_fingerprint
-      {:ok, m_xprv} = ExtendedKey.parse_extended_key(t.xprv_m)
+      {:ok, m_xprv} = ExtendedKey.parse(t.xprv_m)
       {:ok, m_0h_xprv} = ExtendedKey.derive_private_child(m_xprv, @min_hardened_child_num)
 
-      assert ExtendedKey.parse_extended_key(t.xprv_m_0h) == {:ok, m_0h_xprv}
+      assert ExtendedKey.parse(t.xprv_m_0h) == {:ok, m_0h_xprv}
 
       # derive child m/0'/1
       {:ok, m_0h_1_xprv} = ExtendedKey.derive_private_child(m_0h_xprv, 1)
-      assert ExtendedKey.parse_extended_key(t.xprv_m_0h_1) == {:ok, m_0h_1_xprv}
+      assert ExtendedKey.parse(t.xprv_m_0h_1) == {:ok, m_0h_1_xprv}
     end
 
     test "BIP32 tests 1: derive pub keys from master prv key" do
       t = @bip32_test_case_1
 
-      {:ok, xprv} = ExtendedKey.parse_extended_key(t.xprv_m)
+      {:ok, xprv} = ExtendedKey.parse(t.xprv_m)
       {:ok, m_0h_xpub} = ExtendedKey.derive_public_child(xprv, @min_hardened_child_num)
 
-      assert ExtendedKey.parse_extended_key(t.xpub_m_0h) == {:ok, m_0h_xpub}
+      assert ExtendedKey.parse(t.xpub_m_0h) == {:ok, m_0h_xpub}
 
-      {:ok, xprv} = ExtendedKey.parse_extended_key(t.xprv_m)
+      {:ok, xprv} = ExtendedKey.parse(t.xprv_m)
       {:ok, xprv} = ExtendedKey.derive_private_child(xprv, @min_hardened_child_num)
       {:ok, xprv} = ExtendedKey.derive_private_child(xprv, 1)
       {:ok, m_0h_1_2h_xpub} = ExtendedKey.derive_public_child(xprv, @min_hardened_child_num + 2)
 
-      assert ExtendedKey.parse_extended_key(t.xpub_m_0h_1_2h) == {:ok, m_0h_1_2h_xpub}
+      assert ExtendedKey.parse(t.xpub_m_0h_1_2h) == {:ok, m_0h_1_2h_xpub}
     end
 
     test "BIP32 tests 1: derive m/0'/1/2'/2/1000000000 from master key" do
       t = @bip32_test_case_1
 
-      {:ok, xprv} = ExtendedKey.parse_extended_key(t.xprv_m)
+      {:ok, xprv} = ExtendedKey.parse(t.xprv_m)
       {:ok, xprv} = ExtendedKey.derive_private_child(xprv, @min_hardened_child_num)
       {:ok, xprv} = ExtendedKey.derive_private_child(xprv, 1)
       {:ok, xprv} = ExtendedKey.derive_private_child(xprv, @min_hardened_child_num + 2)
       {:ok, xprv} = ExtendedKey.derive_private_child(xprv, 2)
       {:ok, m_0h_1_2h_2_1000000000_xprv} = ExtendedKey.derive_private_child(xprv, 1_000_000_000)
 
-      assert ExtendedKey.parse_extended_key(t.xprv_m_0h_1_2h_2_1000000000) ==
+      assert ExtendedKey.parse(t.xprv_m_0h_1_2h_2_1000000000) ==
                {:ok, m_0h_1_2h_2_1000000000_xprv}
     end
 
     test "BIP32 tests 1: derive pub child from pub parent_fingerprint" do
       t = @bip32_test_case_1
 
-      {:ok, xpub} = ExtendedKey.parse_extended_key(t.xpub_m_0h)
+      {:ok, xpub} = ExtendedKey.parse(t.xpub_m_0h)
       {:ok, m_0h_1_xpub} = ExtendedKey.derive_public_child(xpub, 1)
 
-      assert ExtendedKey.parse_extended_key(t.xpub_m_0h_1) == {:ok, m_0h_1_xpub}
+      assert ExtendedKey.parse(t.xpub_m_0h_1) == {:ok, m_0h_1_xpub}
 
-      {:ok, xpub_m_0h_1_2h} = ExtendedKey.parse_extended_key(t.xpub_m_0h_1_2h)
+      {:ok, xpub_m_0h_1_2h} = ExtendedKey.parse(t.xpub_m_0h_1_2h)
       {:ok, m_0h_1_2h_2_xpub} = ExtendedKey.derive_public_child(xpub_m_0h_1_2h, 2)
 
-      assert ExtendedKey.parse_extended_key(t.xpub_m_0h_1_2h_2) == {:ok, m_0h_1_2h_2_xpub}
+      assert ExtendedKey.parse(t.xpub_m_0h_1_2h_2) == {:ok, m_0h_1_2h_2_xpub}
 
       {:ok, m_0h_1_2h_2_1000000000_xpub} =
         m_0h_1_2h_2_xpub
         |> ExtendedKey.derive_public_child(1_000_000_000)
 
-      assert ExtendedKey.parse_extended_key(t.xpub_m_0h_1_2h_2_1000000000) ==
+      assert ExtendedKey.parse(t.xpub_m_0h_1_2h_2_1000000000) ==
                {:ok, m_0h_1_2h_2_1000000000_xpub}
     end
 
     test "BIP32 tests 1: to_public_key works for both xprv and xpubs" do
       t = @bip32_test_case_1
 
-      {:ok, xprv} = ExtendedKey.parse_extended_key(t.xprv_m)
-      {:ok, xpub} = ExtendedKey.parse_extended_key(t.xpub_m)
+      {:ok, xprv} = ExtendedKey.parse(t.xprv_m)
+      {:ok, xpub} = ExtendedKey.parse(t.xpub_m)
 
       pub = ExtendedKey.to_public_key(xpub)
       # test that to_public_key works for xprv and xpub keys
@@ -394,7 +394,7 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
       t = @bip32_test_case_1
 
       seed = t.seed |> Base.decode16!(case: :lower)
-      {:ok, xprv} = ExtendedKey.parse_extended_key(t.xprv_m)
+      {:ok, xprv} = ExtendedKey.parse(t.xprv_m)
 
       assert ExtendedKey.seed_to_master_private_key(seed) == {:ok, xprv}
     end
@@ -403,20 +403,20 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
       t = @bip32_test_case_1
 
       seed = t.seed |> Base.decode16!(case: :lower)
-      {:ok, xprv} = t.xprv_m |> ExtendedKey.parse_extended_key()
+      {:ok, xprv} = t.xprv_m |> ExtendedKey.parse()
       deriv = %ExtendedKey.DerivationPath{child_nums: []}
 
       assert ExtendedKey.derive_extended_key(seed, deriv) == {:ok, xprv}
 
       # derive m/0'/1
-      {:ok, xprv} = t.xprv_m_0h_1 |> ExtendedKey.parse_extended_key()
+      {:ok, xprv} = t.xprv_m_0h_1 |> ExtendedKey.parse()
       deriv = %ExtendedKey.DerivationPath{child_nums: [@min_hardened_child_num, 1]}
 
       assert ExtendedKey.derive_extended_key(seed, deriv) == {:ok, xprv}
 
       # derive xprv_m_0h_1_2h_2_1000000000
       {:ok, xprv_m_0h_1_2h_2_1000000000} =
-        t.xprv_m_0h_1_2h_2_1000000000 |> ExtendedKey.parse_extended_key()
+        t.xprv_m_0h_1_2h_2_1000000000 |> ExtendedKey.parse()
 
       deriv = %ExtendedKey.DerivationPath{
         child_nums: [@min_hardened_child_num, 1, @min_hardened_child_num + 2, 2, 1_000_000_000]
@@ -430,55 +430,55 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
     test "BIP32 tests 2: successfully convert xprv to xpub." do
       t = @bip32_test_case_2
 
-      {:ok, xprv} = ExtendedKey.parse_extended_key(t.xprv_m)
-      {:ok, xpub} = ExtendedKey.parse_extended_key(t.xpub_m)
+      {:ok, xprv} = ExtendedKey.parse(t.xprv_m)
+      {:ok, xpub} = ExtendedKey.parse(t.xpub_m)
       assert ExtendedKey.to_extended_public_key(xprv) == {:ok, xpub}
 
-      {:ok, xprv} = ExtendedKey.parse_extended_key(t.xprv_m_0)
-      {:ok, xpub} = ExtendedKey.parse_extended_key(t.xpub_m_0)
+      {:ok, xprv} = ExtendedKey.parse(t.xprv_m_0)
+      {:ok, xpub} = ExtendedKey.parse(t.xpub_m_0)
       assert ExtendedKey.to_extended_public_key(xprv) == {:ok, xpub}
 
-      {:ok, xprv} = ExtendedKey.parse_extended_key(t.xprv_m_0_2147483647h)
-      {:ok, xpub} = ExtendedKey.parse_extended_key(t.xpub_m_0_2147483647h)
+      {:ok, xprv} = ExtendedKey.parse(t.xprv_m_0_2147483647h)
+      {:ok, xpub} = ExtendedKey.parse(t.xpub_m_0_2147483647h)
       assert ExtendedKey.to_extended_public_key(xprv) == {:ok, xpub}
 
-      {:ok, xprv} = ExtendedKey.parse_extended_key(t.xprv_m_0_2147483647h_1)
-      {:ok, xpub} = ExtendedKey.parse_extended_key(t.xpub_m_0_2147483647h_1)
+      {:ok, xprv} = ExtendedKey.parse(t.xprv_m_0_2147483647h_1)
+      {:ok, xpub} = ExtendedKey.parse(t.xpub_m_0_2147483647h_1)
       assert ExtendedKey.to_extended_public_key(xprv) == {:ok, xpub}
 
-      {:ok, xprv} = ExtendedKey.parse_extended_key(t.xprv_m_0_2147483647h_1_2147483646h)
-      {:ok, xpub} = ExtendedKey.parse_extended_key(t.xpub_m_0_2147483647h_1_2147483646h)
+      {:ok, xprv} = ExtendedKey.parse(t.xprv_m_0_2147483647h_1_2147483646h)
+      {:ok, xpub} = ExtendedKey.parse(t.xpub_m_0_2147483647h_1_2147483646h)
       assert ExtendedKey.to_extended_public_key(xprv) == {:ok, xpub}
 
-      {:ok, xprv} = ExtendedKey.parse_extended_key(t.xprv_m_0_2147483647h_1_2147483646h_2)
-      {:ok, xpub} = ExtendedKey.parse_extended_key(t.xpub_m_0_2147483647h_1_2147483646h_2)
+      {:ok, xprv} = ExtendedKey.parse(t.xprv_m_0_2147483647h_1_2147483646h_2)
+      {:ok, xpub} = ExtendedKey.parse(t.xpub_m_0_2147483647h_1_2147483646h_2)
       assert ExtendedKey.to_extended_public_key(xprv) == {:ok, xpub}
     end
 
     test "BIP32 tests 2: derive prv keys in sequence" do
       t = @bip32_test_case_2
       # derive prv child from prv parent_fingerprint
-      {:ok, xprv} = ExtendedKey.parse_extended_key(t.xprv_m)
+      {:ok, xprv} = ExtendedKey.parse(t.xprv_m)
       {:ok, m_0_xprv} = ExtendedKey.derive_private_child(xprv, 0)
 
-      assert ExtendedKey.parse_extended_key(t.xprv_m_0) == {:ok, m_0_xprv}
+      assert ExtendedKey.parse(t.xprv_m_0) == {:ok, m_0_xprv}
 
       # derive child m/0/2147483647h
       {:ok, m_0_2147483647h_xprv} =
         ExtendedKey.derive_private_child(m_0_xprv, 2_147_483_647 + @min_hardened_child_num)
 
-      assert ExtendedKey.parse_extended_key(t.xprv_m_0_2147483647h) == {:ok, m_0_2147483647h_xprv}
+      assert ExtendedKey.parse(t.xprv_m_0_2147483647h) == {:ok, m_0_2147483647h_xprv}
     end
 
     test "BIP32 tests 2: derive pub keys from master prv key" do
       t = @bip32_test_case_2
 
-      {:ok, xprv} = ExtendedKey.parse_extended_key(t.xprv_m)
+      {:ok, xprv} = ExtendedKey.parse(t.xprv_m)
       {:ok, m_0_xpub} = ExtendedKey.derive_public_child(xprv, 0)
 
-      assert ExtendedKey.parse_extended_key(t.xpub_m_0) == {:ok, m_0_xpub}
+      assert ExtendedKey.parse(t.xpub_m_0) == {:ok, m_0_xpub}
 
-      {:ok, xprv} = ExtendedKey.parse_extended_key(t.xprv_m)
+      {:ok, xprv} = ExtendedKey.parse(t.xprv_m)
       {:ok, xprv_temp} = ExtendedKey.derive_private_child(xprv, 0)
 
       {:ok, xprv_temp} =
@@ -486,25 +486,25 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
 
       {:ok, m_0_2147483647h_1_xpub} = ExtendedKey.derive_public_child(xprv_temp, 1)
 
-      assert ExtendedKey.parse_extended_key(t.xpub_m_0_2147483647h_1) ==
+      assert ExtendedKey.parse(t.xpub_m_0_2147483647h_1) ==
                {:ok, m_0_2147483647h_1_xpub}
     end
 
     test "BIP32 tests 2: derive child pub keys from prv and pubkey" do
       t = @bip32_test_case_2
 
-      {:ok, xprv} = ExtendedKey.parse_extended_key(t.xprv_m)
+      {:ok, xprv} = ExtendedKey.parse(t.xprv_m)
       {:ok, xpub1} = ExtendedKey.derive_public_child(xprv, 0)
 
-      {:ok, xpub} = ExtendedKey.parse_extended_key(t.xpub_m)
+      {:ok, xpub} = ExtendedKey.parse(t.xpub_m)
       {:ok, xpub2} = ExtendedKey.derive_public_child(xpub, 0)
 
       assert xpub1 == xpub2
 
-      {:ok, xprv} = ExtendedKey.parse_extended_key(t.xprv_m_0_2147483647h)
+      {:ok, xprv} = ExtendedKey.parse(t.xprv_m_0_2147483647h)
       {:ok, xpub1} = ExtendedKey.derive_public_child(xprv, 1)
 
-      {:ok, xpub} = ExtendedKey.parse_extended_key(t.xpub_m_0_2147483647h)
+      {:ok, xpub} = ExtendedKey.parse(t.xpub_m_0_2147483647h)
       {:ok, xpub2} = ExtendedKey.derive_public_child(xpub, 1)
 
       assert xpub1 == xpub2
@@ -514,7 +514,7 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
       t = @bip32_test_case_2
 
       seed = t.seed |> Base.decode16!(case: :lower)
-      {:ok, xprv} = t.xprv_m |> ExtendedKey.parse_extended_key()
+      {:ok, xprv} = t.xprv_m |> ExtendedKey.parse()
 
       assert ExtendedKey.seed_to_master_private_key(seed) == {:ok, xprv}
     end
@@ -523,12 +523,12 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
       t = @bip32_test_case_2
 
       seed = t.seed |> Base.decode16!(case: :lower)
-      {:ok, xprv} = t.xprv_m |> ExtendedKey.parse_extended_key()
+      {:ok, xprv} = t.xprv_m |> ExtendedKey.parse()
       deriv = %ExtendedKey.DerivationPath{child_nums: []}
 
       assert ExtendedKey.derive_extended_key(seed, deriv) == {:ok, xprv}
 
-      {:ok, xprv} = t.xprv_m_0_2147483647h |> ExtendedKey.parse_extended_key()
+      {:ok, xprv} = t.xprv_m_0_2147483647h |> ExtendedKey.parse()
 
       deriv = %ExtendedKey.DerivationPath{
         child_nums: [0, 2_147_483_647 + @min_hardened_child_num]
@@ -537,7 +537,7 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
       assert ExtendedKey.derive_extended_key(seed, deriv) == {:ok, xprv}
 
       {:ok, xprv_m_0_2147483647h_1_2147483646h_2} =
-        t.xprv_m_0_2147483647h_1_2147483646h_2 |> ExtendedKey.parse_extended_key()
+        t.xprv_m_0_2147483647h_1_2147483646h_2 |> ExtendedKey.parse()
 
       deriv = %ExtendedKey.DerivationPath{
         child_nums: [
@@ -558,14 +558,14 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
     test "BIP32 tests 3: derive public key from private key" do
       t = @bip32_test_case_3
 
-      {:ok, xprv} = ExtendedKey.parse_extended_key(t.xprv_m)
-      {:ok, xpub} = ExtendedKey.parse_extended_key(t.xpub_m)
+      {:ok, xprv} = ExtendedKey.parse(t.xprv_m)
+      {:ok, xpub} = ExtendedKey.parse(t.xpub_m)
       assert ExtendedKey.to_extended_public_key(xprv) == {:ok, xpub}
       # check that to_extended_public_key is identity for xpub
       assert ExtendedKey.to_extended_public_key(xpub) == xpub
 
-      {:ok, xprv} = ExtendedKey.parse_extended_key(t.xprv_m_0h)
-      {:ok, xpub} = ExtendedKey.parse_extended_key(t.xpub_m_0h)
+      {:ok, xprv} = ExtendedKey.parse(t.xprv_m_0h)
+      {:ok, xpub} = ExtendedKey.parse(t.xpub_m_0h)
       assert ExtendedKey.to_extended_public_key(xprv) == {:ok, xpub}
       assert ExtendedKey.to_extended_public_key(xpub) == xpub
     end
@@ -573,25 +573,25 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
     test "BIP32 tests 3: derive prv child from parent" do
       t = @bip32_test_case_3
 
-      {:ok, xprv} = ExtendedKey.parse_extended_key(t.xprv_m)
+      {:ok, xprv} = ExtendedKey.parse(t.xprv_m)
       {:ok, xprv_m_0h} = ExtendedKey.derive_private_child(xprv, @min_hardened_child_num)
 
-      assert ExtendedKey.parse_extended_key(t.xprv_m_0h) == {:ok, xprv_m_0h}
+      assert ExtendedKey.parse(t.xprv_m_0h) == {:ok, xprv_m_0h}
     end
 
     test "BIP32 tests 3: derive pub child from prv parent" do
       t = @bip32_test_case_3
 
-      {:ok, xprv} = ExtendedKey.parse_extended_key(t.xprv_m)
+      {:ok, xprv} = ExtendedKey.parse(t.xprv_m)
       {:ok, xpub_m_0h} = ExtendedKey.derive_public_child(xprv, @min_hardened_child_num)
 
-      assert ExtendedKey.display_extended_key(xpub_m_0h) == t.xpub_m_0h
+      assert ExtendedKey.display(xpub_m_0h) == t.xpub_m_0h
     end
 
     test "BIP32 tests 3: derive master prv key from seed" do
       t = @bip32_test_case_3
 
-      {:ok, xprv} = ExtendedKey.parse_extended_key(t.xprv_m)
+      {:ok, xprv} = ExtendedKey.parse(t.xprv_m)
 
       {:ok, s_xprv} =
         t.seed
@@ -604,7 +604,7 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
     test "BIP32 tests 3: derive child prv key from seed" do
       t = @bip32_test_case_3
 
-      {:ok, xprv_m_0h} = ExtendedKey.parse_extended_key(t.xprv_m_0h)
+      {:ok, xprv_m_0h} = ExtendedKey.parse(t.xprv_m_0h)
       deriv = %ExtendedKey.DerivationPath{child_nums: [@min_hardened_child_num]}
 
       {:ok, s_xprv_m_0h} =
@@ -619,7 +619,7 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
   describe "Invalid Key testing" do
     test "invalid key testing" do
       for t <- @invalid_xkeys do
-        {err, _} = ExtendedKey.parse_extended_key(t)
+        {err, _} = ExtendedKey.parse(t)
         assert err == :error
       end
     end
@@ -629,8 +629,8 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
     test "derive prv and public key, sign msg, verify" do
       t = @bip32_test_case_1
 
-      {:ok, xprv} = ExtendedKey.parse_extended_key(t.xprv_m)
-      {:ok, xpub} = ExtendedKey.parse_extended_key(t.xpub_m)
+      {:ok, xprv} = ExtendedKey.parse(t.xprv_m)
+      {:ok, xpub} = ExtendedKey.parse(t.xpub_m)
 
       {:ok, prv} = ExtendedKey.to_private_key(xprv)
       {:ok, pub} = ExtendedKey.to_public_key(xpub)
@@ -646,7 +646,7 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
     test "fail to derive hardened child from pubkey parent" do
       t = @bip32_test_case_3
 
-      {:ok, xpub} = ExtendedKey.parse_extended_key(t.xpub_m)
+      {:ok, xpub} = ExtendedKey.parse(t.xpub_m)
       {err, _msg} = ExtendedKey.derive_child_key(xpub, @min_hardened_child_num)
       assert :error == err
     end
@@ -658,7 +658,7 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
         child_nums: [@min_hardened_child_num, 1]
       }
 
-      {:ok, xpub} = ExtendedKey.parse_extended_key(t.xpub_m)
+      {:ok, xpub} = ExtendedKey.parse(t.xpub_m)
       {err, _msg} = ExtendedKey.derive_extended_key(xpub, deriv)
       assert :error == err
     end
@@ -678,7 +678,7 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
         t.xprv_m_obj
         |> ExtendedKey.derive_extended_key(deriv)
 
-      assert ExtendedKey.display_extended_key(child_key) == t.xprv_m_0h_1_2h_2
+      assert ExtendedKey.display(child_key) == t.xprv_m_0h_1_2h_2
     end
 
     test "successfully derive xpub child key with derivation path" do
@@ -693,11 +693,11 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
         ]
       }
 
-      {:ok, xprv_t1} = ExtendedKey.parse_extended_key(t.xprv_m)
+      {:ok, xprv_t1} = ExtendedKey.parse(t.xprv_m)
       {:ok, xprv_t2} = ExtendedKey.derive_extended_key(xprv_t1, deriv)
       {:ok, child_key} = ExtendedKey.to_extended_public_key(xprv_t2)
 
-      assert ExtendedKey.display_extended_key(child_key) == t.xpub_m_0_2147483647h_1_2147483646h
+      assert ExtendedKey.display(child_key) == t.xpub_m_0_2147483647h_1_2147483646h
     end
 
     test "test use of deriv path bip32 test 2" do
@@ -713,11 +713,11 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
         ]
       }
 
-      {:ok, m} = ExtendedKey.parse_extended_key(t.xprv_m)
+      {:ok, m} = ExtendedKey.parse(t.xprv_m)
 
       {:ok, child_key} = ExtendedKey.derive_extended_key(m, deriv)
 
-      assert ExtendedKey.parse_extended_key(t.xprv_m_0_2147483647h_1_2147483646h_2) ==
+      assert ExtendedKey.parse(t.xprv_m_0_2147483647h_1_2147483646h_2) ==
                {:ok, child_key}
     end
   end
