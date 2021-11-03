@@ -47,17 +47,17 @@ defmodule Bitcoinex.ExtendedKey do
     def serialize(dp = %__MODULE__{}, :to_bin), do: to_bin(dp)
 
     @spec path_to_string(t()) :: {:ok, String.t()} | {:error, String.t()}
-    def path_to_string(%__MODULE__{child_nums: path}), do: tto_string(path, "")
+    def path_to_string(%__MODULE__{child_nums: path}), do: path_to_string(path, "")
 
-    defp tto_string([], path_acc), do: {:ok, path_acc}
+    defp path_to_string([], path_acc), do: {:ok, path_acc}
 
-    defp tto_string([l | rest], path_acc) do
+    defp path_to_string([l | rest], path_acc) do
       cond do
         l == :any ->
-          tto_string(rest, path_acc <> "*/")
+          path_to_string(rest, path_acc <> "*/")
 
         l == :anyh ->
-          tto_string(rest, path_acc <> "*'/")
+          path_to_string(rest, path_acc <> "*'/")
 
         l > @max_hardened_child_num ->
           {:error, "index cannot be greater than #{@max_hardened_child_num}"}
@@ -67,7 +67,7 @@ defmodule Bitcoinex.ExtendedKey do
 
         # hardened
         l >= @min_hardened_child_num ->
-          tto_string(
+          path_to_string(
             rest,
             path_acc <>
               (l
@@ -78,22 +78,22 @@ defmodule Bitcoinex.ExtendedKey do
 
         # unhardened
         true ->
-          tto_string(rest, path_acc <> Integer.to_string(l) <> "/")
+          path_to_string(rest, path_acc <> Integer.to_string(l) <> "/")
       end
     end
 
     @spec to_bin(t()) :: {:ok, binary} | {:error, String.t()}
     def to_bin(%__MODULE__{child_nums: child_nums}) do
       try do
-        {:ok, tto_bin(child_nums, <<>>)}
+        {:ok, to_bin(child_nums, <<>>)}
       rescue
         e in ArgumentError -> {:error, e.message}
       end
     end
 
-    defp tto_bin([], path_acc), do: path_acc
+    defp to_bin([], path_acc), do: path_acc
 
-    defp tto_bin([lvl | rest], path_acc) do
+    defp to_bin([lvl | rest], path_acc) do
       cond do
         lvl == :any or lvl == :anyh ->
           raise(ArgumentError,
@@ -112,7 +112,7 @@ defmodule Bitcoinex.ExtendedKey do
             |> :binary.encode_unsigned(:little)
             |> Bitcoinex.Utils.pad(4, :trailing)
 
-          tto_bin(rest, path_acc <> lvlbin)
+          to_bin(rest, path_acc <> lvlbin)
       end
     end
 
