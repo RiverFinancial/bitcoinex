@@ -94,6 +94,42 @@ defmodule Bitcoinex.ScriptTest do
     "0020701a8d401c84fb13e6baf169d59684e17abd9fa216c8cc5b9fc63d622ff8c58d"
   ]
 
+  # from 
+  # https://github.com/bitcoin/bips/blob/master/bip-0350.mediawiki#test-vectors-for-v0-v16-native-segregated-witness-addresses
+  # test vectors that are not valid v0 or v1 scripts have been removed.
+  @bip350_test_vectors [
+    %{
+      b32: "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4",
+      hex: "0014751e76e8199196d454941c45d1b3a323f1433bd6",
+      net: :mainnet
+    },
+    %{
+      b32: "tb1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3q0sl5k7",
+      hex: "00201863143c14c5166804bd19203356da136c985678cd4d27a1b8c6329604903262",
+      net: :testnet
+    },
+    %{
+      b32: "bc1pqyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqsyjer9e",
+      hex: "51200101010101010101010101010101010101010101010101010101010101010101",
+      net: :mainnet
+    },
+    %{
+      b32: "tb1qqqqqp399et2xygdj5xreqhjjvcmzhxw4aywxecjdzew6hylgvsesrxh6hy",
+      hex: "0020000000c4a5cad46221b2a187905e5266362b99d5e91c6ce24d165dab93e86433",
+      net: :testnet
+    },
+    %{
+      b32: "tb1pqqqqp399et2xygdj5xreqhjjvcmzhxw4aywxecjdzew6hylgvsesf3hn0c",
+      hex: "5120000000c4a5cad46221b2a187905e5266362b99d5e91c6ce24d165dab93e86433",
+      net: :testnet
+    },
+    %{
+      b32: "bc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqzk5jj0",
+      hex: "512079be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      net: :mainnet
+    }
+  ]
+
   describe "test basics functions" do
     test "test new/0 and empty?/1" do
       s = Script.new()
@@ -1089,6 +1125,13 @@ defmodule Bitcoinex.ScriptTest do
         end
       end
     end
+
+    test "test bip350 test vectors" do
+      for t <- @bip350_test_vectors do
+        {:ok, s} = Script.parse_script(t.hex)
+        assert Script.to_address(s, t.net) == {:ok, t.b32}
+      end
+    end
   end
 
   describe "test from_address" do
@@ -1190,6 +1233,14 @@ defmodule Bitcoinex.ScriptTest do
       {:ok, script, network} = Script.from_address(addr)
       assert Script.is_p2wpkh?(script)
       assert network == :mainnet
+    end
+
+    test "test bip350 test vectors" do
+      for t <- @bip350_test_vectors do
+        {:ok, s, net} = Script.from_address(t.b32)
+        assert Script.to_hex(s) == t.hex
+        assert net == t.net
+      end
     end
   end
 

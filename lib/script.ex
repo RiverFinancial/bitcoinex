@@ -202,7 +202,7 @@ defmodule Bitcoinex.Script do
   """
   @spec serialize_script(t()) :: binary
   def serialize_script(script = %__MODULE__{}) do
-    # serialize_script(%Script{items: [0x81]}) will still display "Q" but 
+    # serialize_script(%Script{items: [0x51]}) will still display "Q" but 
     # it functions as binary 0x51. Use to_hex for displaying scripts.
     serializer(script, <<>>)
   end
@@ -383,7 +383,7 @@ defmodule Bitcoinex.Script do
   	OP_1 OP_PUSHBYTES_32 <32-byte hash>
   """
   @spec is_p2tr?(t()) :: boolean
-  def is_p2tr?(%__MODULE__{items: [0x01, @tapkey_length, <<_::binary-size(@tapkey_length)>>]}),
+  def is_p2tr?(%__MODULE__{items: [0x51, @tapkey_length, <<_::binary-size(@tapkey_length)>>]}),
     do: true
 
   def is_p2tr?(%__MODULE__{}), do: false
@@ -560,9 +560,10 @@ defmodule Bitcoinex.Script do
   	and witness program. It performs no validity checks. 
   """
   @spec create_witness_scriptpubkey(non_neg_integer(), binary) :: {:ok, t()}
-  def create_witness_scriptpubkey(witver, witness_program) do
+  def create_witness_scriptpubkey(version, witness_program) do
+    wit_version_adjusted = if(version == 0, do: 0, else: version + 0x50)
     {:ok, s} = push_data(new(), witness_program)
-    push_op(s, witver)
+    push_op(s, wit_version_adjusted)
   end
 
   @doc """
@@ -570,7 +571,7 @@ defmodule Bitcoinex.Script do
   """
   @spec create_p2wpkh(binary) :: {:ok, t()}
   def create_p2wpkh(<<pkh::binary-size(@h160_length)>>),
-    do: create_witness_scriptpubkey(0x00, pkh)
+    do: create_witness_scriptpubkey(0, pkh)
 
   def create_p2wpkh(_), do: {:error, "pubkey hash must be a #{@h160_length}-byte hash"}
 
@@ -578,14 +579,14 @@ defmodule Bitcoinex.Script do
   	create_p2wsh creates a p2wsh script using the passed 32-byte script hash
   """
   @spec create_p2wsh(binary) :: {:ok, t()}
-  def create_p2wsh(<<sh::binary-size(@wsh_length)>>), do: create_witness_scriptpubkey(0x00, sh)
+  def create_p2wsh(<<sh::binary-size(@wsh_length)>>), do: create_witness_scriptpubkey(0, sh)
   def create_p2wsh(_), do: {:error, "script hash must be a #{@wsh_length}-byte hash"}
 
   @doc """
   	create_p2tr creates a p2tr script using the passed 32-byte public key
   """
   @spec create_p2tr(binary) :: {:ok, t()}
-  def create_p2tr(<<pk::binary-size(@tapkey_length)>>), do: create_witness_scriptpubkey(0x01, pk)
+  def create_p2tr(<<pk::binary-size(@tapkey_length)>>), do: create_witness_scriptpubkey(1, pk)
   def create_p2tr(_), do: {:error, "public key must be #{@tapkey_length}-bytes"}
 
   @doc """
@@ -675,8 +676,8 @@ defmodule Bitcoinex.Script do
             {:ok, script} = create_witness_scriptpubkey(version, :binary.list_to_bin(program))
             {:ok, script, network}
 
-          {:error, _msg} ->
-            {:error, "invalid segwit address"}
+          {:error, msg} ->
+            {:error, "invalid segwit address: #{msg}"}
         end
 
       # legacy addresses
@@ -736,7 +737,7 @@ defmodule Bitcoinex.Script do
         end
 
       # segwit 1 (taproot)
-      0x01 ->
+      0x51 ->
         {:ok, @tapkey_length, script} = pop(script)
         {:ok, <<res::binary-size(@tapkey_length)>>, _script} = pop(script)
         Segwit.encode_address(network, 1, :binary.bin_to_list(res))
