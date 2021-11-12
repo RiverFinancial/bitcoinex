@@ -103,7 +103,14 @@ defmodule Bitcoinex.AddressTest do
         "tb1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3q0sL5k7",
         "bc1zw508d6qejxtdg4y5r3zarvaryvqyzf3du",
         "tb1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3pjxtptv",
-        "bc1gmk9yu"
+        "bc1gmk9yu",
+        # p2tr addresses
+        "bc1pqyqszqgpqyqszqgpqyqszqppgpqyqszqgpqyqszqgpqyqszqgpqyqsyjer9e",
+        "bc1p0xlxvlhemja6c4dqv22uapctqupfpphlxm9h8z3k2e72q4k9hcz7vqzk5jj0",
+        "bc1pqyqszqgpqyqszqgpqyqszgpqyqszqgpqyqszqgpqyqszqgpqyqsyjer9e",
+        "bc1p0xlxvlhemja6c4dqv22uapctquphlxm9h8z3k2e72q4k9hcz7vqzk5jj0",
+        "bc1pqyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqsyjer9f",
+        "bc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqzk5jj1"
       ]
 
       {:ok,
@@ -148,21 +155,25 @@ defmodule Bitcoinex.AddressTest do
            valid_testnet_segwit_addresses: valid_testnet_segwit_addresses,
            valid_testnet_p2pkh_addresses: valid_testnet_p2pkh_addresses,
            valid_testnet_p2sh_addresses: valid_testnet_p2sh_addresses,
-           valid_regtest_segwit_addresses: valid_regtest_segwit_addresses
+           valid_regtest_segwit_addresses: valid_regtest_segwit_addresses,
+           valid_testnet_p2tr_addresses: valid_testnet_p2tr_addresses
          } do
       all_valid_testnet_addresses =
         valid_testnet_segwit_addresses ++
           valid_testnet_p2pkh_addresses ++
-          valid_testnet_p2sh_addresses ++ valid_regtest_segwit_addresses
+          valid_testnet_p2sh_addresses ++
+          valid_regtest_segwit_addresses ++
+          valid_testnet_p2tr_addresses
 
       for valid_testnet_address <- all_valid_testnet_addresses do
         refute Address.is_valid?(valid_testnet_address, :mainnet)
       end
     end
 
-    test "return false when the address is not valid address either p2sh, p2pkh, pwsh, p2wpkh", %{
-      invalid_addresses: invalid_addresses
-    } do
+    test "return false when the address is not valid address either p2sh, p2pkh, pwsh, p2wpkh, p2tr",
+         %{
+           invalid_addresses: invalid_addresses
+         } do
       all_invalid_addresses = invalid_addresses
 
       for invalid_address <- all_invalid_addresses do
@@ -182,7 +193,9 @@ defmodule Bitcoinex.AddressTest do
       valid_mainnet_p2wpkh_addresses: valid_mainnet_p2wpkh_addresses,
       valid_testnet_p2wpkh_addresses: valid_testnet_p2wpkh_addresses,
       valid_mainnet_p2wsh_addresses: valid_mainnet_p2wsh_addresses,
-      valid_testnet_p2wsh_addresses: valid_testnet_p2wsh_addresses
+      valid_testnet_p2wsh_addresses: valid_testnet_p2wsh_addresses,
+      valid_mainnet_p2tr_addresses: valid_mainnet_p2tr_addresses,
+      valid_testnet_p2tr_addresses: valid_testnet_p2tr_addresses
     } do
       for mainnet_p2pkh <- valid_mainnet_p2pkh_addresses do
         assert Address.decode_type(mainnet_p2pkh, :mainnet) == {:ok, :p2pkh}
@@ -214,6 +227,14 @@ defmodule Bitcoinex.AddressTest do
 
       for testnet_p2wsh <- valid_testnet_p2wsh_addresses do
         assert Address.decode_type(testnet_p2wsh, :testnet) == {:ok, :p2wsh}
+      end
+
+      for mainnet_p2tr <- valid_mainnet_p2tr_addresses do
+        assert Address.decode_type(mainnet_p2tr, :mainnet) == {:ok, :p2tr}
+      end
+
+      for testnet_p2tr <- valid_testnet_p2tr_addresses do
+        assert Address.decode_type(testnet_p2tr, :testnet) == {:ok, :p2tr}
       end
     end
   end
