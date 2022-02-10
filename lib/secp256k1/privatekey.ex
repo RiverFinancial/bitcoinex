@@ -92,8 +92,9 @@ defmodule Bitcoinex.Secp256k1.PrivateKey do
   @doc """
   returns the base58check encoded private key as a string
   assumes all keys are compressed
+  TODO: can this handle uncompressed WIFs?
   """
-  @spec parse_wif(String.t()) :: {:ok, t(), atom, boolean}
+  @spec parse_wif(String.t()) :: {:ok, t(), atom, boolean} | {:error, String.t()}
   def parse_wif(wif_str) do
     {state, bin} = Base58.decode(wif_str)
 
@@ -195,8 +196,8 @@ defmodule Bitcoinex.Secp256k1.PrivateKey do
 
   @doc """
   sign returns an ECDSA signature using the privkey and z
-  where privkey is a PrivateKey object and z is an integer. 
-  The nonce is derived using RFC6979. 
+  where privkey is a PrivateKey object and z is an integer.
+  The nonce is derived using RFC6979.
   """
   @spec sign(t(), integer) :: Signature.t()
   def sign(privkey, z) do

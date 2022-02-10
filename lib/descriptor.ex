@@ -1,16 +1,33 @@
 defmodule Bitcoinex.Descriptor do
+	@moduledoc """
+	Module for using Descriptors
+
+	types of descriptors:
+
+	:pkh (%DKEY)
+	:sh (%DESCRIPTOR) # recursive
+	:wpkh (%DKEY)
+	:wsh (%DESCRIPTOR) # recursive
+	:pk (%DKEY)
+	:combo (%DKEY)
+	:multi (m, [%DKEY...])
+	:sortedmulti (m, [%DKEY...])
+	:addr (str)
+	:raw (str)
+	"""
 	alias Bitcoinex.{
 		Script,
 		ExtendedKey,
+		Network,
 		ExtendedKey.DerivationPath,
 		Secp256k1.PrivateKey,
 		Secp256k1.Point
 	}
-
+	# TODO can't create DKey straight from WIF
 	defmodule DKey do
 		# WIF encoding requires network info
 		@type key_type ::
-						ExtendedKey.t() | {PrivateKey.t(), Bitcoinex.Network.network_name()} | Point.t()
+						ExtendedKey.t() | {PrivateKey.t(), Network.network_name()} | Point.t()
 
 		@type t :: %__MODULE__{
 						key: key_type,
@@ -49,27 +66,24 @@ defmodule Bitcoinex.Descriptor do
 		# used by descriptor module to make all keys into dkeys.
 		# if dkey is passed, returns identity
 		def from_key(dkey = %__MODULE__{}), do: dkey
-		def from_key(pk = %Point{}), do: from_public_key(pk)
+		def from_key(pk = %Point{}), do: %__MODULE__{key: pk}
+		def from_key(xkey = %ExtendedKey{}), do: %__MODULE__{key: xkey}
 		def from_key(_), do: {:error, "invalid key"}
 
 		def from_key(sk = %PrivateKey{}, network), do: from_private_key(sk, network)
 		def from_key(xkey = %ExtendedKey{}, pathdata) do
 			defaults = %{parent_fingerprint: <<>>,
-									anc_path: DerivationPath.new(), 
+									anc_path: DerivationPath.new(),
 									desc_path: DerivationPath.new()}
 			data = Map.merge(defaults, pathdata)
 			from_extended_key(xkey, data.parent_fingerprint, data.anc_path, data.desc_path)
 		end
 		def from_key(_, _), do: {:error, "invalid key"}
 
-		def from_public_key(pk = %Point{}) do
-			%__MODULE__{key: pk}
-		end
-
-		@spec from_private_key(PrivateKey.t(), Bitcoinex.Network.network_name()) :: t()
+		@spec from_private_key(PrivateKey.t(), Network.network_name()) :: t()
 		def from_private_key(sk = %PrivateKey{}, network) do
 			# ensure valid network is passed
-			_ = Bitcoinex.Network.get_network(network)
+			_ = Network.get_network(network)
 			%__MODULE__{key: {sk, network}}
 		end
 
@@ -87,33 +101,24 @@ defmodule Bitcoinex.Descriptor do
 			}
 		end
 
-		def serialize(d = %__MODULE__{key: %ExtendedKey{}}), do: serialize_extended_key(d)
-		def serialize(d = %__MODULE__{key: {%PrivateKey{}, _network}}), do: serialize_private_key(d)
-		def serialize(d = %__MODULE__{key: %Point{}}), do: serialize_public_key(d)
-
-		defp serialize_public_key(d) do
-			d.key
-			|> Point.sec()
-			|> Base.encode16(case: :lower)
-		end
-
-		defp serialize_private_key(desc) do
-			{key, network} = desc.key
-			PrivateKey.wif!(key, network)
-		end
-
-		defp serialize_extended_key(desc) do
+		def serialize(desc = %__MODULE__{key: key}) do
 			fp = Base.encode16(desc.parent_fingerprint, case: :lower)
 			{:ok, anc_path} = DerivationPath.to_string(desc.ancestor_path)
 			{:ok, desc_path} = DerivationPath.to_string(desc.descendant_path)
-			xkey = ExtendedKey.display_extended_key(desc.key)
+
+			serialized_key = serialize_key(key)
+
 			case fp <> handle_slashes(anc_path) do
 				"" ->
-					xkey <> handle_slashes(desc_path)
-				origin -> 
-					"[" <> origin <> "]" <> xkey <> handle_slashes(desc_path)
+					serialized_key <> handle_slashes(desc_path)
+				origin ->
+					"[" <> origin <> "]" <> serialized_key <> handle_slashes(desc_path)
 			end
 		end
+
+		defp serialize_key(key = %ExtendedKey{}), do: ExtendedKey.to_string(key)
+		defp serialize_key({ sk = %PrivateKey{}, network}), do: PrivateKey.wif!(sk, network)
+		defp serialize_key(key = %Point{}), do: Point.sec(key) |> Base.encode16(case: :lower)
 
 		defp handle_slashes(""), do: ""
 
@@ -152,16 +157,24 @@ defmodule Bitcoinex.Descriptor do
 
 		defp parse_ancestor_data("[" <> hex_data) do
 			[anc_data, remaining] = String.split(hex_data, "]", parts: 2)
-			[fp, deriv] = String.split(anc_data, "/", parts: 2)
-
+			[fp | tail] = String.split(anc_data, "/", parts: 2)
 			<<fingerprint::binary-size(4)>> =
 				fp
 				|> String.downcase()
 				|> Base.decode16!(case: :lower)
+			# ancestor path is optional
+			case tail do
+				[deriv] ->
+					{:ok, anc_path} = DerivationPath.from_string(deriv)
+					{:ok, fingerprint, anc_path, remaining}
 
-			{:ok, anc_path} = DerivationPath.from_string(deriv)
+				[] ->
+					{:ok, fingerprint,  DerivationPath.new(), remaining}
+				end
 
-			{:ok, fingerprint, anc_path, remaining}
+
+
+
 		end
 
 		defp parse_ancestor_data(_), do: raise(ArgumentError)
@@ -171,10 +184,10 @@ defmodule Bitcoinex.Descriptor do
 				# extended key
 				"x" ->
 					case String.split(hex_data, "/", parts: 2) do
-						[xkey] -> 
+						[xkey] ->
 							{:ok, xkey} = ExtendedKey.parse_extended_key(xkey)
 							{:ok, xkey, DerivationPath.new()}
-						
+
 						[xkey, desc_str] ->
 							{:ok, xkey} = ExtendedKey.parse_extended_key(xkey)
 							{:ok, desc_path} = DerivationPath.from_string(desc_str)
@@ -214,16 +227,17 @@ defmodule Bitcoinex.Descriptor do
 		:data
 	]
 
-	def parse_descriptor(dsc) do
+	def parse_descriptor(desc) do
 		try do
-			parser(dsc)
+			parser(desc)
 		rescue
 		  _ -> {:error, "invalid descriptor"}
 		end
 	end
 
-	def parser(dsc) do
-		case split_descriptor(dsc) do
+	def parser(desc) do
+		case split_descriptor(desc) do
+			# sh & wsh can be recursive
 			{:ok, :sh, rest} ->
 				{:ok, inner} = parser(rest)
 				create_p2sh(inner)
@@ -255,8 +269,8 @@ defmodule Bitcoinex.Descriptor do
 		end
 	end
 
-	def split_descriptor(dsc) do
-		[s_type, rest] = String.split(dsc, "(", parts: 2)
+	def split_descriptor(desc) do
+		[s_type, rest] = String.split(desc, "(", parts: 2)
 
 		case String.split_at(rest, -1) do
 			{rest, ")"} ->
@@ -289,7 +303,7 @@ defmodule Bitcoinex.Descriptor do
 	def serialize_descriptor(%__MODULE__{script_type: st, data: data}) do
 		cond do
 			st in [:sh, :wsh] -> serialize_recursive(st, data)
-			
+
 			st in [:multi, :sortedmulti] -> serialize_multi(st, data)
 
 			st in [:pk, :pkh, :wpkh, :combo] -> serialize_key_descriptor(st, data)
@@ -330,25 +344,26 @@ defmodule Bitcoinex.Descriptor do
 			:combo -> :non_standard
 			:multi -> :multi
 			:sortedmulti -> :multi
-			# :addr -> 
-				# return exacgt address script type
-			# :raw -> 
+			#TODO
+			# :addr ->
+				# return exact address script type
+			# :raw ->
 				# return exact script type
 		end
 	end
 
-	def create_descriptor(dtype, data) do
+	def create_descriptor(dtype, dkey) do
 		case dtype do
-			:sh -> create_p2sh(data)
-			:wsh -> create_p2wsh(data)
-			:pk -> create_p2pk(data)
-			:pkh -> create_p2pkh(data)
-			:wpkh -> create_p2wpkh(data)
-			:combo -> create_combo(data)
-			:multi -> create_multi(data)
-			:sortedmulti -> create_sortedmulti(data)
-			:addr -> create_addr(data)
-			:raw -> create_raw(data)
+			:sh -> create_p2sh(dkey)
+			:wsh -> create_p2wsh(dkey)
+			:pk -> create_p2pk(dkey)
+			:pkh -> create_p2pkh(dkey)
+			:wpkh -> create_p2wpkh(dkey)
+			:combo -> create_combo(dkey)
+			:multi -> create_multi(dkey)
+			:sortedmulti -> create_sortedmulti(dkey)
+			:addr -> create_addr(dkey)
+			:raw -> create_raw(dkey)
 		end
 	end
 
@@ -378,7 +393,7 @@ defmodule Bitcoinex.Descriptor do
 	end
 	def create_p2sh(_), do: {:error, "p2sh descriptors can only contain descriptors."}
 
-	@spec create_p2sh(t()) :: {:ok, t()} | {:error, String.t()}
+	@spec create_p2wsh(t()) :: {:ok, t()} | {:error, String.t()}
 	def create_p2wsh(descriptor = %__MODULE__{script_type: st}) when st not in [:wsh | [:wpkh | @top_level_only]] do
 		try do
 			{:ok, %__MODULE__{script_type: :wsh, data: descriptor}}
@@ -396,7 +411,7 @@ defmodule Bitcoinex.Descriptor do
 		end
 	end
 
-	@spec create_p2wpkh(dkey_type()) :: {:ok, t()} | {:error, String.t()}
+	@spec create_combo(dkey_type()) :: {:ok, t()} | {:error, String.t()}
 	def create_combo(key) do
 		try do
 			{:ok, %__MODULE__{script_type: :combo, data: DKey.from_key(key)}}
@@ -425,34 +440,20 @@ defmodule Bitcoinex.Descriptor do
 
 	@spec create_addr(String.t()) :: {:ok, t()} | {:error, String.t()}
 	def create_addr(addr_str) do
+		#TODO switch this to `Address.is_valid?(:testnet) || Address.is_valid?(:mainnet) || Address.is_valid?(:regtest)
 		case Script.from_address(addr_str) do
-			# check address is valid
+			# check address is valid agnostic of network
 			{:ok, _script, _network} -> {:ok, %__MODULE__{script_type: :addr, data: addr_str}}
 			{:error, _msg} -> {:error, "invalid address"}
 		end
 	end
 
+	@spec create_raw(String.t()) :: {:ok, t()} | {:error, String.t()}
 	def create_raw(hex_str) do
 		case Script.parse_script(hex_str) do
 			# check script is well-formed.
-			{:ok, _script} -> {:ok, %__MODULE__{script_type: :raw, data: hex_str}}
+			{:ok, script} -> {:ok, %__MODULE__{script_type: :raw, data: script}}
 			{:error, _msg} -> {:error, "invalid script"}
 		end
 	end
 end
-
-"""
-types of descriptors: 
-
-:pkh (%DKEY)
-:sh (%DESCRIPTOR) # recursive
-:wpkh (%DKEY)
-:wsh (%DESCRIPTOR) # recursive
-:pk (%DKEY)
-:combo (%DKEY)
-:multi (m, [%DKEY * n])
-:sortedmulti (m, [%DKEY * n])
-:addr (str)
-:raw (str)
-
-"""
