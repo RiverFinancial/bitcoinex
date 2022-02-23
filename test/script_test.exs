@@ -1125,7 +1125,6 @@ defmodule Bitcoinex.ScriptTest do
         end
       end
     end
-<<<<<<< HEAD
 
     test "test bip350 test vectors" do
       for t <- @bip350_test_vectors do
@@ -1133,8 +1132,6 @@ defmodule Bitcoinex.ScriptTest do
         assert Script.to_address(s, t.net) == {:ok, t.b32}
       end
     end
-=======
->>>>>>> 7206ceb (add multisig capability & more testing)
   end
 
   describe "test from_address" do
@@ -1243,26 +1240,6 @@ defmodule Bitcoinex.ScriptTest do
         {:ok, s, net} = Script.from_address(t.b32)
         assert Script.to_hex(s) == t.hex
         assert net == t.net
-      end
-    end
-  end
-
-  describe "test extract multisig policy" do
-    test "extract policy from multisig script" do
-      for multi <- @raw_multisigs_with_data do
-        {:ok, ms} = Script.parse_script(multi.script_hex)
-        {:ok, m, pks} = Script.extract_multi_policy(ms)
-        {:ok, ms2} = Script.create_multi(m, pks)
-
-        assert ms == ms2
-      end
-
-      for m <- @raw_multisig_scripts do
-        {:ok, ms} = Script.parse_script(m)
-        {:ok, m, pks} = Script.extract_multi_policy(ms)
-        {:ok, ms2} = Script.create_multi(m, pks)
-
-        assert ms == ms2
       end
     end
   end
