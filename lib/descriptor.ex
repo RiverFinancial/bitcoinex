@@ -226,7 +226,7 @@ defmodule Bitcoinex.Descriptor do
 
   @type t :: %__MODULE__{
           script_type: descriptor_type,
-          data: t() | DKey.t() | Script.t() | {non_neg_integer(), list(DKeys.t())} | binary
+          data: t() | DKey.t() | Script.t() | {non_neg_integer(), list(DKey.t())} | binary
         }
   @enforce_keys [
     :script_type,
@@ -342,6 +342,7 @@ defmodule Bitcoinex.Descriptor do
     to_string(script_type) <> "(#{data})"
   end
 
+  @spec get_script_type(t()) :: descriptor_type()
   def get_script_type(descriptor) do
     case descriptor.script_type do
       :pk ->
@@ -383,10 +384,17 @@ defmodule Bitcoinex.Descriptor do
       :pkh -> create_p2pkh(dkey)
       :wpkh -> create_p2wpkh(dkey)
       :combo -> create_combo(dkey)
-      :multi -> create_multi(dkey)
-      :sortedmulti -> create_sortedmulti(dkey)
       :addr -> create_addr(dkey)
       :raw -> create_raw(dkey)
+      _ -> {:error, "unknown script type"}
+    end
+  end
+
+  def create_descriptor(dtype, m, dkeys) do
+    case dtype do
+      :multi -> create_multi({m, dkeys})
+      :sortedmulti -> create_sortedmulti({m, dkeys})
+      _ -> {:error, "unknown script type"}
     end
   end
 
