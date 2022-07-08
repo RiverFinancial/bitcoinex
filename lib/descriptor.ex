@@ -342,7 +342,7 @@ defmodule Bitcoinex.Descriptor do
     to_string(script_type) <> "(#{data})"
   end
 
-  @spec get_script_type(t()) :: descriptor_type()
+  @spec get_script_type(t()) :: Script.script_type()
   def get_script_type(descriptor) do
     case descriptor.script_type do
       :pk ->
@@ -368,11 +368,18 @@ defmodule Bitcoinex.Descriptor do
 
       :sortedmulti ->
         :multi
-        # TODO
-        # :addr ->
+
+      :addr ->
+        case Script.from_address(descriptor.data) do
+          {:ok, script, _network} -> Script.get_script_type(script)
+          {:error, _msg} -> :non_standard
+        end
         # return exact address script type
-        # :raw ->
-        # return exact script type
+      :raw ->
+        case Script.parse_script(descriptor.data) do
+          {:ok, script} -> Script.get_script_type(script)
+          {:error, _msg} -> :non_standard
+        end
     end
   end
 
