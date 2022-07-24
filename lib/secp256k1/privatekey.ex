@@ -228,7 +228,7 @@ defmodule Bitcoinex.Secp256k1.PrivateKey do
   @spec sign_message(t(), binary) :: Signature.t()
   def sign_message(privkey, msg) do
     z =
-      ("Bitcoin Signed Message: " <> msg)
+      ("Bitcoin Signed Message:\n" <> msg)
       |> Bitcoinex.Utils.double_sha256()
       |> :binary.decode_unsigned()
 
