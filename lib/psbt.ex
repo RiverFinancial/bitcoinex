@@ -62,12 +62,10 @@ defmodule Bitcoinex.PSBT do
   @doc """
     to_file writes a PSBT to file as binary.
   """
-  @spec to_file(%Bitcoinex.PSBT{}, String.t()) :: atom
+  @spec to_file(%Bitcoinex.PSBT{}, String.t()) :: :ok | {:error, File.posix}
   def to_file(packet, filename) do
     bin = serialize(packet)
-    {:ok, file} = File.open(filename, [:write])
-    :ok = IO.binwrite(file, bin)
-    File.close(file)
+    File.write(filename, bin)
   end
 
   @spec encode_b64(%Bitcoinex.PSBT{}) :: String.t()
