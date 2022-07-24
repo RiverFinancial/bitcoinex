@@ -31,14 +31,21 @@ defmodule Bitcoinex.PSBT do
   def decode(psbt_b64) when is_binary(psbt_b64) do
     case Base.decode64(psbt_b64, case: :lower) do
       {:ok, psbt_b64} ->
-        case parse(psbt_b64) do
-          {:ok, txn} ->
-            {:ok, txn}
-        end
+        parse(psbt_b64)
 
       :error ->
         {:error, :decode_error}
     end
+  end
+
+  @doc """
+    Decodes a binary-encoded PSBT file.
+  """
+  @spec from_file(String.t()) :: {:ok, %Bitcoinex.PSBT{}} | {:error, term()}
+  def from_file(filename) do
+    filename
+    |> File.read!()
+    |> parse()
   end
 
   @spec serialize(%Bitcoinex.PSBT{}) :: binary
@@ -52,9 +59,20 @@ defmodule Bitcoinex.PSBT do
       global <> inputs <> outputs
   end
 
+  @doc """
+    to_file writes a PSBT to file as binary.
+  """
+  @spec to_file(%Bitcoinex.PSBT{}, String.t()) :: :ok | {:error, File.posix()}
+  def to_file(packet, filename) do
+    bin = serialize(packet)
+    File.write(filename, bin)
+  end
+
   @spec encode_b64(%Bitcoinex.PSBT{}) :: String.t()
   def encode_b64(packet) do
-    serialize(packet) |> Base.encode64()
+    packet
+    |> serialize()
+    |> Base.encode64()
   end
 
   defp parse(<<@magic::big-size(32), @separator::big-size(8), psbt::binary>>) do
@@ -88,21 +106,18 @@ defmodule Bitcoinex.PSBT.Utils do
 
   # parses key value pairs with a provided parse function
   def parse_key_value(psbt, kv, parse_func) do
-    {kv, psbt} =
-      case psbt do
-        # separator
-        <<0x00::big-size(8), psbt::binary>> ->
-          {kv, psbt}
+    case psbt do
+      # separator
+      <<0x00::big-size(8), psbt::binary>> ->
+        {kv, psbt}
 
-        _ ->
-          case parse_compact_size_value(psbt) do
-            {key, psbt} ->
-              {kv, psbt} = parse_func.(key, psbt, kv)
-              parse_key_value(psbt, kv, parse_func)
-          end
-      end
-
-    {kv, psbt}
+      _ ->
+        case parse_compact_size_value(psbt) do
+          {key, psbt} ->
+            {kv, psbt} = parse_func.(key, psbt, kv)
+            parse_key_value(psbt, kv, parse_func)
+        end
+    end
   end
 
   def serialize_kv(key, val) do

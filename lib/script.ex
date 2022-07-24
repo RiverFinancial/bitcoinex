@@ -68,7 +68,7 @@ defmodule Bitcoinex.Script do
   end
 
   @doc """
-    hash160 is a helper function which returns the hash160 
+    hash160 is a helper function which returns the hash160
     digest of the serialized script, as used in P2SH scripts.
   """
   @spec hash160(t()) :: binary
@@ -102,7 +102,7 @@ defmodule Bitcoinex.Script do
   def get_op_atom(i), do: if(i > 0 and i < 0x4C, do: i, else: Map.fetch(opcode_nums(), i))
 
   @doc """
-  	pop returns the first element of the script and the remaining script. 
+  	pop returns the first element of the script and the remaining script.
   	Returns nil if script is empty
   """
   @spec pop(t()) :: nil | {:ok, non_neg_integer() | binary, t()}
@@ -132,7 +132,7 @@ defmodule Bitcoinex.Script do
   end
 
   @doc """
-  	push_data returns a script with the binary data and any 
+  	push_data returns a script with the binary data and any
   	accompanying pushdata or pushbytes opcodes added to the front of the script.
   """
   @spec push_data(t(), binary) :: {:ok, t()} | {:error, String.t()}
@@ -158,7 +158,7 @@ defmodule Bitcoinex.Script do
     end
   end
 
-  # SERIALIZE & PARSE 
+  # SERIALIZE & PARSE
   defp serializer(%__MODULE__{items: []}, acc), do: acc
 
   defp serializer(%__MODULE__{items: [item | script]}, acc) when is_integer(item) do
@@ -190,25 +190,22 @@ defmodule Bitcoinex.Script do
       len <= 0xFFFFFFFF ->
         len = Utils.int_to_little(len, 4)
         serializer(%__MODULE__{items: script}, acc <> len <> item)
-
-      true ->
-        {:error, "data is too long"}
     end
   end
 
   @doc """
-  	serialize_script serializes the script into binary 
+  	serialize_script serializes the script into binary
   	according to Bitcoin's standard.
   """
   @spec serialize_script(t()) :: binary
   def serialize_script(script = %__MODULE__{}) do
-    # serialize_script(%Script{items: [0x51]}) will still display "Q" but 
+    # serialize_script(%Script{items: [0x51]}) will still display "Q" but
     # it functions as binary 0x51. Use to_hex for displaying scripts.
     serializer(script, <<>>)
   end
 
   @doc """
-  	to_hex returns the hex of a serialized script. 
+  	to_hex returns the hex of a serialized script.
   """
   @spec to_hex(t()) :: String.t()
   def to_hex(script) do
@@ -412,7 +409,7 @@ defmodule Bitcoinex.Script do
   defp test_multi(_, _, _), do: false
 
   @doc """
-    extract_multi_policy takes in a raw multisig script and returns the m, the 
+    extract_multi_policy takes in a raw multisig script and returns the m, the
     number of signatures required and the n authorized public keys.
   """
   @spec extract_multi_policy(t()) ::
@@ -493,6 +490,17 @@ defmodule Bitcoinex.Script do
   def create_p2sh(_), do: {:error, "script hash must be a #{@h160_length}-byte hash"}
 
   @doc """
+    to_p2sh wraps any script in a p2sh by first hashing it (hash160)
+    and then wrapping then script hash in a p2sh script.
+  """
+  @spec to_p2sh(t()) :: {:ok, t()} | {:error, String.t()}
+  def to_p2sh(script = %__MODULE__{}) do
+    script
+    |> hash160()
+    |> create_p2sh()
+  end
+
+  @doc """
     create_multi creates a raw multisig script using m and the list of public keys.
   """
   @spec create_multi(non_neg_integer(), list(Point.t())) :: {:ok, t()} | {:error, String.t()}
@@ -520,7 +528,7 @@ defmodule Bitcoinex.Script do
   defp fill_multi_keys(_, _), do: raise(ArgumentError)
 
   @doc """
-    create_p2sh_multi returns both a P2SH-wrapped multisig script 
+    create_p2sh_multi returns both a P2SH-wrapped multisig script
     and the underlying raw multisig script using m and the list of public keys.
   """
   @spec create_p2sh_multi(non_neg_integer(), list(Point.t())) ::
@@ -538,7 +546,7 @@ defmodule Bitcoinex.Script do
   end
 
   @doc """
-    create_p2wsh_multi returns both a P2WSH-wrapped multisig script 
+    create_p2wsh_multi returns both a P2WSH-wrapped multisig script
     and the underlying raw multisig script using m and the list of public keys.
   """
   @spec create_p2wsh_multi(non_neg_integer(), list(Point.t())) ::
@@ -557,7 +565,7 @@ defmodule Bitcoinex.Script do
 
   @doc """
   	create_witness_scriptpubkey creates any witness script from a witness version
-  	and witness program. It performs no validity checks. 
+  	and witness program. It performs no validity checks.
   """
   @spec create_witness_scriptpubkey(non_neg_integer(), binary) :: {:ok, t()}
   def create_witness_scriptpubkey(version, witness_program) do
@@ -581,6 +589,17 @@ defmodule Bitcoinex.Script do
   @spec create_p2wsh(binary) :: {:ok, t()}
   def create_p2wsh(<<sh::binary-size(@wsh_length)>>), do: create_witness_scriptpubkey(0, sh)
   def create_p2wsh(_), do: {:error, "script hash must be a #{@wsh_length}-byte hash"}
+
+  @doc """
+    to_p2wsh converts any script into a p2wsh script by hashing it (SHA256)
+    then wrapping the script hash as a p2wsh script.
+  """
+  @spec to_p2wsh(t()) :: {:ok, t()}
+  def to_p2wsh(script = %__MODULE__{}) do
+    script
+    |> sha256()
+    |> create_p2wsh()
+  end
 
   @doc """
   	create_p2tr creates a p2tr script using the passed 32-byte public key
@@ -611,7 +630,7 @@ defmodule Bitcoinex.Script do
   # CREATE SCRIPTS FROM PUBKEYS
 
   @doc """
-  	public_key_hash takes the hash160 of the public key's compressed sec encoding. 
+  	public_key_hash takes the hash160 of the public key's compressed sec encoding.
   	Can be used to create a pkh script.
   """
   @spec public_key_hash(Point.t()) :: binary
@@ -622,7 +641,7 @@ defmodule Bitcoinex.Script do
   end
 
   @doc """
-  	public_key_to_p2pkh creates a p2pkh script from a public key. 
+  	public_key_to_p2pkh creates a p2pkh script from a public key.
   	All public keys are compressed.
   """
   @spec public_key_to_p2pkh(Point.t()) :: {:ok, t()}
@@ -635,7 +654,7 @@ defmodule Bitcoinex.Script do
   def public_key_to_p2pkh(_), do: {:error, "invalid public key"}
 
   @doc """
-  	public_key_to_p2wpkh creates a p2wpkh script from a public key. 
+  	public_key_to_p2wpkh creates a p2wpkh script from a public key.
   	All public keys are compressed.
   """
   @spec public_key_to_p2wpkh(Point.t()) :: {:ok, t()}
@@ -648,7 +667,7 @@ defmodule Bitcoinex.Script do
   def public_key_to_p2wpkh(_), do: {:error, "invalid public key"}
 
   @doc """
-  	public_key_to_p2sh_p2wpkh creates a p2sh-p2wpkh script from a public key. 
+  	public_key_to_p2sh_p2wpkh creates a p2sh-p2wpkh script from a public key.
   	All public keys are compressed.
   """
   @spec public_key_to_p2sh_p2wpkh(Point.t()) :: {:ok, t(), t()}
@@ -669,7 +688,7 @@ defmodule Bitcoinex.Script do
           {:error, String.t()} | {:ok, t(), Bitcoinex.Network.network_name()}
   def from_address(addr) do
     case String.slice(addr, 0, 2) do
-      # segwit addresses 
+      # segwit addresses
       p when p in ["bc", "tb"] ->
         case Segwit.decode_address(addr) do
           {:ok, {network, version, program}} ->
@@ -748,7 +767,7 @@ defmodule Bitcoinex.Script do
         {:ok, <<res::binary-size(@h160_length)>>, _script} = pop(script)
         {:ok, Address.encode(res, network, :p2sh)}
 
-      # p2pkh 
+      # p2pkh
       0x76 ->
         {:ok, 0xA9, script} = pop(script)
         {:ok, @h160_length, script} = pop(script)
