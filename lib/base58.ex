@@ -8,7 +8,7 @@ defmodule Bitcoinex.Base58 do
   alias Bitcoinex.Utils
 
   @typedoc """
-    Base58 encoding is only supported for p2sh and p2pkh address types.  
+    Base58 encoding is only supported for p2sh and p2pkh address types.
   """
   @type address_type :: :p2sh | :p2pkh
   @base58_encode_list ~c(123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz)
@@ -122,11 +122,13 @@ defmodule Bitcoinex.Base58 do
     |> binary_slice(0..3)
   end
 
-  @spec binary_slice(binary, Range.t()) :: binary
-  defp binary_slice(data, range) do
-    data
-    |> :binary.bin_to_list()
-    |> Enum.slice(range)
-    |> :binary.list_to_bin()
+  if Version.match?(System.version(), "< 1.14.0-dev")do
+    @spec binary_slice(binary, Range.t()) :: binary
+    defp binary_slice(data, range) do
+      data
+      |> :binary.bin_to_list()
+      |> Enum.slice(range)
+      |> :binary.list_to_bin()
+    end
   end
 end
