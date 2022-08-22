@@ -1,6 +1,6 @@
 defmodule Bitcoinex.Secp256k1 do
   @moduledoc """
-  ECDSA Secp256k1 curve operations.
+  General Secp256k1 curve operations.
   libsecp256k1: https://github.com/bitcoin-core/secp256k1
 
   Currently supports ECDSA public key recovery.
@@ -8,12 +8,8 @@ defmodule Bitcoinex.Secp256k1 do
   In the future, we will NIF for critical operations. However, it is more portable to have a native elixir version.
   """
   use Bitwise, only_operators: true
-  alias Bitcoinex.Secp256k1.{Math, Params, Point}
-
-  @generator_point %Point{
-    x: Params.curve().g_x,
-    y: Params.curve().g_y
-  }
+  alias Bitcoinex.Secp256k1.{Math, Params, Point, PrivateKey}
+  alias Bitcoinex.Utils
 
   defmodule Signature do
     @moduledoc """
@@ -60,8 +56,17 @@ defmodule Bitcoinex.Secp256k1 do
       end
     end
 
-    def parse_signature(compact_sig) when is_binary(compact_sig),
-      do: {:error, "invalid signature size"}
+    # attempt to parse 64-byte string
+    def parse_signature(compact_sig) when is_binary(compact_sig) do
+      case Utils.hex_to_bin(compact_sig) do
+        {:error, msg} ->
+          {:error, msg}
+        sig_bytes ->
+          parse_signature(sig_bytes)
+      end
+    end
+
+    def parse_signature(_), do: {:error, "invalid signature size"}
 
     @doc """
     der_parse_signature parses a DER binary to a Signature
@@ -105,6 +110,11 @@ defmodule Bitcoinex.Secp256k1 do
       end
     end
 
+    @spec serialize_signature(t()) :: binary
+    def serialize_signature(%__MODULE__{r: r, s: s}) do
+      :binary.encode_unsigned(r) <> :binary.encode_unsigned(s)
+    end
+
     @doc """
     der_serialize_signature returns the DER serialization of an ecdsa signature
     """
@@ -143,65 +153,6 @@ defmodule Bitcoinex.Secp256k1 do
   end
 
   @doc """
-  ecdsa_recover_compact does ECDSA public key recovery.
-  """
-  @spec ecdsa_recover_compact(binary, binary, integer) ::
-          {:ok, binary} | {:error, String.t()}
-  def ecdsa_recover_compact(msg, compact_sig, recoveryId) do
-    # Parse r and s from the signature.
-    case Signature.parse_signature(compact_sig) do
-      {:ok, sig} ->
-        # Find the iteration.
-
-        # R(x) = (n * i) + r
-        # where n is the order of the curve and R is from the signature.
-        r_x = Params.curve().n * Integer.floor_div(recoveryId, 2) + sig.r
-
-        # Check that R(x) is on the curve.
-        if r_x > Params.curve().p do
-          {:error, "R(x) is not on the curve"}
-        else
-          # Decompress to get R(y).
-          case get_y(r_x, rem(recoveryId, 2) == 1) do
-            {:ok, r_y} ->
-              # R(x,y)
-              point_r = %Point{x: r_x, y: r_y}
-
-              # Point Q is the recovered public key.
-              # We satisfy this equation: Q = r^-1(sR-eG)
-              inv_r = Math.inv(sig.r, Params.curve().n)
-              inv_r_s = (inv_r * sig.s) |> Math.modulo(Params.curve().n)
-
-              # R*s
-              point_sr = Math.multiply(point_r, inv_r_s)
-
-              # Find e using the message hash.
-              e =
-                :binary.decode_unsigned(msg)
-                |> Kernel.*(-1)
-                |> Math.modulo(Params.curve().n)
-                |> Kernel.*(inv_r |> Math.modulo(Params.curve().n))
-
-              # G*e
-              point_ge = Math.multiply(@generator_point, e)
-
-              # R*e * G*e
-              point_q = Math.add(point_sr, point_ge)
-
-              # Returns serialized compressed public key.
-              {:ok, Point.serialize_public_key(point_q)}
-
-            {:error, error} ->
-              {:error, error}
-          end
-        end
-
-      {:error, e} ->
-        {:error, e}
-    end
-  end
-
-  @doc """
   Returns the y-coordinate of a secp256k1 curve point (P) using the x-coordinate.
   To get P(y), we solve for y in this equation: y^2 = x^3 + 7.
   """
@@ -236,6 +187,24 @@ defmodule Bitcoinex.Secp256k1 do
   end
 
   @doc """
+    force_even_y returns the negated private key
+    if the associated Point has an odd y. Otherwise
+    it returns the private key
+  """
+  @spec force_even_y(PrivateKey.t()) :: PrivateKey.t()
+  def force_even_y(privkey) do
+    pubkey = PrivateKey.to_point(privkey)
+    if Point.is_inf(pubkey) do
+      {:error, "pubkey is infinity. bad luck"}
+    end
+    if Point.has_even_y(pubkey) do
+      privkey
+    else
+      %PrivateKey{d: Params.curve().n - privkey.d}
+    end
+  end
+
+  @doc """
     verify_point verifies that a given point is on the secp256k1
     curve
   """
@@ -244,18 +213,5 @@ defmodule Bitcoinex.Secp256k1 do
     y_odd = rem(y, 2) == 1
     {:ok, new_y} = get_y(x, y_odd)
     y == new_y
-  end
-
-  @doc """
-  verify whether the signature is valid for the given message hash and public key
-  """
-  @spec verify_signature(Point.t(), integer, Signature.t()) :: boolean
-  def verify_signature(pubkey, sighash, %Signature{r: r, s: s}) do
-    n = Params.curve().n
-    s_inv = Math.inv(s, n)
-    u = Math.modulo(sighash * s_inv, n)
-    v = Math.modulo(r * s_inv, n)
-    total = Math.add(Math.multiply(@generator_point, u), Math.multiply(pubkey, v))
-    total.x == r
   end
 end

@@ -3,6 +3,13 @@ defmodule Bitcoinex.Secp256k1.Point do
   Contains the x, y, and z of an elliptic curve point.
   """
 
+  use Bitwise, only_operators: true
+  alias Bitcoinex.Utils
+  alias Bitcoinex.Secp256k1
+  alias Bitcoinex.Secp256k1.Params
+
+  @p Params.curve().p
+
   @type t :: %__MODULE__{
           x: integer(),
           y: integer(),
@@ -21,7 +28,7 @@ defmodule Bitcoinex.Secp256k1.Point do
                   :erlang.is_map_key(:z, term)
 
   @doc """
-    is_inf returns whether or not point P is 
+    is_inf returns whether or not point P is
     the point at infinity, ie. P.x == P.y == 0
   """
   @spec is_inf(t()) :: boolean
@@ -64,6 +71,40 @@ defmodule Bitcoinex.Secp256k1.Point do
   end
 
   @doc """
+    lift_x returns the Point P where P.x = x
+    and P.y is even.
+  """
+  @spec lift_x(integer | binary) :: {:ok, t()} | {:error, String.t()}
+  def lift_x(x) when is_integer(x) do
+    if x >= @p, do: {:error, "invalid x value (too large)"}
+
+    case Secp256k1.get_y(x, false) do
+      {:ok, y} ->
+        {:ok, %__MODULE__{x: x, y: y}}
+
+      err ->
+        err
+    end
+  end
+
+  # parse 32-byte binary
+  def lift_x(<<x::binary-size(32)>>) do
+    x
+    |> :binary.decode_unsigned
+    |> lift_x
+  end
+
+  # attempt to parse x-only pubkey from hex
+  def lift_x(x) when is_binary(x) do
+    case Utils.hex_to_bin(x) do
+      {:error, msg} ->
+        {:error, msg}
+      x_bytes ->
+        lift_x(x_bytes)
+    end
+  end
+
+  @doc """
   sec serializes a compressed public key to binary
   """
   @spec sec(t()) :: binary
@@ -78,6 +119,24 @@ defmodule Bitcoinex.Secp256k1.Point do
   end
 
   @doc """
+    x_bytes returns the binary encoding of the x value of the point
+  """
+  @spec x_bytes(t()) :: binary
+  def x_bytes(%__MODULE__{x: x}) do
+    Bitcoinex.Utils.pad(:binary.encode_unsigned(x), 32, :leading)
+  end
+
+  @doc """
+    x_hex returns the hex-encoded x value of the point
+  """
+  @spec x_hex(t()) :: String.t()
+  def x_hex(p) do
+    p
+    |> x_bytes()
+    |> Base.encode16(case: :lower)
+  end
+
+  @doc """
   serialize_public_key serializes a compressed public key to string
   """
   @spec serialize_public_key(t()) :: String.t()
@@ -85,5 +144,14 @@ defmodule Bitcoinex.Secp256k1.Point do
     pubkey
     |> sec()
     |> Base.encode16(case: :lower)
+  end
+
+  @doc """
+    has_even_y returns true if y is
+    even and false if y is odd
+  """
+  @spec has_even_y(t()) :: boolean
+  def has_even_y(%__MODULE__{y: y}) do
+    (y &&& 1) == 0
   end
 end

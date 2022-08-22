@@ -3,6 +3,7 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
   doctest Bitcoinex.ExtendedKey
 
   alias Bitcoinex.ExtendedKey
+  alias Bitcoinex.Secp256k1.Ecdsa
 
   @min_hardened_child_num 0x80000000
   # 2^32
@@ -622,8 +623,8 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
 
       msg = "eat out from 5 pounds"
       z = :binary.decode_unsigned(Bitcoinex.Utils.double_sha256(msg))
-      sig = Bitcoinex.Secp256k1.PrivateKey.sign(prv, z)
-      assert Bitcoinex.Secp256k1.verify_signature(pub, z, sig)
+      sig = Ecdsa.sign(prv, z)
+      assert Ecdsa.verify_signature(pub, z, sig)
     end
   end
 
