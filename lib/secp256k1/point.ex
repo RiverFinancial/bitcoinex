@@ -90,7 +90,7 @@ defmodule Bitcoinex.Secp256k1.Point do
   # parse 32-byte binary
   def lift_x(<<x::binary-size(32)>>) do
     x
-    |> :binary.decode_unsigned
+    |> :binary.decode_unsigned()
     |> lift_x
   end
 
@@ -99,6 +99,7 @@ defmodule Bitcoinex.Secp256k1.Point do
     case Utils.hex_to_bin(x) do
       {:error, msg} ->
         {:error, msg}
+
       x_bytes ->
         lift_x(x_bytes)
     end

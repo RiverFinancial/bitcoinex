@@ -104,8 +104,9 @@ defmodule Bitcoinex.Utils do
   @spec xor_bytes(binary, binary) :: binary
   def xor_bytes(bin0, bin1) do
     {bl0, bl1} = {:binary.bin_to_list(bin0), :binary.bin_to_list(bin1)}
+
     Enum.zip(bl0, bl1)
     |> Enum.map(fn {b0, b1} -> b0 ^^^ b1 end)
-    |> :binary.list_to_bin
+    |> :binary.list_to_bin()
   end
 end

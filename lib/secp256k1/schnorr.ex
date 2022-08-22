@@ -13,7 +13,8 @@ defmodule Bitcoinex.Secp256k1.Schnorr do
     y: Params.curve().g_y
   }
 
-  @spec sign(PrivateKey.t(), non_neg_integer(), non_neg_integer()) :: {:ok, Signature.t()} | {:error, String.t()}
+  @spec sign(PrivateKey.t(), non_neg_integer(), non_neg_integer()) ::
+          {:ok, Signature.t()} | {:error, String.t()}
   def sign(privkey, z, aux) do
     case PrivateKey.validate(privkey) do
       {:error, msg} ->
@@ -32,7 +33,7 @@ defmodule Bitcoinex.Secp256k1.Schnorr do
           tagged_hash_nonce(t <> Point.x_bytes(d_point) <> z_bytes)
           |> :binary.decode_unsigned()
           |> Math.modulo(@n)
-          |> PrivateKey.new
+          |> PrivateKey.new()
 
         if k0.d == 0 do
           {:error, "invalid aux randomness"}
@@ -46,11 +47,11 @@ defmodule Bitcoinex.Secp256k1.Schnorr do
             |> Math.modulo(@n)
 
           sig_s =
-            k.d + (d.d * e)
+            (k.d + d.d * e)
             |> Math.modulo(@n)
 
           {:ok, %Signature{r: r_point.x, s: sig_s}}
-      end
+        end
     end
   end
 
@@ -61,12 +62,14 @@ defmodule Bitcoinex.Secp256k1.Schnorr do
   @doc """
     verify whether the schnorr signature is valid for the given message hash and public key
   """
-  @spec verify_signature(Point.t(), non_neg_integer, Signature.t()) :: boolean | {:error, String.t()}
+  @spec verify_signature(Point.t(), non_neg_integer, Signature.t()) ::
+          boolean | {:error, String.t()}
   def verify_signature(pubkey, z, %Signature{r: r, s: s}) do
     if r >= Params.curve().p || s >= Params.curve().n, do: {:error, "invalid signature"}
 
     r_bytes = Utils.int_to_big(r, 32)
     z_bytes = Utils.int_to_big(z, 32)
+
     e =
       tagged_hash_challenge(r_bytes <> Point.x_bytes(pubkey) <> z_bytes)
       |> :binary.decode_unsigned()

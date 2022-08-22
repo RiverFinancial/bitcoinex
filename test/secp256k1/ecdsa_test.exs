@@ -144,7 +144,6 @@ defmodule Bitcoinex.Secp256k1.EcdsaTest do
     }
   ]
 
-
   describe "test deterministic k calculation" do
     test "successfully derive correct k value" do
       for t <- @rfc6979_test_cases do
@@ -248,5 +247,4 @@ defmodule Bitcoinex.Secp256k1.EcdsaTest do
       end
     end
   end
-
 end

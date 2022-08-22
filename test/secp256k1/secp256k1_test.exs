@@ -5,7 +5,6 @@ defmodule Bitcoinex.Secp256k1.Secp256k1Test do
   alias Bitcoinex.Secp256k1
   alias Bitcoinex.Secp256k1.{Signature}
 
-
   @valid_der_signatures [
     %{
       # valid signature from 3ea1a64c550ff91c6faba076aa776faa60aa524b48a54801d458d1c927333c8f:0
@@ -136,6 +135,7 @@ defmodule Bitcoinex.Secp256k1.Secp256k1Test do
           t
           |> Base.decode16!(case: :upper)
           |> Signature.parse_signature()
+
         assert res == :ok
       end
     end
@@ -145,6 +145,7 @@ defmodule Bitcoinex.Secp256k1.Secp256k1Test do
         {res, _sig} =
           t
           |> Signature.parse_signature()
+
         assert res == :ok
       end
     end
@@ -159,6 +160,7 @@ defmodule Bitcoinex.Secp256k1.Secp256k1Test do
         {:ok, sig2} =
           t
           |> Signature.parse_signature()
+
         assert sig1 == sig2
       end
     end

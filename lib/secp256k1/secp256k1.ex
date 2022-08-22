@@ -61,6 +61,7 @@ defmodule Bitcoinex.Secp256k1 do
       case Utils.hex_to_bin(compact_sig) do
         {:error, msg} ->
           {:error, msg}
+
         sig_bytes ->
           parse_signature(sig_bytes)
       end
@@ -194,9 +195,11 @@ defmodule Bitcoinex.Secp256k1 do
   @spec force_even_y(PrivateKey.t()) :: PrivateKey.t()
   def force_even_y(privkey) do
     pubkey = PrivateKey.to_point(privkey)
+
     if Point.is_inf(pubkey) do
       {:error, "pubkey is infinity. bad luck"}
     end
+
     if Point.has_even_y(pubkey) do
       privkey
     else
