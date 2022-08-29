@@ -28,7 +28,7 @@ defmodule Bitcoinex.Descriptor do
   defmodule DKey do
     # WIF encoding requires network info
     @type key_type ::
-            ExtendedKey.t() | {PrivateKey.t(), Network.network_name()} | Point.t()
+            ExtendedKey.t() | {PrivateKey.t(), Network.network_name()} | Point.t() | String.t()
 
     @type t :: %__MODULE__{
             key: key_type,
@@ -52,6 +52,7 @@ defmodule Bitcoinex.Descriptor do
     def get_type(%__MODULE__{key: %ExtendedKey{}}), do: :extended_key
     def get_type(%__MODULE__{key: %Point{}}), do: :public_key
     def get_type(%__MODULE__{key: {%PrivateKey{}, _}}), do: :private_key
+    def get_type(%__MODULE__{key: key}) when is_binary(key), do: :address
     def get_type(_), do: :invalid_key
 
     def is_valid?(dkey) do
@@ -60,6 +61,7 @@ defmodule Bitcoinex.Descriptor do
         :extended_key -> true
         :public_key -> true
         :private_key -> true
+        :address -> true
         :invalid_key -> false
       end
     end
@@ -69,6 +71,7 @@ defmodule Bitcoinex.Descriptor do
     def from_key(dkey = %__MODULE__{}), do: dkey
     def from_key(pk = %Point{}), do: %__MODULE__{key: pk}
     def from_key(xkey = %ExtendedKey{}), do: %__MODULE__{key: xkey}
+    def from_key(addr) when is_binary(addr), do: %__MODULE__{key: addr}
     def from_key(_), do: {:error, "invalid key"}
 
     def from_key(sk = %PrivateKey{}, network), do: from_private_key(sk, network)
@@ -245,7 +248,7 @@ defmodule Bitcoinex.Descriptor do
     end
   end
 
-  def parser(desc) do
+  defp parser(desc) do
     case split_descriptor(desc) do
       # sh & wsh can be recursive
       {:ok, :sh, rest} ->
@@ -279,7 +282,7 @@ defmodule Bitcoinex.Descriptor do
     end
   end
 
-  def split_descriptor(desc) do
+  defp split_descriptor(desc) do
     [s_type, rest] = String.split(desc, "(", parts: 2)
 
     case String.split_at(rest, -1) do
@@ -383,6 +386,7 @@ defmodule Bitcoinex.Descriptor do
     end
   end
 
+  @spec create_descriptor(atom, DKey.t()) :: {:ok, t()} | {:error, String.t()}
   def create_descriptor(dtype, dkey) do
     case dtype do
       :sh -> create_p2sh(dkey)
@@ -397,6 +401,7 @@ defmodule Bitcoinex.Descriptor do
     end
   end
 
+  @spec create_descriptor(atom, list(DKey.t())) :: {:ok, t()} | {:error, String.t()}
   def create_descriptor(dtype, m, dkeys) do
     case dtype do
       :multi -> create_multi({m, dkeys})
@@ -498,4 +503,39 @@ defmodule Bitcoinex.Descriptor do
       {:error, _msg} -> {:error, "invalid script"}
     end
   end
+
+  # p2pk
+  @spec derive_script(t(), Bitcoinex.Network.network_name(), list(non_neg_integer())) :: {:ok, Script.t()} | {:error, String.t()}
+  def derive_script(%__MODULE__{script_type: :pk, data: data}, _network, indexes) do
+    case derive_key(data, indexes) do
+      {:ok, key} ->
+        Script.create_p2pk(key)
+      {:error, err} ->
+        {:error, err}
+    end
+  end
+
+  # p2pk
+  @spec derive_address(t(), Bitcoinex.Network.network_name(), list(non_neg_integer())) :: {:ok, String.t()} | {:error, String.t()}
+  def derive_address(%__MODULE__{script_type: :pk, data: data}, _network, indexes) do
+    case derive_key(data, indexes) do
+      {:ok, key} ->
+        {:ok, Point.serialize_public_key(key)}
+      {:error, err} ->
+        {:error, err}
+    end
+  end
+
+  # p2pkh, p2wpkh, p2sh, p2wsh
+  def derive_address(desc = %__MODULE__{}, network, indexes) do
+    case derive_script(desc, network, indexes) do
+      {:ok, script} ->
+        Script.to_address(script, network)
+      {:error, err} ->
+        {:error, err}
+    end
+  end
+
+  # address
+  def derive_address(%__MODULE__{script_type: :addr, data: data}, _), do: {:ok, data.key}
 end

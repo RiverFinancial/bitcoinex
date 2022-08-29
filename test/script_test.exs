@@ -1050,6 +1050,25 @@ defmodule Bitcoinex.ScriptTest do
       assert Script.to_address(p2wpkh, :mainnet) == {:ok, p2wpkh_addr}
     end
 
+    test "test p2pk address" do
+      # 4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b
+      script_hex = "4104678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5fac"
+      pubkey = "04678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5f"
+      {:ok, script} = Script.parse_script(script_hex)
+      assert Script.to_address(script, :mainnet) == {:ok, pubkey}
+
+      # f4184fc596403b9d638783cf57adfe4c75c605f6356fbc91338530e9831e9e16
+      script_hex = "4104ae1a62fe09c5f51b13905f07f06b99a2f7159b2225f374cd378d71302fa28414e7aab37397f554a7df5f142c21c1b7303b8a0626f1baded5c72a704f7e6cd84cac"
+      pubkey = "04ae1a62fe09c5f51b13905f07f06b99a2f7159b2225f374cd378d71302fa28414e7aab37397f554a7df5f142c21c1b7303b8a0626f1baded5c72a704f7e6cd84c"
+      {:ok, script} = Script.parse_script(script_hex)
+      assert Script.to_address(script, :mainnet) == {:ok, pubkey}
+
+      script_hex = "21035ce3ee697cd5148e12ab7bb45c1ef4dd5ee2bf4867d9d35135e214e073211344ac"
+      pubkey = "035ce3ee697cd5148e12ab7bb45c1ef4dd5ee2bf4867d9d35135e214e073211344"
+      {:ok, script} = Script.parse_script(script_hex)
+      assert Script.to_address(script, :mainnet) == {:ok, pubkey}
+    end
+
     test "test p2pkh address" do
       # from tx 1af0fbe9141371e29ab870121a3d9ae361d6664d789e367e6341e8a4b3311ea0
       addr = "12wRAwmwVBXrnquwwc8uH5xHT7ExaP6gU3"
