@@ -94,9 +94,10 @@ defmodule Bitcoinex.ScriptTest do
     "0020701a8d401c84fb13e6baf169d59684e17abd9fa216c8cc5b9fc63d622ff8c58d"
   ]
 
-  # from 
+  # from
   # https://github.com/bitcoin/bips/blob/master/bip-0350.mediawiki#test-vectors-for-v0-v16-native-segregated-witness-addresses
   # test vectors that are not valid v0 or v1 scripts have been removed.
+  # TODO: readd invalid test vectors for failure testing
   @bip350_test_vectors [
     %{
       b32: "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4",
@@ -465,6 +466,27 @@ defmodule Bitcoinex.ScriptTest do
       assert p2wpkh == p2wpkh2
     end
 
+    test "test create_p2tr" do
+      s = Script.new()
+      script_hex = "51200101010101010101010101010101010101010101010101010101010101010101"
+      pubkey_hex = "0101010101010101010101010101010101010101010101010101010101010101"
+      bin = Base.decode16!(pubkey_hex, case: :lower)
+
+      {:ok, p2tr} = Script.push_data(s, bin)
+      {:ok, p2tr} = Script.push_op(p2tr, 0x51)
+      assert Script.is_p2tr?(p2tr)
+
+      s_hex = Script.to_hex(p2tr)
+      assert s_hex == script_hex
+
+      {:ok, p2tr_from_bin} = Script.create_p2tr(bin)
+      assert Script.to_hex(p2tr_from_bin) == script_hex
+
+      {:ok, pubkey} = Point.lift_x(bin)
+      {:ok, p2tr_from_pk} = Script.create_p2tr(pubkey)
+      assert Script.to_hex(p2tr_from_pk) == script_hex
+    end
+
     test "test is_multi?" do
       for ms <- @raw_multisig_scripts do
         {:ok, multi} = Script.parse_script(ms)
@@ -682,7 +704,7 @@ defmodule Bitcoinex.ScriptTest do
 
   describe "test parsing scripts" do
     test "test parse pushdata1 script" do
-      # pushdata1 <data> 
+      # pushdata1 <data>
       data_hex =
         "c5802547372094c58025802547372094c5802547802c9ca07652be7e8025472547372094c5802547802c9ca07652be7e802547372094c5802547802c9ca07652be7e47802c9ca07652be7e6419bc9aa1"
 
@@ -720,7 +742,7 @@ defmodule Bitcoinex.ScriptTest do
     end
 
     test "test parse pushdata2 script" do
-      # pushdata2 <data> 
+      # pushdata2 <data>
       data_hex =
         "c5802547372094c58025478025473720941cee958bca07652be7e6419bc91cee958b8025473720941cee958bca07652be7e6419bc91cee958b3720941cee958bca07652be7e6419bc91ceec5802547372094c58025478025473720941cee958bca07652be7e6419bc91cee958b8025473720941cee958bca07652be7e6419bc91cee958b3720941cee958bca07652be7e6419c5802547372094c58025478025473720941cee958bca07652be7e6419bc91cee958b8025473720941cee958bca07652be7e6419bc91cee958b3720941cee958bca07652be7ec5802547372094c58025478025473720941cee958bca07652be7e6419bc91cee958b8025473720941cee958bca07652be7e6419bc91cee958b3720941cee958bca07652be7e6419bc91cee958bc58025473720941cee958bca07652be7e6419bc9ca07652be7e6419bc96419bc91cee958bc58025473720941cee958bca07652be7e6419bc9ca07652be7e6419bc9bc91cee958bc58025473720941cee958bca07652be7e6419bc9ca07652c5802547372094c58025478025473720941cee958bca07652be7e6419bc91cee958b8025473720941cee958bca07652be7e6419bc91cee958b3720941cee958bca07652be9bc9958bc58025473720941cee958bca07652be7e6419bc9ca07652be7e6419bc9"
 
@@ -1100,6 +1122,8 @@ defmodule Bitcoinex.ScriptTest do
       {:ok, s} = Script.create_p2wsh(h256)
       assert Script.to_address(s, :mainnet) == {:ok, addr}
     end
+
+    # TODO: add p2tr addresses
 
     test "test raw multisig to address" do
       for multi <- @raw_multisigs_with_data do
