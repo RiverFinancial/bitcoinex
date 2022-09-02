@@ -30,15 +30,15 @@ defmodule Bitcoinex.Secp256k1.PrivateKey do
   @doc """
     new creates a private key from an integer
   """
-  @spec new(non_neg_integer()) :: {:ok, t()}
+  @spec new(non_neg_integer()) :: {:ok, t()} | {:error, String.t()}
   def new(d) do
     validate(%__MODULE__{d: d})
   end
 
   @doc """
-    to_point calculate Point from private key
+    to_point calculate Point from private key or integer
   """
-  @spec to_point(t()) :: Point.t()
+  @spec to_point(t() | non_neg_integer()) :: Point.t() | {:error, String.t()}
   def to_point(prvkey = %__MODULE__{}) do
     case validate(prvkey) do
       {:error, msg} ->
@@ -47,6 +47,15 @@ defmodule Bitcoinex.Secp256k1.PrivateKey do
       {:ok, %__MODULE__{d: d}} ->
         g = %Point{x: Params.curve().g_x, y: Params.curve().g_y, z: 0}
         Math.multiply(g, d)
+    end
+  end
+
+  def to_point(d) when is_integer(d) do
+    case new(d) do
+      {:ok, sk} ->
+        to_point(sk)
+      {:error, msg} ->
+        {:error, msg}
     end
   end
 

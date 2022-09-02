@@ -192,7 +192,7 @@ defmodule Bitcoinex.Secp256k1 do
     if the associated Point has an odd y. Otherwise
     it returns the private key
   """
-  @spec force_even_y(PrivateKey.t()) :: PrivateKey.t()
+  @spec force_even_y(PrivateKey.t()) :: PrivateKey.t() | {:error, String.t()}
   def force_even_y(privkey) do
     pubkey = PrivateKey.to_point(privkey)
 
