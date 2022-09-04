@@ -9,7 +9,7 @@ defmodule Bitcoinex.ExtendedKey do
 
   defmodule DerivationPath do
     @moduledoc """
-    Contains a list of integers (or the :any atom) representing a bip32 derivation path. 
+    Contains a list of integers (or the :any atom) representing a bip32 derivation path.
     The :any atom represents a wildcard in the derivation path. DerivationPath structs can
     be used by ExtendedKey.derive_extended_key to derive a child key at the given path.
     """
@@ -126,8 +126,7 @@ defmodule Bitcoinex.ExtendedKey do
           parent_fingerprint: binary,
           child_num: binary,
           chaincode: binary,
-          key: binary,
-          checksum: binary
+          key: binary
         }
 
   @enforce_keys [
@@ -136,8 +135,7 @@ defmodule Bitcoinex.ExtendedKey do
     :parent_fingerprint,
     :child_num,
     :chaincode,
-    :key,
-    :checksum
+    :key
   ]
 
   defstruct [
@@ -146,8 +144,7 @@ defmodule Bitcoinex.ExtendedKey do
     :parent_fingerprint,
     :child_num,
     :chaincode,
-    :key,
-    :checksum
+    :key
   ]
 
   # Single Sig
@@ -275,21 +272,36 @@ defmodule Bitcoinex.ExtendedKey do
   def script_type_from_prefix(prefix) do
     cond do
       prefix in bip44() -> :p2pkh
-      # p2sh or p2sh_p2wpkh? 
+      # p2sh or p2sh_p2wpkh?
       prefix in bip49() -> :p2sh_p2wpkh
       prefix in bip84() -> :p2wpkh
     end
   end
 
+  @spec switch_prefix(t(), atom) :: t() | {:error, String.t()}
+  def switch_prefix(xkey = %__MODULE__{prefix: pfx}, new_pfx) do
+    new_pfx_bin = pfx_atom_to_bin(new_pfx)
+    cond do
+      new_pfx_bin in @prv_prefixes and pfx in @prv_prefixes ->
+        %__MODULE__{xkey | prefix: new_pfx_bin}
+
+      new_pfx_bin in @pub_prefixes and pfx in @pub_prefixes ->
+        %__MODULE__{xkey | prefix: new_pfx_bin}
+
+      true ->
+        {:error, "switching between public and private prefixes will result in a useless key"}
+    end
+  end
+
   @doc """
-    parse_extended_key takes binary or string representation 
+    parse_extended_key takes binary or string representation
     of an extended key and parses it to an extended key object
   """
   @spec parse_extended_key(binary | String.t()) :: t()
   def parse_extended_key(
         <<prefix::binary-size(4), depth::binary-size(1), parent_fingerprint::binary-size(4),
           child_num::binary-size(4), chaincode::binary-size(32), key::binary-size(33),
-          checksum::binary-size(4)>> = xkey
+          _checksum::binary-size(4)>> = xkey
       ) do
     cond do
       prefix not in @all_prefixes ->
@@ -311,8 +323,7 @@ defmodule Bitcoinex.ExtendedKey do
               parent_fingerprint: parent_fingerprint,
               child_num: child_num,
               chaincode: chaincode,
-              key: key,
-              checksum: checksum
+              key: key
             }
         end
     end
@@ -359,7 +370,7 @@ defmodule Bitcoinex.ExtendedKey do
   end
 
   @doc """
-    seed_to_master_private_key transforms a bip32 seed 
+    seed_to_master_private_key transforms a bip32 seed
     into a master extended private key
   """
   @spec seed_to_master_private_key(binary, atom) :: t()
@@ -424,7 +435,7 @@ defmodule Bitcoinex.ExtendedKey do
   end
 
   @doc """
-    to_public_key takes an extended key xkey and 
+    to_public_key takes an extended key xkey and
     returns the public key.
   """
   @spec to_public_key(t()) :: Point.t()
@@ -441,7 +452,7 @@ defmodule Bitcoinex.ExtendedKey do
 
   @doc """
     derive_child uses a public or private key xkey to
-    derive the public or private key at index idx. 
+    derive the public or private key at index idx.
     public key -> public child
     private key -> private child
   """
@@ -513,8 +524,8 @@ defmodule Bitcoinex.ExtendedKey do
   end
 
   @doc """
-    derive_private_child uses a private key xkey to 
-    derive the private key at index idx 
+    derive_private_child uses a private key xkey to
+    derive the private key at index idx
   """
   @spec derive_private_child(t(), non_neg_integer()) :: t()
   def derive_private_child(_, idx) when idx >>> 32 != 0, do: {:error, "idx must be in 0..2**32-1"}
@@ -596,7 +607,7 @@ defmodule Bitcoinex.ExtendedKey do
   end
 
   @doc """
-    derive_extended_key uses an extended xkey and a derivation 
+    derive_extended_key uses an extended xkey and a derivation
     path to derive the extended key at that path
   """
   @spec derive_extended_key(t(), DerivationPath.t()) :: t()

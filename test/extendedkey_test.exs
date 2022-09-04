@@ -132,7 +132,6 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
       chaincode:
         <<121, 35, 64, 141, 173, 211, 199, 181, 110, 237, 21, 86, 119, 7, 174, 94, 93, 202, 8,
           157, 233, 114, 224, 127, 59, 134, 4, 80, 226, 163, 183, 14>>,
-      checksum: <<118, 109, 143, 162>>,
       child_num: <<0, 0, 0, 0>>,
       depth: <<0>>,
       key:
@@ -147,7 +146,6 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
       chaincode:
         <<121, 35, 64, 141, 173, 211, 199, 181, 110, 237, 21, 86, 119, 7, 174, 94, 93, 202, 8,
           157, 233, 114, 224, 127, 59, 134, 4, 80, 226, 163, 183, 14>>,
-      checksum: <<121, 191, 126, 202>>,
       child_num: <<0, 0, 0, 0>>,
       depth: <<0>>,
       key:
@@ -251,6 +249,19 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
     "0/h/0",
     "m/1/1/#{@hardcap}",
     "m/-1/0/1"
+  ]
+
+  @switch_prefixes_examples [
+    %{
+      xprv: "xprv9s21ZrQH143K2WGtpJzs2er7Gmf14DG7LAGUYqu258PZSnJoBCn1ji9LA98z9qgMb3RGgrVjmCrS5qQVJNsLfKB7j7cF3gLoqnNqhQgTSe1",
+      yprv: "yprvABrGsX5C9jansoU1efnVEjwcSjoSzqFcFGnhLEnuT8mSVt82RrwaMmoUBM6a9kLGzgY5SL6JDsCyy82425HMTYribTJfdbAJ7WSV5xJadR1",
+      zprv: "zprvAWgYBBk7JR8Gj6f8V2a7Sq37chwtwTF7APJv7dgnq99KYywFgX78yqTcCZ4A9ezCQKetBogrgXZXrQdcjmhNFnYKTo16DVynPEW8UYJW24M",
+    },
+    %{
+      xprv: "xprv9s21ZrQH143K2rjUSB7cHKRPQbKawzWnY8WpijEume6RsZj1YHnstedsehZr3PpzEXctHMeYt8XmfPPSF24ZHQteAhC4djGU92j1r3Jgp3L",
+      yprv: "yprvABrGsX5C9jant9vbGXuEVQWtaZU2tcWHTF33W88o9eUJvfYEnwxSWiJ1fuXS3JUueAjh2qF7LntKYfzzxiUa5eaF32tVDe5xQknfEcsqyG7",
+      zprv: "zprvAWgYBBk7JR8GjT7i6tgrhVcPkXcUqEVnNMZGHX2gXerBymMU3c818mx9h7V23D8q3orVnJqfoTEsRxcZgQtastFquNauoYuSgUrJd6S8Ex9",
+    }
   ]
 
   # Extended Key Testing
@@ -680,6 +691,26 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
       z = :binary.decode_unsigned(Bitcoinex.Utils.double_sha256(msg))
       sig = Bitcoinex.Secp256k1.PrivateKey.sign(prv, z)
       assert Bitcoinex.Secp256k1.verify_signature(pub, z, sig)
+    end
+  end
+
+  describe "Switch extended key prefixes" do
+    test "switch_prefix" do
+      for t <- @switch_prefixes_examples do
+        t_xprv = ExtendedKey.parse_extended_key(t.xprv)
+        t_yprv = ExtendedKey.parse_extended_key(t.yprv)
+        t_zprv = ExtendedKey.parse_extended_key(t.zprv)
+
+        yprv = ExtendedKey.switch_prefix(t_xprv, :yprv)
+        zprv = ExtendedKey.switch_prefix(t_xprv, :zprv)
+
+        assert yprv == t_yprv
+        assert zprv == t_zprv
+
+        xprv = ExtendedKey.switch_prefix(zprv, :xprv)
+
+        assert xprv == t_xprv
+      end
     end
   end
 
