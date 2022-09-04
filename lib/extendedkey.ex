@@ -37,19 +37,23 @@ defmodule Bitcoinex.ExtendedKey do
     ]
     defstruct [:child_nums]
 
-    def max_non_hardened_child_num(), do: @max_non_hardened_child_num
+    def min_hardened_child_num(), do: @min_hardened_child_num
     def max_hardened_child_num(), do: @max_hardened_child_num
 
-    @spec path_to_string(t()) :: String.t()
-    def path_to_string(%__MODULE__{child_nums: path}), do: tpath_to_string(path, "")
+    def new(), do: %__MODULE__{child_nums: []}
 
-    defp tpath_to_string([], path_acc), do: path_acc
-    defp tpath_to_string(["m" | rest], path_acc), do: tpath_to_string(rest, "m/" <> path_acc)
+    @spec to_string(t()) :: {:ok, String.t()} | {:error, String.t()}
+    def to_string(%__MODULE__{child_nums: path}), do: to_string(path, "")
 
-    defp tpath_to_string([l | rest], path_acc) do
+    defp to_string([], path_acc), do: {:ok, path_acc}
+
+    defp to_string([l | rest], path_acc) do
       cond do
         l == :any ->
-          tpath_to_string(rest, path_acc <> "*/")
+          to_string(rest, path_acc <> "*/")
+
+        l == :anyh ->
+          to_string(rest, path_acc <> "*'/")
 
         l > @max_hardened_child_num ->
           {:error, "index cannot be greater than #{@max_hardened_child_num}"}
@@ -59,7 +63,7 @@ defmodule Bitcoinex.ExtendedKey do
 
         # hardened
         l >= @min_hardened_child_num ->
-          tpath_to_string(
+          to_string(
             rest,
             path_acc <>
               (l
@@ -70,26 +74,28 @@ defmodule Bitcoinex.ExtendedKey do
 
         # unhardened
         true ->
-          tpath_to_string(rest, path_acc <> Integer.to_string(l) <> "/")
+          to_string(rest, path_acc <> Integer.to_string(l) <> "/")
       end
     end
 
-    @spec string_to_path(String.t()) :: t()
-    def string_to_path(pathstr) do
+    @spec from_string(String.t()) :: {:ok, t()} | {:error, String.t()}
+    def from_string(pathstr) do
       try do
-        %__MODULE__{child_nums: tstring_to_path(String.split(pathstr, "/"))}
+        {:ok, %__MODULE__{child_nums: from_string(String.split(pathstr, "/"))}}
       rescue
         e in ArgumentError -> {:error, e.message}
       end
     end
 
-    defp tstring_to_path(path_list) do
+    defp from_string(path_list) do
       case path_list do
         [] -> []
         [""] -> []
-        ["m" | rest] -> tstring_to_path(rest)
-        ["*" | rest] -> [:any | tstring_to_path(rest)]
-        [i | rest] -> [str_to_level(i) | tstring_to_path(rest)]
+        ["m" | rest] -> from_string(rest)
+        ["*" | rest] -> [:any | from_string(rest)]
+        ["*'" | rest] -> [:anyh | from_string(rest)]
+        ["*h" | rest] -> [:anyh | from_string(rest)]
+        [i | rest] -> [str_to_level(i) | from_string(rest)]
       end
     end
 
@@ -302,6 +308,53 @@ defmodule Bitcoinex.ExtendedKey do
         <<prefix::binary-size(4), depth::binary-size(1), parent_fingerprint::binary-size(4),
           child_num::binary-size(4), chaincode::binary-size(32), key::binary-size(33),
           _checksum::binary-size(4)>> = xkey
+
+  # GETTERS
+
+  @spec get_prefix(t()) :: binary
+  def get_prefix(%__MODULE__{prefix: prefix}), do: prefix
+
+  @spec get_depth(t()) :: binary
+  def get_depth(%__MODULE__{depth: depth}), do: depth
+
+  @spec get_parent_fingerprint(t()) :: binary
+  def get_parent_fingerprint(%__MODULE__{parent_fingerprint: pfp}), do: pfp
+
+  @spec get_fingerprint(t()) :: binary
+  def get_fingerprint(xkey = %__MODULE__{}) do
+    if xkey.prefix in @prv_prefixes do
+      {:ok, prvkey} =
+        xkey.key
+        |> :binary.decode_unsigned()
+        |> PrivateKey.new()
+
+      prvkey
+      |> PrivateKey.to_point()
+      |> Point.sec()
+      |> Bitcoinex.Utils.hash160()
+      |> :binary.part(0, 4)
+    else
+      xkey.key
+      |> Bitcoinex.Utils.hash160()
+      |> :binary.part(0, 4)
+    end
+  end
+
+  @spec get_child_num(t()) :: binary
+  def get_child_num(%__MODULE__{child_num: child_num}), do: child_num
+
+  # PARSE & SERIALIZE
+
+  @doc """
+    parse_extended_key takes binary or string representation
+    of an extended key and parses it to an extended key object
+  """
+  @spec parse_extended_key(binary) :: {:ok, t()} | {:error, String.t()}
+  def parse_extended_key(
+        xkey =
+          <<prefix::binary-size(4), depth::binary-size(1), parent_fingerprint::binary-size(4),
+            child_num::binary-size(4), chaincode::binary-size(32), key::binary-size(33),
+            checksum::binary-size(4)>>
       ) do
     cond do
       prefix not in @all_prefixes ->
@@ -342,10 +395,10 @@ defmodule Bitcoinex.ExtendedKey do
     end
   end
 
+  # verify if point is valid on secp256k1
   defp check_point(key) do
-    key
-    |> Point.parse_public_key()
-    |> Bitcoinex.Secp256k1.verify_point()
+    {:ok, pubkey} = Point.parse_public_key(key)
+    Bitcoinex.Secp256k1.verify_point(pubkey)
   end
 
   @doc """
@@ -373,7 +426,7 @@ defmodule Bitcoinex.ExtendedKey do
     seed_to_master_private_key transforms a bip32 seed
     into a master extended private key
   """
-  @spec seed_to_master_private_key(binary, atom) :: t()
+  @spec seed_to_master_private_key(binary, atom) :: {:ok, t()} | {:error, String.t()}
   def seed_to_master_private_key(<<seed::binary>>, pfx \\ :xprv) do
     prefix = pfx_atom_to_bin(pfx)
 
@@ -395,25 +448,29 @@ defmodule Bitcoinex.ExtendedKey do
     to_extended_public_key takes an extended private key
     and returns an extended public key
   """
-  @spec to_extended_public_key(t()) :: t()
+  @spec to_extended_public_key(t()) :: {:ok, t()} | {:error, String.t()}
   def to_extended_public_key(xprv) do
     if xprv.prefix in @prv_prefixes do
-      privkey = %PrivateKey{d: :binary.decode_unsigned(xprv.key, :big)}
+      try do
+        {:ok, privkey} = PrivateKey.new(:binary.decode_unsigned(xprv.key, :big))
 
-      pubkey =
-        privkey
-        |> PrivateKey.to_point()
-        |> Point.sec()
+        pubkey =
+          privkey
+          |> PrivateKey.to_point()
+          |> Point.sec()
 
-      xprv.prefix
-      |> prv_to_pub_prefix()
-      |> Kernel.<>(xprv.depth)
-      |> Kernel.<>(xprv.parent_fingerprint)
-      |> Kernel.<>(xprv.child_num)
-      |> Kernel.<>(xprv.chaincode)
-      |> Kernel.<>(pubkey)
-      |> Base58.append_checksum()
-      |> parse_extended_key()
+        xprv.prefix
+        |> prv_to_pub_prefix()
+        |> Kernel.<>(xprv.depth)
+        |> Kernel.<>(xprv.parent_fingerprint)
+        |> Kernel.<>(xprv.child_num)
+        |> Kernel.<>(xprv.chaincode)
+        |> Kernel.<>(pubkey)
+        |> Base58.append_checksum()
+        |> parse_extended_key()
+      rescue
+        _ in MatchError -> {:error, "invalid private key"}
+      end
     else
       # it is an xpub already
       xprv
@@ -424,11 +481,11 @@ defmodule Bitcoinex.ExtendedKey do
     to_private_key takes an extended private key
     and returns the contained private key.
   """
-  @spec to_private_key(t()) :: PrivateKey.t()
+  @spec to_private_key(t()) :: {:ok, PrivateKey.t()} | {:error, String.t()}
   def to_private_key(xprv) do
     if xprv.prefix in @prv_prefixes do
       secret = :binary.decode_unsigned(xprv.key, :big)
-      %PrivateKey{d: secret}
+      PrivateKey.new(secret)
     else
       {:error, "key is not a extended private key."}
     end
@@ -438,15 +495,15 @@ defmodule Bitcoinex.ExtendedKey do
     to_public_key takes an extended key xkey and
     returns the public key.
   """
-  @spec to_public_key(t()) :: Point.t()
+  @spec to_public_key(t()) :: {:ok, Point.t()} | {:error, String.t()}
   def to_public_key(xkey) do
     if xkey.prefix in @prv_prefixes do
-      xkey
-      |> to_private_key()
-      |> PrivateKey.to_point()
+      case to_private_key(xkey) do
+        {:ok, prvkey} -> {:ok, PrivateKey.to_point(prvkey)}
+        x -> x
+      end
     else
-      xkey.key
-      |> Point.parse_public_key()
+      Point.parse_public_key(xkey.key)
     end
   end
 
@@ -456,7 +513,7 @@ defmodule Bitcoinex.ExtendedKey do
     public key -> public child
     private key -> private child
   """
-  @spec derive_child_key(t(), non_neg_integer) :: t()
+  @spec derive_child_key(t(), non_neg_integer) :: {:ok, t()} | {:error, String.t()}
   def derive_child_key(xkey, idx) do
     if xkey.prefix in @prv_prefixes do
       derive_private_child(xkey, idx)
@@ -469,15 +526,14 @@ defmodule Bitcoinex.ExtendedKey do
     derive_public_child uses a public or private key xkey to
     derive the public key at index idx
   """
-  @spec derive_public_child(t(), non_neg_integer) :: t()
+  @spec derive_public_child(t(), non_neg_integer) :: {:ok, t()} | {:error, String.t()}
   def derive_public_child(xkey, idx) do
     cond do
       xkey.prefix in @prv_prefixes ->
-        xkey
-        |> derive_private_child(idx)
-        |> to_extended_public_key()
+        {:ok, child_xprv} = derive_private_child(xkey, idx)
+        to_extended_public_key(child_xprv)
 
-      idx > DerivationPath.max_non_hardened_child_num() or idx < 0 ->
+      idx >= DerivationPath.min_hardened_child_num() or idx < 0 ->
         {:error, "idx must be in 0..2**31-1"}
 
       true ->
@@ -504,10 +560,11 @@ defmodule Bitcoinex.ExtendedKey do
         if key_secret >= Params.curve().n do
           {:error, "invalid key derived. Bad luck!"}
         else
-          parent_pubkey = Point.parse_public_key(xkey.key)
+          {:ok, parent_pubkey} = Point.parse_public_key(xkey.key)
+          {:ok, prvkey} = PrivateKey.new(key_secret)
 
           pubkey =
-            %PrivateKey{d: key_secret}
+            prvkey
             |> PrivateKey.to_point()
             |> Math.add(parent_pubkey)
 
@@ -527,7 +584,7 @@ defmodule Bitcoinex.ExtendedKey do
     derive_private_child uses a private key xkey to
     derive the private key at index idx
   """
-  @spec derive_private_child(t(), non_neg_integer()) :: t()
+  @spec derive_private_child(t(), non_neg_integer()) :: {:ok, t()} | {:error, String.t()}
   def derive_private_child(_, idx) when idx >>> 32 != 0, do: {:error, "idx must be in 0..2**32-1"}
 
   def derive_private_child(%{prefix: prefix}, _) when prefix not in @prv_prefixes,
@@ -545,27 +602,33 @@ defmodule Bitcoinex.ExtendedKey do
       xkey.key
       |> :binary.decode_unsigned()
 
-    fingerprint =
-      %PrivateKey{d: key_secret}
-      |> PrivateKey.to_point()
-      |> Point.sec()
-      |> Bitcoinex.Utils.hash160()
-      |> :binary.part(0, 4)
+    try do
+      {:ok, prvkey} = PrivateKey.new(key_secret)
 
-    ent = get_prv_child_entropy(xkey, idx)
-    child_chaincode = :binary.part(ent, byte_size(ent), -32)
+      fingerprint =
+        prvkey
+        |> PrivateKey.to_point()
+        |> Point.sec()
+        |> Bitcoinex.Utils.hash160()
+        |> :binary.part(0, 4)
 
-    child_key =
-      ent
-      |> :binary.part(0, 32)
-      |> :binary.decode_unsigned()
-      |> Kernel.+(key_secret)
-      |> Bitcoinex.Secp256k1.Math.modulo(Params.curve().n)
-      |> :binary.encode_unsigned()
+      ent = get_prv_child_entropy(xkey, idx)
+      child_chaincode = :binary.part(ent, byte_size(ent), -32)
 
-    (xkey.prefix <> child_depth <> fingerprint <> i <> child_chaincode <> <<0>> <> child_key)
-    |> Base58.append_checksum()
-    |> parse_extended_key()
+      child_key =
+        ent
+        |> :binary.part(0, 32)
+        |> :binary.decode_unsigned()
+        |> Kernel.+(key_secret)
+        |> Bitcoinex.Secp256k1.Math.modulo(Params.curve().n)
+        |> :binary.encode_unsigned()
+
+      (xkey.prefix <> child_depth <> fingerprint <> i <> child_chaincode <> <<0>> <> child_key)
+      |> Base58.append_checksum()
+      |> parse_extended_key()
+    rescue
+      _ in MatchError -> {:error, "invalid private key in extended private key"}
+    end
   end
 
   # increment byte by 1
@@ -583,13 +646,15 @@ defmodule Bitcoinex.ExtendedKey do
       |> :binary.encode_unsigned()
       |> Bitcoinex.Utils.pad(4, :leading)
 
-    if idx > DerivationPath.max_non_hardened_child_num() do
+    if idx >= DerivationPath.min_hardened_child_num() do
       # hardened child from priv key
       :crypto.hmac(:sha512, xprv.chaincode, xprv.key <> i)
     else
       # unhardened child from privkey
+      {:ok, prvkey} = PrivateKey.new(:binary.decode_unsigned(xprv.key))
+
       pubkey =
-        %PrivateKey{d: :binary.decode_unsigned(xprv.key)}
+        prvkey
         |> PrivateKey.to_point()
         |> Point.sec()
 
@@ -610,23 +675,33 @@ defmodule Bitcoinex.ExtendedKey do
     derive_extended_key uses an extended xkey and a derivation
     path to derive the extended key at that path
   """
-  @spec derive_extended_key(t(), DerivationPath.t()) :: t()
-  def derive_extended_key(xkey, %DerivationPath{child_nums: path}),
-    do: rderive_extended_key(xkey, path)
+  @spec derive_extended_key(t() | binary, DerivationPath.t()) :: {:ok, t()} | {:error, String.t()}
+  def derive_extended_key(xkey = %__MODULE__{}, %DerivationPath{child_nums: path}),
+    do: derive_extended_key(xkey, path)
 
-  defp rderive_extended_key(xkey, []), do: xkey
+  def derive_extended_key(seed, %DerivationPath{child_nums: path}) do
+    {:ok, xkey} = seed_to_master_private_key(seed)
+    derive_extended_key(xkey, path)
+  end
 
-  defp rderive_extended_key(xkey, [p | rest]) do
-    case p do
-      # if asterisk (:any) is in path, return the immediate parent xkey
-      :any ->
-        xkey
+  defp derive_extended_key(xkey = %__MODULE__{}, []), do: {:ok, xkey}
 
-      # otherwise it is an integer, so derive child at that index.
-      _ ->
-        xkey
-        |> derive_child_key(p)
-        |> rderive_extended_key(rest)
+  defp derive_extended_key(xkey = %__MODULE__{}, [p | rest]) do
+    try do
+      case p do
+        # if asterisk (:any) is in path, return the immediate parent xkey
+        :any ->
+          {:ok, xkey}
+
+        # otherwise it is an integer, so derive child at that index.
+        _ ->
+          case derive_child_key(xkey, p) do
+            {:ok, child_key} -> derive_extended_key(child_key, rest)
+            {:error, msg} -> {:error, msg}
+          end
+      end
+    rescue
+      e in ArgumentError -> {:error, e.message}
     end
   end
 end

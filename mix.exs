@@ -4,7 +4,7 @@ defmodule Bitcoinex.MixProject do
   def project do
     [
       app: :bitcoinex,
-      version: "0.1.1",
+      version: "0.1.4",
       elixir: "~> 1.8",
       package: package(),
       start_permanent: Mix.env() == :prod,
@@ -33,7 +33,8 @@ defmodule Bitcoinex.MixProject do
       {:stream_data, "~> 0.1", only: :test},
       {:timex, "~> 3.1"},
       {:decimal, "~> 1.0 or ~> 2.0"},
-      {:ex_doc, ">= 0.0.0", only: :dev, runtime: false}
+      {:ex_doc, ">= 0.0.0", only: :dev, runtime: false},
+      {:benchee, ">= 1.0.0", only: :dev}
     ]
   end
 
@@ -67,7 +68,7 @@ defmodule Bitcoinex.MixProject do
 
   defp package do
     [
-      files: ~w(lib test .formatter.exs mix.exs README.md UNLICENSE),
+      files: ~w(lib test .formatter.exs mix.exs README.md UNLICENSE CHANGELOG.md SECURITY.md),
       licenses: ["Unlicense"],
       links: %{"GitHub" => "https://github.com/RiverFinancial/bitcoinex"}
     ]

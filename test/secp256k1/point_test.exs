@@ -24,12 +24,13 @@ defmodule Bitcoinex.Secp256k1.PointTest do
         )
 
       assert Point.parse_public_key(sec) ==
-               %Point{
-                 x:
-                   26_725_119_729_089_203_965_150_132_282_997_341_343_516_273_140_835_737_223_575_952_640_907_021_258_522,
-                 y:
-                   35_176_335_436_138_229_778_595_179_837_068_778_482_032_382_451_813_967_420_917_290_469_529_927_283_651
-               }
+               {:ok,
+                %Point{
+                  x:
+                    26_725_119_729_089_203_965_150_132_282_997_341_343_516_273_140_835_737_223_575_952_640_907_021_258_522,
+                  y:
+                    35_176_335_436_138_229_778_595_179_837_068_778_482_032_382_451_813_967_420_917_290_469_529_927_283_651
+                }}
     end
 
     test "successfully parse uncompressed key from sec" do
@@ -40,10 +41,11 @@ defmodule Bitcoinex.Secp256k1.PointTest do
         )
 
       assert Point.parse_public_key(sec) ==
-               %Point{
-                 x: 0x8FDC3D8944CC8D8FE6C666C41A8ED42E60AA399861A756707E127A80B383D178,
-                 y: 0xEDFBF94DDA0487F7910D130F2A37A0647BE9335EAB5B8D3AA5242445E1604024
-               }
+               {:ok,
+                %Point{
+                  x: 0x8FDC3D8944CC8D8FE6C666C41A8ED42E60AA399861A756707E127A80B383D178,
+                  y: 0xEDFBF94DDA0487F7910D130F2A37A0647BE9335EAB5B8D3AA5242445E1604024
+                }}
     end
 
     test "successfully parse compressed key from sec hex" do
@@ -57,7 +59,7 @@ defmodule Bitcoinex.Secp256k1.PointTest do
         z: 0
       }
 
-      assert Point.parse_public_key(sec) == pk
+      assert Point.parse_public_key(sec) == {:ok, pk}
       assert Point.serialize_public_key(pk) == sec
     end
   end
