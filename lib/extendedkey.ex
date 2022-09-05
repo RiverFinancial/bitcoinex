@@ -79,7 +79,7 @@ defmodule Bitcoinex.ExtendedKey do
     end
 
     @spec from_string(String.t()) :: {:ok, t()} | {:error, String.t()}
-    def from_string(pathstr) do
+    def from_string(pathstr) when is_binary(pathstr) do
       try do
         {:ok, %__MODULE__{child_nums: from_string(String.split(pathstr, "/"))}}
       rescue
@@ -87,7 +87,7 @@ defmodule Bitcoinex.ExtendedKey do
       end
     end
 
-    defp from_string(path_list) do
+    def from_string(path_list) when is_list(path_list) do
       case path_list do
         [] -> []
         [""] -> []
@@ -287,6 +287,7 @@ defmodule Bitcoinex.ExtendedKey do
   @spec switch_prefix(t(), atom) :: t() | {:error, String.t()}
   def switch_prefix(xkey = %__MODULE__{prefix: pfx}, new_pfx) do
     new_pfx_bin = pfx_atom_to_bin(new_pfx)
+
     cond do
       new_pfx_bin in @prv_prefixes and pfx in @prv_prefixes ->
         %__MODULE__{xkey | prefix: new_pfx_bin}
@@ -298,16 +299,6 @@ defmodule Bitcoinex.ExtendedKey do
         {:error, "switching between public and private prefixes will result in a useless key"}
     end
   end
-
-  @doc """
-    parse_extended_key takes binary or string representation
-    of an extended key and parses it to an extended key object
-  """
-  @spec parse_extended_key(binary | String.t()) :: t()
-  def parse_extended_key(
-        <<prefix::binary-size(4), depth::binary-size(1), parent_fingerprint::binary-size(4),
-          child_num::binary-size(4), chaincode::binary-size(32), key::binary-size(33),
-          _checksum::binary-size(4)>> = xkey
 
   # GETTERS
 
@@ -354,7 +345,7 @@ defmodule Bitcoinex.ExtendedKey do
         xkey =
           <<prefix::binary-size(4), depth::binary-size(1), parent_fingerprint::binary-size(4),
             child_num::binary-size(4), chaincode::binary-size(32), key::binary-size(33),
-            checksum::binary-size(4)>>
+            _checksum::binary-size(4)>>
       ) do
     cond do
       prefix not in @all_prefixes ->
@@ -370,14 +361,15 @@ defmodule Bitcoinex.ExtendedKey do
             {:error, msg}
 
           _ ->
-            %__MODULE__{
-              prefix: prefix,
-              depth: depth,
-              parent_fingerprint: parent_fingerprint,
-              child_num: child_num,
-              chaincode: chaincode,
-              key: key
-            }
+            {:ok,
+             %__MODULE__{
+               prefix: prefix,
+               depth: depth,
+               parent_fingerprint: parent_fingerprint,
+               child_num: child_num,
+               chaincode: chaincode,
+               key: key
+             }}
         end
     end
   end
@@ -684,9 +676,9 @@ defmodule Bitcoinex.ExtendedKey do
     derive_extended_key(xkey, path)
   end
 
-  defp derive_extended_key(xkey = %__MODULE__{}, []), do: {:ok, xkey}
+  def derive_extended_key(xkey = %__MODULE__{}, []), do: {:ok, xkey}
 
-  defp derive_extended_key(xkey = %__MODULE__{}, [p | rest]) do
+  def derive_extended_key(xkey = %__MODULE__{}, [p | rest]) do
     try do
       case p do
         # if asterisk (:any) is in path, return the immediate parent xkey
