@@ -564,10 +564,6 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
     end
   end
 
-  defp calculate_milli_satoshi("0" <> _) do
-    {:error, :amount_with_leading_zero}
-  end
-
   defp calculate_milli_satoshi(amount_str) do
     result =
       case Regex.run(~r/[munp]$/, amount_str) do
