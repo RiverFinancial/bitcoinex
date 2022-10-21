@@ -159,7 +159,7 @@ defmodule Bitcoinex.PSBT.Global do
 
     <<master::little-unsigned-32, paths::binary>> = value
 
-    {:ok, indexes} = DerivationPath.parse(paths, :from_bin)
+    {:ok, indexes} = DerivationPath.parse(paths)
     {:ok, xpub} = ExtendedKey.parse(xpub)
 
     if :binary.decode_unsigned(xpub.depth) != DerivationPath.depth(indexes),
@@ -215,7 +215,7 @@ defmodule Bitcoinex.PSBT.Global do
     key = <<@psbt_global_xpub::big-size(8)>>
     key_data = ExtendedKey.serialize(value.xpub, :no_checksum)
 
-    {:ok, deriv_bin} = DerivationPath.serialize(value.derivation, :to_bin)
+    {:ok, deriv_bin} = DerivationPath.serialize(value.derivation)
 
     val = <<value.master_pfp::little-size(32)>> <> deriv_bin
 
@@ -337,7 +337,7 @@ defmodule Bitcoinex.PSBT.In do
   defp serialize_kv(:bip32_derivation, value) when value != nil do
     key_data = Base.decode16!(value.public_key, case: :lower)
 
-    {:ok, deriv_bin} = DerivationPath.serialize(value.derivation, :to_bin)
+    {:ok, deriv_bin} = DerivationPath.serialize(value.derivation)
 
     val = <<value.pfp::little-size(32)>> <> deriv_bin
 
@@ -471,7 +471,7 @@ defmodule Bitcoinex.PSBT.In do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
 
     <<pfp::little-unsigned-32, paths::binary>> = value
-    {:ok, indexes} = DerivationPath.parse(paths, :from_bin)
+    {:ok, indexes} = DerivationPath.parse(paths)
 
     bip32_derivation =
       case input.bip32_derivation do
@@ -569,7 +569,7 @@ defmodule Bitcoinex.PSBT.Out do
   defp serialize_kv(:bip32_derivation, value) when value != nil do
     key_data = Base.decode16!(value.public_key, case: :lower)
 
-    {:ok, deriv_bin} = DerivationPath.serialize(value.derivation, :to_bin)
+    {:ok, deriv_bin} = DerivationPath.serialize(value.derivation)
 
     val = <<value.pfp::little-size(32)>> <> deriv_bin
 
@@ -659,7 +659,7 @@ defmodule Bitcoinex.PSBT.Out do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
 
     <<pfp::little-unsigned-32, paths::binary>> = value
-    {:ok, indexes} = DerivationPath.parse(paths, :from_bin)
+    {:ok, indexes} = DerivationPath.parse(paths)
 
     bip32_derivation =
       case output.bip32_derivation do
