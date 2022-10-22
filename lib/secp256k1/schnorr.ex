@@ -38,8 +38,8 @@ defmodule Bitcoinex.Secp256k1.Schnorr do
         if k0.d == 0 do
           {:error, "invalid aux randomness"}
         else
-          r_point = PrivateKey.to_point(k0)
           k = Secp256k1.force_even_y(k0)
+          r_point = PrivateKey.to_point(k)
 
           e = calculate_e(Point.x_bytes(r_point), Point.x_bytes(d_point), z_bytes)
 
