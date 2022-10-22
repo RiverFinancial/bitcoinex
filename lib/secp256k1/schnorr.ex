@@ -50,7 +50,8 @@ defmodule Bitcoinex.Secp256k1.Schnorr do
     end
   end
 
-  @spec tweaked_sign(PrivateKey.t(), non_neg_integer, non_neg_integer, Point.t()) :: {:ok, Signature.t(), Point.t()} | {:error, String.t()}
+  @spec tweaked_sign(PrivateKey.t(), non_neg_integer, non_neg_integer, Point.t()) ::
+          {:ok, Signature.t(), Point.t()} | {:error, String.t()}
   def tweaked_sign(privkey, z, aux, pubtweak) do
     case PrivateKey.validate(privkey) do
       {:error, msg} ->
@@ -153,8 +154,8 @@ defmodule Bitcoinex.Secp256k1.Schnorr do
     end
   end
 
-
-  @spec extract_tweak(Point.t(), non_neg_integer, Signature.t(), Signature.t()) :: {:ok, non_neg_integer} | {:error, String.t()}
+  @spec extract_tweak(Point.t(), non_neg_integer, Signature.t(), Signature.t()) ::
+          {:ok, non_neg_integer} | {:error, String.t()}
   def extract_tweak(pubkey, z, %Signature{s: s}, %Signature{r: tweaked_r, s: tweaked_s}) do
     tweaked_r_bytes = Utils.int_to_big(tweaked_r, 32)
 
@@ -177,7 +178,8 @@ defmodule Bitcoinex.Secp256k1.Schnorr do
     end
   end
 
-  @spec extract_tweaked_signature(Point.t(), non_neg_integer, Signature.t(), non_neg_integer) :: {:ok, Signature.t()} | {:error, String.t()}
+  @spec extract_tweaked_signature(Point.t(), non_neg_integer, Signature.t(), non_neg_integer) ::
+          {:ok, Signature.t()} | {:error, String.t()}
   def extract_tweaked_signature(pubkey, z, %Signature{r: r, s: s}, tweak) do
     case Point.lift_x(r) do
       {:error, err} ->
@@ -187,7 +189,7 @@ defmodule Bitcoinex.Secp256k1.Schnorr do
         tweak_point = PrivateKey.to_point(tweak)
 
         tweaked_r = Math.add(r_point, tweak_point).x
-        tweaked_s = tweak+s
+        tweaked_s = tweak + s
 
         r_bytes = Utils.int_to_big(r, 32)
         z_bytes = Utils.int_to_big(z, 32)

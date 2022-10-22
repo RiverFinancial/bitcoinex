@@ -54,6 +54,7 @@ defmodule Bitcoinex.Secp256k1.PrivateKey do
     case new(d) do
       {:ok, sk} ->
         to_point(sk)
+
       {:error, msg} ->
         {:error, msg}
     end
