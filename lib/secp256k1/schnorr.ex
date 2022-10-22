@@ -50,9 +50,9 @@ defmodule Bitcoinex.Secp256k1.Schnorr do
     end
   end
 
-  @spec tweaked_sign(PrivateKey.t(), non_neg_integer, non_neg_integer, Point.t()) ::
+  @spec sign_for_tweak(PrivateKey.t(), non_neg_integer, non_neg_integer, Point.t()) ::
           {:ok, Signature.t(), Point.t()} | {:error, String.t()}
-  def tweaked_sign(privkey, z, aux, pubtweak) do
+  def sign_for_tweak(privkey, z, aux, pubtweak) do
     case PrivateKey.validate(privkey) do
       {:error, msg} ->
         {:error, msg}
@@ -75,8 +75,8 @@ defmodule Bitcoinex.Secp256k1.Schnorr do
         if k0.d == 0 do
           {:error, "invalid aux randomness"}
         else
-          r_point = PrivateKey.to_point(k0)
           k = Secp256k1.force_even_y(k0)
+          r_point = PrivateKey.to_point(k)
 
           tweaked_r_point = Math.add(r_point, pubtweak)
 
@@ -93,6 +93,12 @@ defmodule Bitcoinex.Secp256k1.Schnorr do
   defp tagged_hash_nonce(nonce), do: Utils.tagged_hash("BIP0340/nonce", nonce)
   defp tagged_hash_challenge(chal), do: Utils.tagged_hash("BIP0340/challenge", chal)
 
+  defp calculate_r(pubkey, s, e) do
+    @generator_point
+    |> Math.multiply(s)
+    |> Math.add(Math.multiply(pubkey, Params.curve().n - e))
+  end
+
   defp calculate_s(k, d, e) do
     (k.d + d.d * e)
     |> Math.modulo(@n)
@@ -104,7 +110,7 @@ defmodule Bitcoinex.Secp256k1.Schnorr do
     |> Math.modulo(@n)
   end
 
-  def validate_r(r_point, rx) do
+  defp validate_r(r_point, rx) do
     !Point.is_inf(r_point) && Point.has_even_y(r_point) && r_point.x == rx
   end
 
@@ -118,20 +124,16 @@ defmodule Bitcoinex.Secp256k1.Schnorr do
 
     r_bytes = Utils.int_to_big(r, 32)
     z_bytes = Utils.int_to_big(z, 32)
-
     e = calculate_e(r_bytes, Point.x_bytes(pubkey), z_bytes)
 
-    r_point =
-      @generator_point
-      |> Math.multiply(s)
-      |> Math.add(Math.multiply(pubkey, Params.curve().n - e))
+    r_point = calculate_r(pubkey, s, e)
 
     validate_r(r_point, r)
   end
 
-  @spec verify_tweaked_signature(Point.t(), non_neg_integer, Signature.t(), Point.t()) ::
+  @spec verify_untweaked_signature(Point.t(), non_neg_integer, Signature.t(), Point.t()) ::
           boolean | {:error, String.t()}
-  def verify_tweaked_signature(pubkey, z, %Signature{r: r, s: s}, pubtweak) do
+  def verify_untweaked_signature(pubkey, z, %Signature{r: r, s: s}, pubtweak) do
     if r >= Params.curve().p || s >= Params.curve().n, do: {:error, "invalid signature"}
 
     case Point.lift_x(r) do
@@ -140,34 +142,33 @@ defmodule Bitcoinex.Secp256k1.Schnorr do
 
       {:ok, given_r_point} ->
         tweaked_point = Math.add(given_r_point, pubtweak)
-
         z_bytes = Utils.int_to_big(z, 32)
-
         e = calculate_e(Point.x_bytes(tweaked_point), Point.x_bytes(pubkey), z_bytes)
 
-        r_point =
-          @generator_point
-          |> Math.multiply(s)
-          |> Math.add(Math.multiply(pubkey, Params.curve().n - e))
+        r_point = calculate_r(pubkey, s, e)
 
         validate_r(r_point, r)
     end
   end
 
+  @spec tweak_signature(Signature.t(), non_neg_integer | PrivateKey.t()) :: Signature.t()
+  def tweak_signature(sig, t = %PrivateKey{}), do: tweak_signature(sig, t.d)
+
+  def tweak_signature(%Signature{r: r, s: s}, tweak) do
+    {:ok, t} = PrivateKey.new(tweak)
+    t_point = PrivateKey.to_point(t)
+    {:ok, r_point} = Point.lift_x(r)
+    %Signature{r: Math.add(r_point, t_point).x, s: tweak + s}
+  end
+
+  @doc """
+    extract_tweak takes a signer pubkey, message hash z, untweaked signature (adaptor signature),
+    and a completed signature, verifies the signature, and then returns the revealed tweak secret
+  """
   @spec extract_tweak(Point.t(), non_neg_integer, Signature.t(), Signature.t()) ::
           {:ok, non_neg_integer} | {:error, String.t()}
-  def extract_tweak(pubkey, z, %Signature{s: s}, %Signature{r: tweaked_r, s: tweaked_s}) do
-    tweaked_r_bytes = Utils.int_to_big(tweaked_r, 32)
-
-    z_bytes = Utils.int_to_big(z, 32)
-    e = calculate_e(tweaked_r_bytes, Point.x_bytes(pubkey), z_bytes)
-
-    tweaked_r_point =
-      @generator_point
-      |> Math.multiply(tweaked_s)
-      |> Math.add(Math.multiply(pubkey, Params.curve().n - e))
-
-    if validate_r(tweaked_r_point, tweaked_r) do
+  def extract_tweak(pubkey, z, %Signature{s: s}, tweaked_sig = %Signature{s: tweaked_s}) do
+    if verify_signature(pubkey, z, tweaked_sig) do
       if tweaked_s < s do
         {:error, "invalid tweak"}
       else
@@ -178,30 +179,35 @@ defmodule Bitcoinex.Secp256k1.Schnorr do
     end
   end
 
-  @spec extract_tweaked_signature(Point.t(), non_neg_integer, Signature.t(), non_neg_integer) ::
+  @doc """
+    extract_tweaked_signature takes a signer pubkey, message hash z, untweaked signature (adaptor signature),
+    and a tweak secret, and uses it to verify the adaptor signature, and returns the complete signature
+  """
+  @spec extract_tweaked_signature(
+          Point.t(),
+          non_neg_integer,
+          Signature.t(),
+          non_neg_integer | PrivateKey.t()
+        ) ::
           {:ok, Signature.t()} | {:error, String.t()}
+  def extract_tweaked_signature(pubkey, z, sig, t = %PrivateKey{}),
+    do: extract_tweaked_signature(pubkey, z, sig, t.d)
+
   def extract_tweaked_signature(pubkey, z, %Signature{r: r, s: s}, tweak) do
     case Point.lift_x(r) do
       {:error, err} ->
         {:error, err}
 
       {:ok, r_point} ->
-        tweak_point = PrivateKey.to_point(tweak)
-
-        tweaked_r = Math.add(r_point, tweak_point).x
         tweaked_s = tweak + s
 
-        r_bytes = Utils.int_to_big(r, 32)
-        z_bytes = Utils.int_to_big(z, 32)
-        e = calculate_e(r_bytes, Point.x_bytes(pubkey), z_bytes)
+        tweak_point = PrivateKey.to_point(tweak)
+        tweaked_r_point = Math.add(r_point, tweak_point)
 
-        tweaked_r_point =
-          @generator_point
-          |> Math.multiply(tweaked_s)
-          |> Math.add(Math.multiply(pubkey, Params.curve().n - e))
+        tweaked_sig = %Signature{r: tweaked_r_point.x, s: tweaked_s}
 
-        if validate_r(tweaked_r_point, tweaked_r) do
-          {:ok, %Signature{r: tweaked_r, s: tweaked_s}}
+        if verify_signature(pubkey, z, tweaked_sig) do
+          {:ok, %Signature{r: tweaked_r_point.x, s: tweaked_s}}
         else
           {:error, "tweak does not produce valid signature"}
         end
