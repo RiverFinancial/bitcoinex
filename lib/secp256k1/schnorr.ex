@@ -41,7 +41,7 @@ defmodule Bitcoinex.Secp256k1.Schnorr do
           r_point = PrivateKey.to_point(k0)
           k = Secp256k1.force_even_y(k0)
 
-          e = calculate_e(r_point, d_point, z_bytes)
+          e = calculate_e(Point.x_bytes(r_point), Point.x_bytes(d_point), z_bytes)
 
           sig_s = calculate_s(k, d, e)
 
