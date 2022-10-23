@@ -427,6 +427,20 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
           description: "",
           min_final_cltv_expiry: 18
         }
+      },
+      # Amount is 1 bitcoin to test no-multiplier parsing
+      {
+        "lnbcrt11p34y28ypp5z4tvam0qzsj6eq7adedy2p0ga2lam4jc3g6kn702t9mj6xyldj6qdqqcqzpgxqyz5vqsp55gkl87n3n8qwqadwrt3gfxcdsls8mk2cv5vgh3v8ujexglxpkv9q9qyyssqjx0f3dgylw8dyhy8z6e4ta3pzg09j90uwhd747fsclx5enjalmprnt583744v683prj48xgc57gumzs2406l5m7jqrem3aewh6nzfkspz9m2px",
+        %Invoice{
+          network: :regtest,
+          destination: "02d60dfe3850d115fdb2114b14396d4d2924a25dafc69098d10841e4474d9977dd",
+          payment_hash: "1556ceede01425ac83dd6e5a4505e8eabfddd6588a3569f9ea59772d189f6cb4",
+          amount_msat: 100_000_000_000,
+          timestamp: 1_666_328_804,
+          expiry: 86_400,
+          description: "",
+          min_final_cltv_expiry: 40
+        }
       }
     ]
 
