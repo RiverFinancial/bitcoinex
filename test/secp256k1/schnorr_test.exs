@@ -5,6 +5,7 @@ defmodule Bitcoinex.Secp256k1.SchnorrTest do
   alias Bitcoinex.Utils
   alias Bitcoinex.Secp256k1
   alias Bitcoinex.Secp256k1.{Point, PrivateKey, Schnorr, Signature}
+  # alias Bitcoinex.Secp256k1.{PrivateKey}
 
   # BIP340 official test vectors:
   # https://github.com/bitcoin/bips/blob/master/bip-0340/test-vectors.csv
@@ -153,6 +154,9 @@ defmodule Bitcoinex.Secp256k1.SchnorrTest do
                                      }
                                    ]
 
+
+
+
   describe "sign/3" do
     test "sign" do
       for t <- @schnorr_signatures_with_secrets do
@@ -260,7 +264,7 @@ defmodule Bitcoinex.Secp256k1.SchnorrTest do
 
       for _ <- 1..1000 do
         secret =
-          32
+          31
           |> :crypto.strong_rand_bytes()
           |> :binary.decode_unsigned()
 
@@ -271,4 +275,6 @@ defmodule Bitcoinex.Secp256k1.SchnorrTest do
       end
     end
   end
+
+
 end

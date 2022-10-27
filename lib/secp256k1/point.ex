@@ -124,7 +124,7 @@ defmodule Bitcoinex.Secp256k1.Point do
   """
   @spec x_bytes(t()) :: binary
   def x_bytes(%__MODULE__{x: x}) do
-    Bitcoinex.Utils.pad(:binary.encode_unsigned(x), 32, :leading)
+    Utils.int_to_big(x, 32)
   end
 
   @doc """

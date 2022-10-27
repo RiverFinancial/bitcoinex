@@ -3,7 +3,7 @@ defmodule Bitcoinex.Secp256k1.Secp256k1Test do
   doctest Bitcoinex.Secp256k1
 
   alias Bitcoinex.Secp256k1
-  alias Bitcoinex.Secp256k1.{Signature}
+  alias Bitcoinex.Secp256k1.{Signature, PrivateKey}
 
   @valid_der_signatures [
     %{
@@ -162,6 +162,21 @@ defmodule Bitcoinex.Secp256k1.Secp256k1Test do
           |> Signature.parse_signature()
 
         assert sig1 == sig2
+      end
+    end
+  end
+
+  describe "force_even_y/1" do
+    test "force_even_y" do
+      for _ <- 1..1000 do
+        secret =
+          31
+          |> :crypto.strong_rand_bytes()
+          |> :binary.decode_unsigned()
+
+        privkey = Secp256k1.force_even_y(%PrivateKey{d: secret})
+        pubkey = PrivateKey.to_point(privkey)
+        assert rem(pubkey.y,2) == 0
       end
     end
   end
