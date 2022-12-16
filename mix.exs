@@ -54,8 +54,7 @@ defmodule Bitcoinex.MixProject do
     [
       plt_file: plt_file(),
       flags: [
-        :error_handling,
-        :race_conditions
+        :error_handling
       ],
       ignore_warnings: ".dialyzer_ignore.exs"
     ]
