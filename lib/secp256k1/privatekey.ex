@@ -162,13 +162,13 @@ defmodule Bitcoinex.Secp256k1.PrivateKey do
     sighash = Bitcoinex.Utils.pad(:binary.encode_unsigned(z), 32, :leading)
     secret = Bitcoinex.Utils.pad(:binary.encode_unsigned(d), 32, :leading)
     # 3.2(d) - hmac with key k
-    k = :crypto.hmac(:sha256, k, v <> <<0x00>> <> secret <> sighash)
+    k = :crypto.mac(:hmac, :sha256, k, v <> <<0x00>> <> secret <> sighash)
     # 3.2(e) - update v
-    v = :crypto.hmac(:sha256, k, v)
+    v = :crypto.mac(:hmac, :sha256, k, v)
     # 3.2(f) - update k
-    k = :crypto.hmac(:sha256, k, v <> <<0x01>> <> secret <> sighash)
+    k = :crypto.mac(:hmac, :sha256, k, v <> <<0x01>> <> secret <> sighash)
     # 3.2(g) - update v
-    v = :crypto.hmac(:sha256, k, v)
+    v = :crypto.mac(:hmac, :sha256, k, v)
     # 3.2(h) - algorithm
     final_k = find_candidate(k, v, n)
     %__MODULE__{d: final_k}
@@ -176,15 +176,15 @@ defmodule Bitcoinex.Secp256k1.PrivateKey do
 
   defp find_candidate(k, v, n) do
     # RFC 6979 https://tools.ietf.org/html/rfc6979#section-3.2
-    v = :crypto.hmac(:sha256, k, v)
+    v = :crypto.mac(:hmac, :sha256, k, v)
     candidate = :binary.decode_unsigned(v)
     # 3.2(h).3 - check candidate in [1,n-1] and r != 0
     if candidate >= 1 and candidate < n and to_point(%__MODULE__{d: candidate}).x != 0 do
       candidate
     else
       # if candidate is invalid
-      k = :crypto.hmac(:sha256, k, v <> <<0x00>>)
-      v = :crypto.hmac(:sha256, k, v)
+      k = :crypto.mac(:hmac, :sha256, k, v <> <<0x00>>)
+      v = :crypto.mac(:hmac, :sha256, k, v)
       find_candidate(k, v, n)
     end
   end

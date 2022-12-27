@@ -9,7 +9,7 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
   alias Bitcoinex.LightningNetwork.HopHint
   alias Decimal, as: D
 
-  use Bitwise
+  import Bitwise
   # consider using https://github.com/ejpcmac/typed_struct
 
   @default_min_final_cltv_expiry 18

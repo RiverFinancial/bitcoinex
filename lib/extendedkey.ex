@@ -5,11 +5,11 @@ defmodule Bitcoinex.ExtendedKey do
   alias Bitcoinex.Secp256k1.{Params, Point, PrivateKey, Math}
   alias Bitcoinex.Base58
 
-  use Bitwise, only_operators: true
+  import Bitwise
 
   defmodule DerivationPath do
     @moduledoc """
-    Contains a list of integers (or the :any atom) representing a bip32 derivation path. 
+    Contains a list of integers (or the :any atom) representing a bip32 derivation path.
     The :any atom represents a wildcard in the derivation path. DerivationPath structs can
     be used by ExtendedKey.derive_extended_key to derive a child key at the given path.
     """
@@ -202,7 +202,7 @@ defmodule Bitcoinex.ExtendedKey do
   end
 
   @doc """
-    network_from_extended_key returns :testnet or :mainnet 
+    network_from_extended_key returns :testnet or :mainnet
     depending on the network prefix of the key.
   """
   @spec network_from_extended_key(t()) :: atom
@@ -242,10 +242,10 @@ defmodule Bitcoinex.ExtendedKey do
   @spec get_child_num(t()) :: binary
   def get_child_num(%__MODULE__{child_num: child_num}), do: child_num
 
-  # PARSE & SERIALIZE 
+  # PARSE & SERIALIZE
 
   @doc """
-    parse_extended_key takes binary or string representation 
+    parse_extended_key takes binary or string representation
     of an extended key and parses it to an extended key object
   """
   @spec parse_extended_key(binary) :: {:ok, t()} | {:error, String.t()}
@@ -324,7 +324,7 @@ defmodule Bitcoinex.ExtendedKey do
   end
 
   @doc """
-    seed_to_master_private_key transforms a bip32 seed 
+    seed_to_master_private_key transforms a bip32 seed
     into a master extended private key
   """
   @spec seed_to_master_private_key(binary, atom) :: {:ok, t()} | {:error, String.t()}
@@ -333,7 +333,7 @@ defmodule Bitcoinex.ExtendedKey do
 
     if prefix in @prv_prefixes do
       <<key::binary-size(32), chaincode::binary-size(32)>> =
-        :crypto.hmac(:sha512, "Bitcoin seed", seed)
+        :crypto.mac(:hmac, :sha512, "Bitcoin seed", seed)
 
       depth_fingerprint_childnum = <<0, 0, 0, 0, 0, 0, 0, 0, 0>>
 
@@ -393,7 +393,7 @@ defmodule Bitcoinex.ExtendedKey do
   end
 
   @doc """
-    to_public_key takes an extended key xkey and 
+    to_public_key takes an extended key xkey and
     returns the public key.
   """
   @spec to_public_key(t()) :: {:ok, Point.t()} | {:error, String.t()}
@@ -410,7 +410,7 @@ defmodule Bitcoinex.ExtendedKey do
 
   @doc """
     derive_child uses a public or private key xkey to
-    derive the public or private key at index idx. 
+    derive the public or private key at index idx.
     public key -> public child
     private key -> private child
   """
@@ -482,8 +482,8 @@ defmodule Bitcoinex.ExtendedKey do
   end
 
   @doc """
-    derive_private_child uses a private key xkey to 
-    derive the private key at index idx 
+    derive_private_child uses a private key xkey to
+    derive the private key at index idx
   """
   @spec derive_private_child(t(), non_neg_integer()) :: {:ok, t()} | {:error, String.t()}
   def derive_private_child(_, idx) when idx >>> 32 != 0, do: {:error, "idx must be in 0..2**32-1"}
@@ -549,7 +549,7 @@ defmodule Bitcoinex.ExtendedKey do
 
     if idx >= DerivationPath.min_hardened_child_num() do
       # hardened child from priv key
-      :crypto.hmac(:sha512, xprv.chaincode, xprv.key <> i)
+      :crypto.mac(:hmac, :sha512, xprv.chaincode, xprv.key <> i)
     else
       # unhardened child from privkey
       {:ok, prvkey} = PrivateKey.new(:binary.decode_unsigned(xprv.key))
@@ -559,7 +559,7 @@ defmodule Bitcoinex.ExtendedKey do
         |> PrivateKey.to_point()
         |> Point.sec()
 
-      :crypto.hmac(:sha512, xprv.chaincode, pubkey <> i)
+      :crypto.mac(:hmac, :sha512, xprv.chaincode, pubkey <> i)
     end
   end
 
@@ -569,11 +569,11 @@ defmodule Bitcoinex.ExtendedKey do
       |> :binary.encode_unsigned()
       |> Bitcoinex.Utils.pad(4, :leading)
 
-    :crypto.hmac(:sha512, xpub.chaincode, xpub.key <> i)
+    :crypto.mac(:hmac, :sha512, xpub.chaincode, xpub.key <> i)
   end
 
   @doc """
-    derive_extended_key uses an extended xkey and a derivation 
+    derive_extended_key uses an extended xkey and a derivation
     path to derive the extended key at that path
   """
   @spec derive_extended_key(t() | binary, DerivationPath.t()) :: {:ok, t()} | {:error, String.t()}

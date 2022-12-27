@@ -29,7 +29,7 @@ defmodule Bitcoinex.PSBT do
   """
   @spec decode(String.t()) :: {:ok, %Bitcoinex.PSBT{}} | {:error, term()}
   def decode(psbt_b64) when is_binary(psbt_b64) do
-    case Base.decode64(psbt_b64, case: :lower) do
+    case Base.decode64(psbt_b64) do
       {:ok, psbt_b64} ->
         parse(psbt_b64)
 

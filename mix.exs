@@ -5,7 +5,7 @@ defmodule Bitcoinex.MixProject do
     [
       app: :bitcoinex,
       version: "0.1.4",
-      elixir: "~> 1.8",
+      elixir: "~> 1.11",
       package: package(),
       start_permanent: Mix.env() == :prod,
       dialyzer: dialyzer(),
@@ -54,8 +54,7 @@ defmodule Bitcoinex.MixProject do
     [
       plt_file: plt_file(),
       flags: [
-        :error_handling,
-        :race_conditions
+        :error_handling
       ],
       ignore_warnings: ".dialyzer_ignore.exs"
     ]
