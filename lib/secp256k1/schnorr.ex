@@ -64,9 +64,11 @@ defmodule Bitcoinex.Secp256k1.Schnorr do
   """
   @spec verify_signature(Point.t(), non_neg_integer, Signature.t()) ::
           boolean | {:error, String.t()}
-  def verify_signature(pubkey, z, %Signature{r: r, s: s}) do
-    if r >= Params.curve().p || s >= Params.curve().n, do: {:error, "invalid signature"}
+  def verify_signature(_pubkey, _z, %Signature{r: r, s: s})
+      when r >= Params.curve().p or s >= Params.curve().n,
+      do: {:error, "invalid signature"}
 
+  def verify_signature(pubkey, z, %Signature{r: r, s: s}) do
     r_bytes = Utils.int_to_big(r, 32)
     z_bytes = Utils.int_to_big(z, 32)
 
