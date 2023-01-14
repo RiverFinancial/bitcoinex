@@ -75,9 +75,9 @@ defmodule Bitcoinex.Secp256k1.Point do
     and P.y is even.
   """
   @spec lift_x(integer | binary) :: {:ok, t()} | {:error, String.t()}
-  def lift_x(x) when is_integer(x) do
-    if x >= @p, do: {:error, "invalid x value (too large)"}
+  def lift_x(x) when is_integer(x) and x >= @p, do: {:error, "invalid x value (too large)"}
 
+  def lift_x(x) when is_integer(x) do
     case Secp256k1.get_y(x, false) do
       {:ok, y} ->
         {:ok, %__MODULE__{x: x, y: y}}

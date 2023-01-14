@@ -8,7 +8,7 @@ defmodule Bitcoinex.Secp256k1 do
   In the future, we will NIF for critical operations. However, it is more portable to have a native elixir version.
   """
   import Bitwise
-  alias Bitcoinex.Secp256k1.{Math, Params, Point}
+  alias Bitcoinex.Secp256k1.{Math, Params, Point, PrivateKey}
 
   @generator_point %Point{
     x: Params.curve().g_x,
