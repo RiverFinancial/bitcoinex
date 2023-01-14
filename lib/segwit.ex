@@ -5,8 +5,6 @@ defmodule Bitcoinex.Segwit do
 
   alias Bitcoinex.Bech32
 
-  use Bitwise
-
   @valid_witness_program_length_range 2..40
   @valid_witness_version 0..16
   @supported_network [:mainnet, :testnet, :regtest]
@@ -49,12 +47,12 @@ defmodule Bitcoinex.Segwit do
   """
   @spec encode_address(network, witness_version, witness_program) ::
           {:ok, String.t()} | {:error, error}
-  def encode_address(network, _, _) when not (network in @supported_network) do
+  def encode_address(network, _, _) when network not in @supported_network do
     {:error, :invalid_network}
   end
 
   def encode_address(_, witness_version, _)
-      when not (witness_version in @valid_witness_version) do
+      when witness_version not in @valid_witness_version do
     {:error, :invalid_witness_version}
   end
 

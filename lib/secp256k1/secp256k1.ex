@@ -7,9 +7,13 @@ defmodule Bitcoinex.Secp256k1 do
 
   In the future, we will NIF for critical operations. However, it is more portable to have a native elixir version.
   """
-  use Bitwise, only_operators: true
-  alias Bitcoinex.Secp256k1.{Math, Params, Point, PrivateKey}
-  alias Bitcoinex.Utils
+  import Bitwise
+  alias Bitcoinex.Secp256k1.{Math, Params, Point}
+
+  @generator_point %Point{
+    x: Params.curve().g_x,
+    y: Params.curve().g_y
+  }
 
   defmodule Signature do
     @moduledoc """

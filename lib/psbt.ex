@@ -13,6 +13,8 @@ defmodule Bitcoinex.PSBT do
   alias Bitcoinex.PSBT.Out
   alias Bitcoinex.Transaction.Utils, as: TxUtils
 
+  @type t() :: %__MODULE__{}
+
   defstruct [
     :global,
     :inputs,
@@ -27,9 +29,9 @@ defmodule Bitcoinex.PSBT do
   @doc """
   Decodes a base64 encoded string into a PSBT.
   """
-  @spec decode(String.t()) :: {:ok, %Bitcoinex.PSBT{}} | {:error, term()}
+  @spec decode(String.t()) :: {:ok, t()} | {:error, term()}
   def decode(psbt_b64) when is_binary(psbt_b64) do
-    case Base.decode64(psbt_b64, case: :lower) do
+    case Base.decode64(psbt_b64) do
       {:ok, psbt_b64} ->
         parse(psbt_b64)
 
@@ -41,14 +43,14 @@ defmodule Bitcoinex.PSBT do
   @doc """
     Decodes a binary-encoded PSBT file.
   """
-  @spec from_file(String.t()) :: {:ok, %Bitcoinex.PSBT{}} | {:error, term()}
+  @spec from_file(String.t()) :: {:ok, t()} | {:error, term()}
   def from_file(filename) do
     filename
     |> File.read!()
     |> parse()
   end
 
-  @spec serialize(%Bitcoinex.PSBT{}) :: binary
+  @spec serialize(t()) :: binary()
   defp serialize(packet) do
     global = Global.serialize_global(packet.global)
     inputs = In.serialize_inputs(packet.inputs)
@@ -62,13 +64,13 @@ defmodule Bitcoinex.PSBT do
   @doc """
     to_file writes a PSBT to file as binary.
   """
-  @spec to_file(%Bitcoinex.PSBT{}, String.t()) :: :ok | {:error, File.posix()}
+  @spec to_file(t(), String.t()) :: :ok | {:error, File.posix()}
   def to_file(packet, filename) do
     bin = serialize(packet)
     File.write(filename, bin)
   end
 
-  @spec encode_b64(%Bitcoinex.PSBT{}) :: String.t()
+  @spec encode_b64(t()) :: String.t()
   def encode_b64(packet) do
     packet
     |> serialize()
