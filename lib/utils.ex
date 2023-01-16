@@ -3,8 +3,6 @@ defmodule Bitcoinex.Utils do
   Contains useful utility functions used in Bitcoinex.
   """
 
-  use Bitwise, only_operators: true
-
   @spec sha256(iodata()) :: binary
   def sha256(str) do
     :crypto.hash(:sha256, str)
@@ -106,7 +104,7 @@ defmodule Bitcoinex.Utils do
     {bl0, bl1} = {:binary.bin_to_list(bin0), :binary.bin_to_list(bin1)}
 
     Enum.zip(bl0, bl1)
-    |> Enum.map(fn {b0, b1} -> b0 ^^^ b1 end)
+    |> Enum.map(fn {b0, b1} -> Bitwise.bxor(b0, b1) end)
     |> :binary.list_to_bin()
   end
 end

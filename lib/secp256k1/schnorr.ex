@@ -25,33 +25,46 @@ defmodule Bitcoinex.Secp256k1.Schnorr do
         z_bytes = Utils.int_to_big(z, 32)
         aux_bytes = Utils.int_to_big(aux, 32)
         d_point = PrivateKey.to_point(privkey)
-        d = Secp256k1.force_even_y(privkey)
-        d_bytes = Utils.int_to_big(d.d, 32)
-        tagged_aux_hash = tagged_hash_aux(aux_bytes)
-        t = Utils.xor_bytes(d_bytes, tagged_aux_hash)
 
-        {:ok, k0} =
-          tagged_hash_nonce(t <> Point.x_bytes(d_point) <> z_bytes)
-          |> :binary.decode_unsigned()
-          |> Math.modulo(@n)
-          |> PrivateKey.new()
+        case Secp256k1.force_even_y(privkey) do
+          {:error, msg} ->
+            {:error, msg}
 
-        if k0.d == 0 do
-          {:error, "invalid aux randomness"}
-        else
-          r_point = PrivateKey.to_point(k0)
-          k = Secp256k1.force_even_y(k0)
+          d ->
+            d_bytes = Utils.int_to_big(d.d, 32)
+            tagged_aux_hash = tagged_hash_aux(aux_bytes)
+            t = Utils.xor_bytes(d_bytes, tagged_aux_hash)
 
-          e =
-            tagged_hash_challenge(Point.x_bytes(r_point) <> Point.x_bytes(d_point) <> z_bytes)
-            |> :binary.decode_unsigned()
-            |> Math.modulo(@n)
+            {:ok, k0} =
+              tagged_hash_nonce(t <> Point.x_bytes(d_point) <> z_bytes)
+              |> :binary.decode_unsigned()
+              |> Math.modulo(@n)
+              |> PrivateKey.new()
 
-          sig_s =
-            (k.d + d.d * e)
-            |> Math.modulo(@n)
+            if k0.d == 0 do
+              {:error, "invalid aux randomness"}
+            else
+              r_point = PrivateKey.to_point(k0)
 
-          {:ok, %Signature{r: r_point.x, s: sig_s}}
+              case Secp256k1.force_even_y(k0) do
+                {:error, msg} ->
+                  {:error, msg}
+
+                k ->
+                  e =
+                    tagged_hash_challenge(
+                      Point.x_bytes(r_point) <> Point.x_bytes(d_point) <> z_bytes
+                    )
+                    |> :binary.decode_unsigned()
+                    |> Math.modulo(@n)
+
+                  sig_s =
+                    (k.d + d.d * e)
+                    |> Math.modulo(@n)
+
+                  {:ok, %Signature{r: r_point.x, s: sig_s}}
+              end
+            end
         end
     end
   end

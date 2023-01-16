@@ -3,7 +3,7 @@ defmodule Bitcoinex.Secp256k1.Point do
   Contains the x, y, and z of an elliptic curve point.
   """
 
-  use Bitwise, only_operators: true
+  import Bitwise
   alias Bitcoinex.Utils
   alias Bitcoinex.Secp256k1
   alias Bitcoinex.Secp256k1.Params
