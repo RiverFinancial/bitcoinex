@@ -7,6 +7,7 @@ defmodule Bitcoinex.Secp256k1.Schnorr do
   alias Bitcoinex.Utils
 
   @n Params.curve().n
+  @p Params.curve().p
 
   @generator_point %Point{
     x: Params.curve().g_x,
@@ -65,7 +66,7 @@ defmodule Bitcoinex.Secp256k1.Schnorr do
   @spec verify_signature(Point.t(), non_neg_integer, Signature.t()) ::
           boolean | {:error, String.t()}
   def verify_signature(_pubkey, _z, %Signature{r: r, s: s})
-      when r >= Params.curve().p or s >= Params.curve().n,
+      when r >= @p or s >= @n,
       do: {:error, "invalid signature"}
 
   def verify_signature(pubkey, z, %Signature{r: r, s: s}) do
@@ -80,7 +81,7 @@ defmodule Bitcoinex.Secp256k1.Schnorr do
     r_point =
       @generator_point
       |> Math.multiply(s)
-      |> Math.add(Math.multiply(pubkey, Params.curve().n - e))
+      |> Math.add(Math.multiply(pubkey, @n - e))
 
     !Point.is_inf(r_point) && Point.has_even_y(r_point) && r_point.x == r
   end
