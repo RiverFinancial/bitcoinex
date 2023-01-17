@@ -414,23 +414,18 @@ defmodule Bitcoinex.ExtendedKey do
     serialize takes an extended key
     and returns the binary
   """
-  @spec serialize(t()) :: binary
-  def serialize(xkey) do
-    (xkey.prefix <>
-       xkey.depth <> xkey.parent_fingerprint <> xkey.child_num <> xkey.chaincode <> xkey.key)
-    |> Base58.append_checksum()
-  end
-
-  @doc """
-    serialize takes an extended key
-    and returns the binary without the checksum appended
-    (used for PSBT encoding)
-  """
-  @spec serialize(t(), atom) :: binary
-  def serialize(xkey = %__MODULE__{}, :no_checksum) do
-    xkey.prefix <>
-      xkey.depth <> xkey.parent_fingerprint <> xkey.child_num <> xkey.chaincode <> xkey.key
-  end
+  @spec serialize(t(), list({:with_checksum?, boolean})) :: binary
+  def serialize(xkey, opts \\ []) do
+    with_checksum? =  Keyword.get(opts, :with_checksum?, true)
+    extended_key_without_checksum_bin = (xkey.prefix <>
+      xkey.depth <> xkey.parent_fingerprint <> xkey.child_num <> xkey.chaincode <> xkey.key)
+   case with_checksum? do
+      true ->
+         Base58.append_checksum(extended_key_without_checksum_bin)
+       false ->
+          extended_key_without_checksum_bin
+   end
+ end
 
   @doc """
     display returns the extended key as a string
