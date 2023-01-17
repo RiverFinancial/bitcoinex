@@ -32,7 +32,7 @@ defmodule Bitcoinex.Transaction do
     TxID is sha256(sha256(nVersion | txins | txouts | nLockTime))
   """
   def transaction_id(txn) do
-    legacy_txn = TxUtils.serialize(%{txn | witnesses: nil})
+    legacy_txn = TxUtils.serialize(%{txn | witnesses: []})
 
     Base.encode16(
       <<:binary.decode_unsigned(
@@ -62,7 +62,7 @@ defmodule Bitcoinex.Transaction do
     end
   end
 
-  # returns transaction 
+  # returns transaction
   defp parse(<<version::little-size(32), remaining::binary>>) do
     {is_segwit, remaining} =
       case remaining do
@@ -143,7 +143,7 @@ defmodule Bitcoinex.Transaction.Utils do
     end
   end
 
-  @spec serialize(%Transaction{witnesses: any}) :: binary
+  @spec serialize(Transaction.t()) :: binary()
   def serialize(%Transaction{witnesses: witness} = txn)
       when is_list(witness) and length(witness) > 0 do
     version = <<txn.version::little-size(32)>>
@@ -208,15 +208,13 @@ defmodule Bitcoinex.Transaction.Witness do
   @doc """
     Wtiness accepts a binary and deserializes it.
   """
-  @spec witness(binary) :: %Bitcoinex.Transaction.Witness{
-          :txinwitness => [any()] | 0
-        }
+  @spec witness(binary) :: t()
   def witness(witness_bytes) do
     {stack_size, witness_bytes} = TxUtils.get_counter(witness_bytes)
 
     {witness, _} =
       if stack_size == 0 do
-        {%Witness{txinwitness: 0}, witness_bytes}
+        {%Witness{txinwitness: []}, witness_bytes}
       else
         {stack_items, witness_bytes} = parse_stack(witness_bytes, [], stack_size)
         {%Witness{txinwitness: stack_items}, witness_bytes}

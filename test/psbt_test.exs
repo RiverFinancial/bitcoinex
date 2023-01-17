@@ -615,4 +615,28 @@ defmodule Bitcoinex.PSBTTest do
       end
     end
   end
+
+  describe "to_file/2 & from_file/1" do
+    test "valid psbts" do
+      filename = "./test/psbt-test.psbt"
+
+      for valid_psbt <- @valid_psbts do
+        case PSBT.decode(valid_psbt.psbt) do
+          {:ok, psbt_in} ->
+            PSBT.to_file(psbt_in, filename)
+            {res, psbt_out} = PSBT.from_file(filename)
+            assert res == :ok
+            assert valid_psbt.expected_global == psbt_out.global
+            assert valid_psbt.expected_in == psbt_out.inputs
+            assert valid_psbt.expected_out == psbt_out.outputs
+            assert valid_psbt.psbt == PSBT.encode_b64(psbt_out)
+
+          {:error, _} ->
+            assert false
+        end
+      end
+
+      File.rm_rf(filename)
+    end
+  end
 end

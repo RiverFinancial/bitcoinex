@@ -8,6 +8,11 @@ defmodule Bitcoinex.Utils do
     :crypto.hash(:sha256, str)
   end
 
+  def tagged_hash(tag, str) do
+    tag_hash = sha256(tag)
+    sha256(tag_hash <> tag_hash <> str)
+  end
+
   @spec replicate(term(), integer()) :: list(term())
   def replicate(_num, 0) do
     []
@@ -56,6 +61,13 @@ defmodule Bitcoinex.Utils do
     bin <> <<0::size(pad_len)>>
   end
 
+  @spec int_to_big(non_neg_integer(), non_neg_integer()) :: binary
+  def int_to_big(i, p) do
+    i
+    |> :binary.encode_unsigned()
+    |> pad(p, :leading)
+  end
+
   def int_to_little(i, p) do
     i
     |> :binary.encode_unsigned(:little)
@@ -84,5 +96,15 @@ defmodule Bitcoinex.Utils do
       # valid binary
       {:ok, bin} -> bin
     end
+  end
+
+  # todo: better to just convert to ints and XOR them?
+  @spec xor_bytes(binary, binary) :: binary
+  def xor_bytes(bin0, bin1) do
+    {bl0, bl1} = {:binary.bin_to_list(bin0), :binary.bin_to_list(bin1)}
+
+    Enum.zip(bl0, bl1)
+    |> Enum.map(fn {b0, b1} -> Bitwise.bxor(b0, b1) end)
+    |> :binary.list_to_bin()
   end
 end

@@ -94,6 +94,74 @@ defmodule Bitcoinex.ScriptTest do
     "0020701a8d401c84fb13e6baf169d59684e17abd9fa216c8cc5b9fc63d622ff8c58d"
   ]
 
+  # from
+  # https://github.com/bitcoin/bips/blob/master/bip-0350.mediawiki#test-vectors-for-v0-v16-native-segregated-witness-addresses
+  @bip350_test_vectors [
+    %{
+      b32: "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4",
+      hex: "0014751e76e8199196d454941c45d1b3a323f1433bd6",
+      net: :mainnet
+    },
+    %{
+      b32: "tb1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3q0sl5k7",
+      hex: "00201863143c14c5166804bd19203356da136c985678cd4d27a1b8c6329604903262",
+      net: :testnet
+    },
+    %{
+      b32: "bc1pqyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqsyjer9e",
+      hex: "51200101010101010101010101010101010101010101010101010101010101010101",
+      net: :mainnet
+    },
+    %{
+      b32: "tb1qqqqqp399et2xygdj5xreqhjjvcmzhxw4aywxecjdzew6hylgvsesrxh6hy",
+      hex: "0020000000c4a5cad46221b2a187905e5266362b99d5e91c6ce24d165dab93e86433",
+      net: :testnet
+    },
+    %{
+      b32: "tb1pqqqqp399et2xygdj5xreqhjjvcmzhxw4aywxecjdzew6hylgvsesf3hn0c",
+      hex: "5120000000c4a5cad46221b2a187905e5266362b99d5e91c6ce24d165dab93e86433",
+      net: :testnet
+    },
+    %{
+      b32: "bc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqzk5jj0",
+      hex: "512079be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+      net: :mainnet
+    }
+  ]
+
+  @bip_350_invalid_test_vectors [
+    # Invalid human-readable part
+    "tc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vq5zuyut",
+    # Invalid checksum (Bech32 instead of Bech32m)
+    "bc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqh2y7hd",
+    # Invalid checksum (Bech32 instead of Bech32m)
+    "tb1z0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqglt7rf",
+    # Invalid checksum (Bech32 instead of Bech32m)
+    "BC1S0XLXVLHEMJA6C4DQV22UAPCTQUPFHLXM9H8Z3K2E72Q4K9HCZ7VQ54WELL",
+    # Invalid checksum (Bech32m instead of Bech32)
+    "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kemeawh",
+    # Invalid checksum (Bech32m instead of Bech32)
+    "tb1q0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vq24jc47",
+    # Invalid character in checksum
+    "bc1p38j9r5y49hruaue7wxjce0updqjuyyx0kh56v8s25huc6995vvpql3jow4",
+    # Invalid witness version
+    "BC130XLXVLHEMJA6C4DQV22UAPCTQUPFHLXM9H8Z3K2E72Q4K9HCZ7VQ7ZWS8R",
+    # Invalid program length (1 byte)
+    "bc1pw5dgrnzv",
+    # Invalid program length (41 bytes)
+    "bc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7v8n0nx0muaewav253zgeav",
+    # Invalid program length for witness version 0 (per BIP141)
+    "BC1QR508D6QEJXTDG4Y5R3ZARVARYV98GJ9P",
+    # Mixed case
+    "tb1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vq47Zagq",
+    # zero padding of more than 4 bits
+    "bc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7v07qwwzcrf",
+    # Non-zero padding in 8-to-5 conversion
+    "tb1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vpggkg4j",
+    # Empty data section
+    "bc1gmk9yu"
+  ]
+
   describe "test basics functions" do
     test "test new/0 and empty?/1" do
       s = Script.new()
@@ -429,6 +497,27 @@ defmodule Bitcoinex.ScriptTest do
       assert p2wpkh == p2wpkh2
     end
 
+    test "test create_p2tr" do
+      s = Script.new()
+      script_hex = "51200101010101010101010101010101010101010101010101010101010101010101"
+      pubkey_hex = "0101010101010101010101010101010101010101010101010101010101010101"
+      bin = Base.decode16!(pubkey_hex, case: :lower)
+
+      {:ok, p2tr} = Script.push_data(s, bin)
+      {:ok, p2tr} = Script.push_op(p2tr, 0x51)
+      assert Script.is_p2tr?(p2tr)
+
+      s_hex = Script.to_hex(p2tr)
+      assert s_hex == script_hex
+
+      {:ok, p2tr_from_bin} = Script.create_p2tr(bin)
+      assert Script.to_hex(p2tr_from_bin) == script_hex
+
+      {:ok, pubkey} = Point.lift_x(bin)
+      {:ok, p2tr_from_pk} = Script.create_p2tr(pubkey)
+      assert Script.to_hex(p2tr_from_pk) == script_hex
+    end
+
     test "test is_multi?" do
       for ms <- @raw_multisig_scripts do
         {:ok, multi} = Script.parse_script(ms)
@@ -646,7 +735,7 @@ defmodule Bitcoinex.ScriptTest do
 
   describe "test parsing scripts" do
     test "test parse pushdata1 script" do
-      # pushdata1 <data> 
+      # pushdata1 <data>
       data_hex =
         "c5802547372094c58025802547372094c5802547802c9ca07652be7e8025472547372094c5802547802c9ca07652be7e802547372094c5802547802c9ca07652be7e47802c9ca07652be7e6419bc9aa1"
 
@@ -684,7 +773,7 @@ defmodule Bitcoinex.ScriptTest do
     end
 
     test "test parse pushdata2 script" do
-      # pushdata2 <data> 
+      # pushdata2 <data>
       data_hex =
         "c5802547372094c58025478025473720941cee958bca07652be7e6419bc91cee958b8025473720941cee958bca07652be7e6419bc91cee958b3720941cee958bca07652be7e6419bc91ceec5802547372094c58025478025473720941cee958bca07652be7e6419bc91cee958b8025473720941cee958bca07652be7e6419bc91cee958b3720941cee958bca07652be7e6419c5802547372094c58025478025473720941cee958bca07652be7e6419bc91cee958b8025473720941cee958bca07652be7e6419bc91cee958b3720941cee958bca07652be7ec5802547372094c58025478025473720941cee958bca07652be7e6419bc91cee958b8025473720941cee958bca07652be7e6419bc91cee958b3720941cee958bca07652be7e6419bc91cee958bc58025473720941cee958bca07652be7e6419bc9ca07652be7e6419bc96419bc91cee958bc58025473720941cee958bca07652be7e6419bc9ca07652be7e6419bc9bc91cee958bc58025473720941cee958bca07652be7e6419bc9ca07652c5802547372094c58025478025473720941cee958bca07652be7e6419bc91cee958b8025473720941cee958bca07652be7e6419bc91cee958b3720941cee958bca07652be9bc9958bc58025473720941cee958bca07652be7e6419bc9ca07652be7e6419bc9"
 
@@ -1089,6 +1178,19 @@ defmodule Bitcoinex.ScriptTest do
         end
       end
     end
+
+    test "test bip350 test vectors" do
+      for t <- @bip350_test_vectors do
+        {:ok, s} = Script.parse_script(t.hex)
+        assert Script.to_address(s, t.net) == {:ok, t.b32}
+      end
+    end
+
+    test "test invalid bip350 test vectors" do
+      for t <- @bip_350_invalid_test_vectors do
+        assert {:error, _} = Script.parse_script(t)
+      end
+    end
   end
 
   describe "test from_address" do
@@ -1190,6 +1292,14 @@ defmodule Bitcoinex.ScriptTest do
       {:ok, script, network} = Script.from_address(addr)
       assert Script.is_p2wpkh?(script)
       assert network == :mainnet
+    end
+
+    test "test bip350 test vectors" do
+      for t <- @bip350_test_vectors do
+        {:ok, s, net} = Script.from_address(t.b32)
+        assert Script.to_hex(s) == t.hex
+        assert net == t.net
+      end
     end
   end
 

@@ -2,7 +2,16 @@ defmodule Bitcoinex.Secp256k1.PointTest do
   use ExUnit.Case
   doctest Bitcoinex.Secp256k1.Point
 
+  alias Bitcoinex.Secp256k1
   alias Bitcoinex.Secp256k1.Point
+
+  @x_only_pubkeys [
+    "F9308A019258C31049344F85F89D5229B531C845836F99B08601F113BCE036F9",
+    "DFF1D77F2A671C5F36183726DB2341BE58FEAE1DA2DECED843240F7B502BA659",
+    "DD308AFEC5777E13121FA72B9CC1B7CC0139715309B086C960E18FD969774EB8",
+    "25D1DFF95105F5253C4022F628A996AD3A0D95FBF21D468A1B33F8C160D8F517",
+    "D69C3509BB99E412E68B0FE8544E72837DFA30746D8BE2AA65975F29D22DC7B9"
+  ]
 
   describe "serialize_public_key/1" do
     test "successfully pad public key" do
@@ -80,6 +89,23 @@ defmodule Bitcoinex.Secp256k1.PointTest do
         |> Base.encode16(case: :lower)
 
       assert correct_hash160 == hash160
+    end
+  end
+
+  describe "lift_x/1" do
+    test "lift_x on 32-byte x-only pubkeys" do
+      for t <- @x_only_pubkeys do
+        {:ok, pubkey} = Point.lift_x(t)
+        assert Point.has_even_y(pubkey)
+        assert Secp256k1.verify_point(pubkey)
+      end
+    end
+
+    test "return error when x is equal or greater than Secp256k1 p" do
+      for i <- 0..2 do
+        assert {:error, error} = Point.lift_x(Bitcoinex.Secp256k1.Params.curve().p + i)
+        assert String.match?(error, ~r/(too large)/)
+      end
     end
   end
 end

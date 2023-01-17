@@ -8,7 +8,6 @@ defmodule Bitcoinex.Secp256k1.Math do
   """
   alias Bitcoinex.Secp256k1.{Params, Point}
   import Bitcoinex.Secp256k1.Point
-  use Bitwise, only_operators: true
 
   @doc """
   pow performs integer pow,

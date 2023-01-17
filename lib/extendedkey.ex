@@ -5,7 +5,7 @@ defmodule Bitcoinex.ExtendedKey do
   alias Bitcoinex.Secp256k1.{Params, Point, PrivateKey, Math}
   alias Bitcoinex.Base58
 
-  use Bitwise, only_operators: true
+  import Bitwise
 
   defmodule DerivationPath do
     @moduledoc """
@@ -447,7 +447,7 @@ defmodule Bitcoinex.ExtendedKey do
 
     if prefix in @prv_prefixes do
       <<key::binary-size(32), chaincode::binary-size(32)>> =
-        :crypto.hmac(:sha512, "Bitcoin seed", seed)
+        :crypto.mac(:hmac, :sha512, "Bitcoin seed", seed)
 
       depth_fingerprint_childnum = <<0, 0, 0, 0, 0, 0, 0, 0, 0>>
 
@@ -663,7 +663,7 @@ defmodule Bitcoinex.ExtendedKey do
 
     if idx >= DerivationPath.min_hardened_child_num() do
       # hardened child from priv key
-      :crypto.hmac(:sha512, xprv.chaincode, xprv.key <> i)
+      :crypto.mac(:hmac, :sha512, xprv.chaincode, xprv.key <> i)
     else
       # unhardened child from privkey
       {:ok, prvkey} = PrivateKey.new(:binary.decode_unsigned(xprv.key))
@@ -673,7 +673,7 @@ defmodule Bitcoinex.ExtendedKey do
         |> PrivateKey.to_point()
         |> Point.sec()
 
-      :crypto.hmac(:sha512, xprv.chaincode, pubkey <> i)
+      :crypto.mac(:hmac, :sha512, xprv.chaincode, pubkey <> i)
     end
   end
 
@@ -683,7 +683,7 @@ defmodule Bitcoinex.ExtendedKey do
       |> :binary.encode_unsigned()
       |> Bitcoinex.Utils.pad(4, :leading)
 
-    :crypto.hmac(:sha512, xpub.chaincode, xpub.key <> i)
+    :crypto.mac(:hmac, :sha512, xpub.chaincode, xpub.key <> i)
   end
 
   @doc """
