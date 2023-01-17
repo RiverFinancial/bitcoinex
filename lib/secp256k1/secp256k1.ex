@@ -201,9 +201,7 @@ defmodule Bitcoinex.Secp256k1 do
       pubkey ->
         if Point.is_inf(pubkey) do
           {:error, "pubkey is infinity. bad luck"}
-        end
-
-        if Point.has_even_y(pubkey) do
+        else if Point.has_even_y(pubkey) do
           privkey
         else
           %PrivateKey{d: Params.curve().n - privkey.d}
