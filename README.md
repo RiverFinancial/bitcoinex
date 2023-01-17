@@ -16,7 +16,7 @@ Documentation is available on [hexdocs.pm](https://hexdocs.pm/bitcoinex/api-refe
 
 With [Hex](https://hex.pm/packages/bitcoinex):
 
-    {:bitcoinex, "~> 0.1.0"}
+    {:bitcoinex, "~> 0.1.7"}
 
 Local:
 
