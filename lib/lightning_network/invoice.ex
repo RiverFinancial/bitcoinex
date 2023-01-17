@@ -151,7 +151,7 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
       # TODO if destination exist from tagged field, we dun need to recover but to verify it with signature
       # but that require convert lg sig before using secp256k1 to verify it
       # TODO refactor too nested
-      case Bitcoinex.Secp256k1.ecdsa_recover_compact(hash, signature, recoveryId) do
+      case Bitcoinex.Secp256k1.Ecdsa.ecdsa_recover_compact(hash, signature, recoveryId) do
         {:ok, pubkey} ->
           if is_nil(destination) or destination == pubkey do
             {:ok, pubkey}

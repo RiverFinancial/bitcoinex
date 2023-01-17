@@ -603,9 +603,12 @@ defmodule Bitcoinex.Script do
 
   @doc """
   	create_p2tr creates a p2tr script using the passed 32-byte public key
+    or Point. If a point is passed, it's interpreted as q, the full witness
+    program or taproot output key per BIP 341 rather than the keyspend pubkey.
   """
-  @spec create_p2tr(binary) :: {:ok, t()}
+  @spec create_p2tr(binary | Point.t()) :: {:ok, t()}
   def create_p2tr(<<pk::binary-size(@tapkey_length)>>), do: create_witness_scriptpubkey(1, pk)
+  def create_p2tr(q = %Point{}), do: create_witness_scriptpubkey(1, Point.x_bytes(q))
   def create_p2tr(_), do: {:error, "public key must be #{@tapkey_length}-bytes"}
 
   @doc """

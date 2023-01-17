@@ -2,10 +2,13 @@ defmodule Bitcoinex.Secp256k1.PrivateKey do
   @moduledoc """
    	Contains an integer used to create a Point and sign.
   """
-  alias Bitcoinex.Secp256k1.{Params, Math, Point, Signature}
+  alias Bitcoinex.Secp256k1.{Params, Math, Point}
   alias Bitcoinex.Base58
+  alias Bitcoinex.Utils
 
-  @max_privkey Params.curve().n - 1
+  @n Params.curve().n
+
+  @max_privkey @n - 1
 
   @type t :: %__MODULE__{
           d: non_neg_integer()
@@ -27,15 +30,15 @@ defmodule Bitcoinex.Secp256k1.PrivateKey do
   @doc """
     new creates a private key from an integer
   """
-  @spec new(non_neg_integer()) :: {:ok, t()}
+  @spec new(non_neg_integer()) :: {:ok, t()} | {:error, String.t()}
   def new(d) do
     validate(%__MODULE__{d: d})
   end
 
   @doc """
-    to_point calculate Point from private key
+    to_point calculate Point from private key or integer
   """
-  @spec to_point(t()) :: Point.t()
+  @spec to_point(t() | non_neg_integer()) :: Point.t() | {:error, String.t()}
   def to_point(prvkey = %__MODULE__{}) do
     case validate(prvkey) do
       {:error, msg} ->
@@ -44,6 +47,16 @@ defmodule Bitcoinex.Secp256k1.PrivateKey do
       {:ok, %__MODULE__{d: d}} ->
         g = %Point{x: Params.curve().g_x, y: Params.curve().g_y, z: 0}
         Math.multiply(g, d)
+    end
+  end
+
+  def to_point(d) when is_integer(d) do
+    case new(d) do
+      {:ok, sk} ->
+        to_point(sk)
+
+      {:error, msg} ->
+        {:error, msg}
     end
   end
 
@@ -59,7 +72,7 @@ defmodule Bitcoinex.Secp256k1.PrivateKey do
       {:ok, %__MODULE__{d: d}} ->
         d
         |> :binary.encode_unsigned()
-        |> Bitcoinex.Utils.pad(32, :leading)
+        |> Utils.pad(32, :leading)
         |> Base.encode16(case: :lower)
     end
   end
@@ -77,7 +90,7 @@ defmodule Bitcoinex.Secp256k1.PrivateKey do
       {:ok, %__MODULE__{d: d}} ->
         d
         |> :binary.encode_unsigned()
-        |> Bitcoinex.Utils.pad(32, :leading)
+        |> Utils.pad(32, :leading)
         |> wif_prefix(network_name)
         |> compressed_suffix()
         |> Base58.encode()
@@ -151,87 +164,4 @@ defmodule Bitcoinex.Secp256k1.PrivateKey do
   defp wif_prefix(<<0x80>>), do: {:ok, :mainnet}
   defp wif_prefix(<<0xEF>>), do: {:ok, :testnet}
   defp wif_prefix(_), do: {:error, "unrecognized network prefix for WIF"}
-
-  def deterministic_k(%__MODULE__{d: d}, raw_z) do
-    # RFC 6979 https://tools.ietf.org/html/rfc6979#section-3.2
-    k = :binary.list_to_bin(List.duplicate(<<0x00>>, 32))
-    v = :binary.list_to_bin(List.duplicate(<<0x01>>, 32))
-    n = Params.curve().n
-    z = lower_z(raw_z, n)
-    # 3.2(d) - pad z and privkey for use
-    sighash = Bitcoinex.Utils.pad(:binary.encode_unsigned(z), 32, :leading)
-    secret = Bitcoinex.Utils.pad(:binary.encode_unsigned(d), 32, :leading)
-    # 3.2(d) - hmac with key k
-    k = :crypto.mac(:hmac, :sha256, k, v <> <<0x00>> <> secret <> sighash)
-    # 3.2(e) - update v
-    v = :crypto.mac(:hmac, :sha256, k, v)
-    # 3.2(f) - update k
-    k = :crypto.mac(:hmac, :sha256, k, v <> <<0x01>> <> secret <> sighash)
-    # 3.2(g) - update v
-    v = :crypto.mac(:hmac, :sha256, k, v)
-    # 3.2(h) - algorithm
-    final_k = find_candidate(k, v, n)
-    %__MODULE__{d: final_k}
-  end
-
-  defp find_candidate(k, v, n) do
-    # RFC 6979 https://tools.ietf.org/html/rfc6979#section-3.2
-    v = :crypto.mac(:hmac, :sha256, k, v)
-    candidate = :binary.decode_unsigned(v)
-    # 3.2(h).3 - check candidate in [1,n-1] and r != 0
-    if candidate >= 1 and candidate < n and to_point(%__MODULE__{d: candidate}).x != 0 do
-      candidate
-    else
-      # if candidate is invalid
-      k = :crypto.mac(:hmac, :sha256, k, v <> <<0x00>>)
-      v = :crypto.mac(:hmac, :sha256, k, v)
-      find_candidate(k, v, n)
-    end
-  end
-
-  defp lower_z(z, n) do
-    if z > n, do: z - n, else: z
-  end
-
-  @doc """
-  sign returns an ECDSA signature using the privkey and z
-  where privkey is a PrivateKey object and z is an integer.
-  The nonce is derived using RFC6979.
-  """
-  @spec sign(t(), integer) :: Signature.t()
-  def sign(privkey, z) do
-    case validate(privkey) do
-      {:error, msg} ->
-        {:error, msg}
-
-      {:ok, privkey} ->
-        k = deterministic_k(privkey, z)
-        n = Params.curve().n
-        sig_r = to_point(k).x
-        inv_k = Math.inv(k.d, n)
-        sig_s = Math.modulo((z + sig_r * privkey.d) * inv_k, n)
-
-        if sig_s > n / 2 do
-          %Signature{r: sig_r, s: n - sig_s}
-        else
-          %Signature{r: sig_r, s: sig_s}
-        end
-    end
-  end
-
-  @doc """
-  sign_message returns an ECDSA signature using the privkey and "Bitcoin Signed Message: <msg>"
-  where privkey is a PrivateKey object and msg is a binary message to be hashed.
-  The message is hashed using hash256 (double SHA256) and the nonce is derived
-  using RFC6979.
-  """
-  @spec sign_message(t(), binary) :: Signature.t()
-  def sign_message(privkey, msg) do
-    z =
-      ("Bitcoin Signed Message:\n" <> msg)
-      |> Bitcoinex.Utils.double_sha256()
-      |> :binary.decode_unsigned()
-
-    sign(privkey, z)
-  end
 end
