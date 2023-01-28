@@ -40,7 +40,7 @@ defmodule Bitcoinex.Secp256k1.Schnorr do
   end
 
   @spec sign_for_tweak(PrivateKey.t(), non_neg_integer, non_neg_integer, Point.t()) ::
-          {:ok, Signature.t(), Point.t()} | {:error, String.t()}
+          {:ok, Signature.t(), Point.t(), bool} | {:error, String.t()}
   def sign_for_tweak(privkey, z, aux, tweak_point) do
     case PrivateKey.validate(privkey) do
       {:error, msg} ->
@@ -63,29 +63,19 @@ defmodule Bitcoinex.Secp256k1.Schnorr do
 
         if k0.d == 0 do
           {:error, "invalid aux randomness"}
-        else
+
+
           r_point = PrivateKey.to_point(k0)
           tweaked_r_point = Math.add(r_point, tweak_point)
-          IO.puts("!---\n")
-          IO.puts("k0: " <> to_string(k0.d))
-          IO.puts("x: " <> to_string(tweaked_r_point.x) <> "\ny: " <> to_string(tweaked_r_point.y) <> "\n")
           # we must ensure that R+T, the final signature's nonce point has even y
-          k = get_k_for_even_tweaked_nonce(k0, tweaked_r_point)
-          IO.puts("k1: " <> to_string(k.d))
+          {k, was_negated} = get_k_for_even_tweaked_nonce(k0, tweaked_r_point)
           r_point = PrivateKey.to_point(k)
           tweaked_r_point = Math.add(r_point, tweak_point)
-          IO.puts("x: " <> to_string(tweaked_r_point.x) <> "\ny: " <> to_string(tweaked_r_point.y) <> "\n")
-          IO.puts("---!\n")
-          if Point.has_even_y(tweaked_r_point) do
-            sameK = to_string(k == k0)
-            {:error, "what is going on: sameK: #{sameK}"}
-          else
-            e = calculate_e(Point.x_bytes(tweaked_r_point), Point.x_bytes(d_point), z_bytes)
-            sig_s = calculate_s(k, d, e)
 
-            {:ok, %Signature{r: r_point.x, s: sig_s}, tweak_point}
-          end
+          e = calculate_e(Point.x_bytes(tweaked_r_point), Point.x_bytes(d_point), z_bytes)
+          sig_s = calculate_s(k, d, e)
 
+          {:ok, %Signature{r: r_point.x, s: sig_s}, tweak_point, was_negated}
         end
     end
   end
@@ -106,13 +96,15 @@ defmodule Bitcoinex.Secp256k1.Schnorr do
     |> Math.modulo(@n)
   end
 
+  # returns new_k, was_negated
   defp get_k_for_even_tweaked_nonce(k, tweaked_point) do
     if Point.has_even_y(tweaked_point) do
       IO.puts("k unchanged\n")
-      k
-    else
+      {k, false}
+
+
       IO.puts("k changed\n")
-      PrivateKey.negate(k)
+      {PrivateKey.negate(k), true}
     end
   end
 
@@ -125,7 +117,8 @@ defmodule Bitcoinex.Secp256k1.Schnorr do
 
     if k0.d == 0 do
       {:error, "invalid aux randomness"}
-    else
+
+
       {:ok, Secp256k1.force_even_y(k0)}
     end
   end
@@ -165,33 +158,59 @@ defmodule Bitcoinex.Secp256k1.Schnorr do
     validate_r(r_point, r)
   end
 
-  @spec verify_untweaked_signature(Point.t(), non_neg_integer, Signature.t(), Point.t()) ::
+  @spec verify_untweaked_signature(Point.t(), non_neg_integer, Signature.t(), Point.t(), boolean) ::
           boolean | {:error, String.t()}
-  def verify_untweaked_signature(pubkey, z, %Signature{r: r, s: s}, tweak_point) do
-    if r >= @p || s >= @n, do: {:error, "invalid signature"}
+  def verify_untweaked_signature(_, _, %Signature{r: r, s: s}, _, _) when r >= @p || s >= @n, do: {:error, "invalid signature"}
+  def verify_untweaked_signature(pubkey, z, %Signature{r: r, s: s}, tweak_point, was_negated) do
+    z_bytes = Utils.int_to_big(z, 32)
     case Point.lift_x(r) do
       {:error, err} ->
         {:error, err}
 
       {:ok, given_r_point} ->
-        tweaked_point = Math.add(given_r_point, tweak_point)
-        z_bytes = Utils.int_to_big(z, 32)
-        e = calculate_e(Point.x_bytes(tweaked_point), Point.x_bytes(pubkey), z_bytes)
+        case get_even_tweaked_point(given_r_point, tweak_point, was_negated) do
+          {:error, err} ->
+            {:error, err}
 
-        r_point = calculate_r(pubkey, s, e)
+          {:ok, tweaked_point} ->
+            e = calculate_e(Point.x_bytes(tweaked_point), Point.x_bytes(pubkey), z_bytes)
+            r_point = calculate_r(pubkey, s, e)
+            validate_r(r_point, r)
+        end
+    end
+  end
 
-        validate_r(r_point, r)
+  # bool is was_negated.
+  defp get_even_tweaked_point(r_point, tweak_point, false) do
+    Math.add(given_r_point, tweak_point)
+  end
+  defp get_even_tweaked_point(r_point, tweak_point, true) do
+    # force tweaked_point to have even y
+    tweaked_point = get_even_tweaked_point(r_point, tweak_point, false)
+    case Point.lift_x(tweaked_point.x) do
+      {:ok, tweaked_point} -> {:ok, tweaked_point}
+      {:error, err} -> {:error, err}
     end
   end
 
   @spec tweak_signature(Signature.t(), non_neg_integer | PrivateKey.t()) :: Signature.t()
   def tweak_signature(sig, t = %PrivateKey{}), do: tweak_signature(sig, t.d)
-  def tweak_signature(%Signature{r: r, s: s}, tweak) do
-    {:ok, t} = PrivateKey.new(tweak)
+  def tweak_signature(%Signature{r: r, s: s}, tweak, was_negated) do
+    t = get_even_tweak(tweak, was_negated)
     t_point = PrivateKey.to_point(t)
     {:ok, r_point} = Point.lift_x(r)
     tw_s = Math.modulo(tweak+s, @n)
     %Signature{r: Math.add(r_point, t_point).x, s: tw_s}
+  end
+
+  def get_even_tweak(tweak, false) do
+    {:ok, t} = PrivateKey.new(tweak)
+    t
+  end
+  def get_even_tweak(tweak, true) do
+    tweak
+    |> get_even_tweak(false)
+    |> PrivateKey.negate()
   end
 
   @doc """
@@ -204,10 +223,12 @@ defmodule Bitcoinex.Secp256k1.Schnorr do
     if verify_signature(pubkey, z, tweaked_sig) do
       if tweaked_s < s do
         {:error, "invalid tweak"}
-      else
+
+
         {:ok, tweaked_s - s}
       end
-    else
+
+
       {:error, "failed to extract tweak due to invalid signature"}
     end
   end
@@ -241,7 +262,8 @@ defmodule Bitcoinex.Secp256k1.Schnorr do
 
         if verify_signature(pubkey, z, tweaked_sig) do
           {:ok, %Signature{r: tweaked_r_point.x, s: tweaked_s}}
-        else
+
+
           {:error, "tweak does not produce valid signature"}
         end
     end
