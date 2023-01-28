@@ -8,7 +8,7 @@ defmodule Bitcoinex.Base58 do
   alias Bitcoinex.Utils
 
   @typedoc """
-    Base58 encoding is only supported for p2sh and p2pkh address types.  
+    Base58 encoding is only supported for p2sh and p2pkh address types.
   """
   @type address_type :: :p2sh | :p2pkh
   @base58_encode_list ~c(123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz)
@@ -69,9 +69,10 @@ defmodule Bitcoinex.Base58 do
       |> Tuple.to_list()
       |> Enum.map(&:binary.list_to_bin(&1))
 
-    case checksum == binary_slice(Utils.double_sha256(decoded_body), 0..3) do
-      false -> {:error, :invalid_checksum}
-      true -> {:ok, decoded_body}
+    if checksum == checksum(decoded_body) do
+      {:ok, decoded_body}
+    else
+      {:error, :invalid_checksum}
     end
   end
 
@@ -117,16 +118,8 @@ defmodule Bitcoinex.Base58 do
 
   @spec checksum(binary) :: binary
   defp checksum(body) do
-    body
-    |> Utils.double_sha256()
-    |> binary_slice(0..3)
-  end
+    <<checksum::binary-4, _rest::binary>> = Utils.double_sha256(body)
 
-  @spec binary_slice(binary, Range.t()) :: binary
-  defp binary_slice(data, range) do
-    data
-    |> :binary.bin_to_list()
-    |> Enum.slice(range)
-    |> :binary.list_to_bin()
+    checksum
   end
 end

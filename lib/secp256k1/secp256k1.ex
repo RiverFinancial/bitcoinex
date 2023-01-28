@@ -7,14 +7,14 @@ defmodule Bitcoinex.Secp256k1 do
 
   In the future, we will NIF for critical operations. However, it is more portable to have a native elixir version.
   """
-  use Bitwise, only_operators: true
+  import Bitwise
   alias Bitcoinex.Secp256k1.{Math, Params, Point, PrivateKey}
-  alias Bitcoinex.Utils
 
   defmodule Signature do
     @moduledoc """
     Contains r,s in signature.
     """
+    alias Bitcoinex.Utils
 
     @type t :: %__MODULE__{
             r: pos_integer(),
@@ -200,17 +200,21 @@ defmodule Bitcoinex.Secp256k1 do
     it returns the private key
   """
   @spec force_even_y(PrivateKey.t()) :: PrivateKey.t() | {:error, String.t()}
-  def force_even_y(privkey) do
-    pubkey = PrivateKey.to_point(privkey)
+  def force_even_y(%PrivateKey{} = privkey) do
+    case PrivateKey.to_point(privkey) do
+      {:error, msg} ->
+        {:error, msg}
 
-    if Point.is_inf(pubkey) do
-      {:error, "pubkey is infinity. bad luck"}
-    end
-
-    if Point.has_even_y(pubkey) do
-      privkey
-    else
-      %PrivateKey{d: Params.curve().n - privkey.d}
+      pubkey ->
+        if Point.is_inf(pubkey) do
+          {:error, "pubkey is infinity. bad luck"}
+        else
+          if Point.has_even_y(pubkey) do
+            privkey
+          else
+            %PrivateKey{d: Params.curve().n - privkey.d}
+          end
+        end
     end
   end
 

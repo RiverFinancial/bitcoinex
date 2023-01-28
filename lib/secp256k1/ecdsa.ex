@@ -24,13 +24,13 @@ defmodule Bitcoinex.Secp256k1.Ecdsa do
     sighash = Bitcoinex.Utils.pad(:binary.encode_unsigned(z), 32, :leading)
     secret = Bitcoinex.Utils.pad(:binary.encode_unsigned(d), 32, :leading)
     # 3.2(d) - hmac with key k
-    k = :crypto.hmac(:sha256, k, v <> <<0x00>> <> secret <> sighash)
+    k = :crypto.mac(:hmac, :sha256, k, v <> <<0x00>> <> secret <> sighash)
     # 3.2(e) - update v
-    v = :crypto.hmac(:sha256, k, v)
+    v = :crypto.mac(:hmac, :sha256, k, v)
     # 3.2(f) - update k
-    k = :crypto.hmac(:sha256, k, v <> <<0x01>> <> secret <> sighash)
+    k = :crypto.mac(:hmac, :sha256, k, v <> <<0x01>> <> secret <> sighash)
     # 3.2(g) - update v
-    v = :crypto.hmac(:sha256, k, v)
+    v = :crypto.mac(:hmac, :sha256, k, v)
     # 3.2(h) - algorithm
     final_k = find_candidate(k, v, n)
     %PrivateKey{d: final_k}
@@ -38,17 +38,31 @@ defmodule Bitcoinex.Secp256k1.Ecdsa do
 
   defp find_candidate(k, v, n) do
     # RFC 6979 https://tools.ietf.org/html/rfc6979#section-3.2
-    v = :crypto.hmac(:sha256, k, v)
+    v = :crypto.mac(:hmac, :sha256, k, v)
     candidate = :binary.decode_unsigned(v)
     # 3.2(h).3 - check candidate in [1,n-1] and r != 0
-    if candidate >= 1 and candidate < n and PrivateKey.to_point(%PrivateKey{d: candidate}).x != 0 do
-      candidate
+    if candidate >= 1 and candidate < n do
+      case PrivateKey.to_point(%PrivateKey{d: candidate}) do
+        {:error, _msg} ->
+          find_next_candidate(k, v, n)
+
+        pk ->
+          if pk.x != 0 do
+            candidate
+          else
+            find_next_candidate(k, v, n)
+          end
+      end
     else
       # if candidate is invalid
-      k = :crypto.hmac(:sha256, k, v <> <<0x00>>)
-      v = :crypto.hmac(:sha256, k, v)
-      find_candidate(k, v, n)
+      find_next_candidate(k, v, n)
     end
+  end
+
+  defp find_next_candidate(k, v, n) do
+    k = :crypto.mac(:hmac, :sha256, k, v <> <<0x00>>)
+    v = :crypto.mac(:hmac, :sha256, k, v)
+    find_candidate(k, v, n)
   end
 
   defp lower_z(z, n) do
@@ -68,15 +82,21 @@ defmodule Bitcoinex.Secp256k1.Ecdsa do
 
       {:ok, privkey} ->
         k = deterministic_k(privkey, z)
-        n = @n
-        sig_r = PrivateKey.to_point(k).x
-        inv_k = Math.inv(k.d, n)
-        sig_s = Math.modulo((z + sig_r * privkey.d) * inv_k, n)
 
-        if sig_s > n / 2 do
-          %Signature{r: sig_r, s: n - sig_s}
-        else
-          %Signature{r: sig_r, s: sig_s}
+        case PrivateKey.to_point(k) do
+          {:error, msg} ->
+            {:error, msg}
+
+          pk ->
+            sig_r = pk.x
+            inv_k = Math.inv(k.d, @n)
+            sig_s = Math.modulo((z + sig_r * privkey.d) * inv_k, @n)
+
+            if sig_s > @n / 2 do
+              %Signature{r: sig_r, s: @n - sig_s}
+            else
+              %Signature{r: sig_r, s: sig_s}
+            end
         end
     end
   end

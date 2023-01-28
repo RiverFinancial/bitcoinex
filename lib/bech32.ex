@@ -5,7 +5,7 @@ defmodule Bitcoinex.Bech32 do
   Reference: https://github.com/bitcoin/bips/blob/master/bip-0173.mediawiki#bech32
   """
 
-  use Bitwise
+  import Bitwise
 
   @gen [0x3B6A57B2, 0x26508E6D, 0x1EA119FA, 0x3D4233DD, 0x2A1462B3]
   @data_charset_list 'qpzry9x8gf2tvdw0s3jn54khce6mua7l'
@@ -185,7 +185,7 @@ defmodule Bitcoinex.Bech32 do
 
   defp create_checksum(hrp, data, encoding_type) do
     values = bech32_hrp_expand(hrp) ++ data ++ [0, 0, 0, 0, 0, 0]
-    mod = bech32_polymod(values) ^^^ @encoding_constant_map[encoding_type]
+    mod = Bitwise.bxor(bech32_polymod(values), @encoding_constant_map[encoding_type])
     for p <- 0..5, do: mod >>> (5 * (5 - p)) &&& 31
   end
 
@@ -195,15 +195,17 @@ defmodule Bitcoinex.Bech32 do
       1,
       fn value, acc ->
         b = acc >>> 25
-        acc = ((acc &&& 0x1FFFFFF) <<< 5) ^^^ value
+        acc = Bitwise.bxor((acc &&& 0x1FFFFFF) <<< 5, value)
 
         Enum.reduce(0..length(@gen), acc, fn i, in_acc ->
-          in_acc ^^^
+          right_side =
             if (b >>> i &&& 1) != 0 do
               Enum.at(@gen, i)
             else
               0
             end
+
+          Bitwise.bxor(in_acc, right_side)
         end)
       end
     )

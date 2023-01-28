@@ -25,17 +25,34 @@ defmodule Bitcoinex.Secp256k1.Schnorr do
         z_bytes = Utils.int_to_big(z, 32)
         aux_bytes = Utils.int_to_big(aux, 32)
         d_point = PrivateKey.to_point(privkey)
-        d = Secp256k1.force_even_y(privkey)
-        d_bytes = Utils.int_to_big(d.d, 32)
-        tagged_aux_hash = tagged_hash_aux(aux_bytes)
-        t = Utils.xor_bytes(d_bytes, tagged_aux_hash)
 
-        {:ok, k} = calculate_k(t, d_point, z_bytes)
-        r_point = PrivateKey.to_point(k)
-        e = calculate_e(Point.x_bytes(r_point), Point.x_bytes(d_point), z_bytes)
-        sig_s = calculate_s(k, d, e)
+        case Secp256k1.force_even_y(privkey) do
+          {:error, msg} ->
+            {:error, msg}
 
-        {:ok, %Signature{r: r_point.x, s: sig_s}}
+          d ->
+            d_bytes = Utils.int_to_big(d.d, 32)
+            tagged_aux_hash = tagged_hash_aux(aux_bytes)
+            t = Utils.xor_bytes(d_bytes, tagged_aux_hash)
+
+            {:ok, k0} = calculate_k(t, d_point, z_bytes)
+            if k0.d == 0 do
+              {:error, "invalid aux randomness"}
+            else
+              r_point = PrivateKey.to_point(k0)
+
+              case Secp256k1.force_even_y(k0) do
+                {:error, msg} ->
+                  {:error, msg}
+
+                k ->
+                  e = calculate_e(Point.x_bytes(r_point) <> Point.x_bytes(d_point) <> z_bytes)
+                  sig_s = calculate_s(k,d,e)
+
+                  {:ok, %Signature{r: r_point.x, s: sig_s}}
+              end
+            end
+        end
     end
   end
 
@@ -63,8 +80,7 @@ defmodule Bitcoinex.Secp256k1.Schnorr do
 
         if k0.d == 0 do
           {:error, "invalid aux randomness"}
-
-
+        else
           r_point = PrivateKey.to_point(k0)
           tweaked_r_point = Math.add(r_point, tweak_point)
           # we must ensure that R+T, the final signature's nonce point has even y
@@ -101,8 +117,7 @@ defmodule Bitcoinex.Secp256k1.Schnorr do
     if Point.has_even_y(tweaked_point) do
       IO.puts("k unchanged\n")
       {k, false}
-
-
+    else
       IO.puts("k changed\n")
       {PrivateKey.negate(k), true}
     end
@@ -117,8 +132,7 @@ defmodule Bitcoinex.Secp256k1.Schnorr do
 
     if k0.d == 0 do
       {:error, "invalid aux randomness"}
-
-
+    else
       {:ok, Secp256k1.force_even_y(k0)}
     end
   end
@@ -146,9 +160,11 @@ defmodule Bitcoinex.Secp256k1.Schnorr do
   """
   @spec verify_signature(Point.t(), non_neg_integer, Signature.t()) ::
           boolean | {:error, String.t()}
-  def verify_signature(pubkey, z, %Signature{r: r, s: s}) do
-    if r >= @p || s >= @n, do: {:error, "invalid signature"}
+  def verify_signature(_pubkey, _z, %Signature{r: r, s: s})
+      when r >= @p or s >= @n,
+      do: {:error, "invalid signature"}
 
+  def verify_signature(pubkey, z, %Signature{r: r, s: s}) do
     r_bytes = Utils.int_to_big(r, 32)
     z_bytes = Utils.int_to_big(z, 32)
     e = calculate_e(r_bytes, Point.x_bytes(pubkey), z_bytes)
@@ -224,11 +240,11 @@ defmodule Bitcoinex.Secp256k1.Schnorr do
       if tweaked_s < s do
         {:error, "invalid tweak"}
 
-
+      else
         {:ok, tweaked_s - s}
       end
 
-
+    else
       {:error, "failed to extract tweak due to invalid signature"}
     end
   end
@@ -262,8 +278,7 @@ defmodule Bitcoinex.Secp256k1.Schnorr do
 
         if verify_signature(pubkey, z, tweaked_sig) do
           {:ok, %Signature{r: tweaked_r_point.x, s: tweaked_s}}
-
-
+        else
           {:error, "tweak does not produce valid signature"}
         end
     end
