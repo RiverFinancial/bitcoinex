@@ -4,8 +4,10 @@ defmodule Bitcoinex.Secp256k1.SchnorrTest do
 
   alias Bitcoinex.Utils
   alias Bitcoinex.Secp256k1
-  alias Bitcoinex.Secp256k1.{Point, PrivateKey, Schnorr, Signature}
+  alias Bitcoinex.Secp256k1.{Params, Point, PrivateKey, Schnorr, Signature}
   # alias Bitcoinex.Secp256k1.{PrivateKey}
+
+  @n Params.curve().n
 
   # BIP340 official test vectors:
   # https://github.com/bitcoin/bips/blob/master/bip-0340/test-vectors.csv
@@ -154,8 +156,24 @@ defmodule Bitcoinex.Secp256k1.SchnorrTest do
                                      }
                                    ]
 
+  def get_rand_values_for_encrypted_sig() do
+    sk_int = :rand.uniform(@n - 1)
+    {:ok, sk} = PrivateKey.new(sk_int)
+    sk = Secp256k1.force_even_y(sk)
+    pk = PrivateKey.to_point(sk)
 
+    # tweak
+    tweak_int = :rand.uniform(@n - 1)
+    {:ok, tweak} = PrivateKey.new(tweak_int)
+    tweak_point = PrivateKey.to_point(tweak)
 
+    msg = :rand.uniform(@n - 1) |> :binary.encode_unsigned()
+    z = Utils.double_sha256(msg) |> :binary.decode_unsigned()
+
+    aux = :rand.uniform(@n - 1)
+
+    {sk, pk, tweak, tweak_point, z, aux}
+  end
 
   describe "sign/3" do
     test "sign" do
@@ -276,5 +294,48 @@ defmodule Bitcoinex.Secp256k1.SchnorrTest do
     end
   end
 
+  describe "encrypted signature testing" do
+    test "encrypted_sign/4 and verify_encrypted_signature/5" do
+      for _ <- 1..100 do
+        {sk, pk, _tweak, tweak_point, z, aux} = get_rand_values_for_encrypted_sig()
 
+        # create adaptor sig
+        {:ok, ut_sig, was_negated} = Schnorr.encrypted_sign(sk, z, aux, tweak_point)
+        assert Schnorr.verify_encrypted_signature(ut_sig, pk, z, tweak_point, was_negated)
+      end
+    end
+
+    test "encrypt & decrypt signature" do
+      for _ <- 1..100 do
+        {sk, pk, tweak, tweak_point, z, aux} = get_rand_values_for_encrypted_sig()
+
+        # create adaptor sig
+        {:ok, ut_sig, was_negated} = Schnorr.encrypted_sign(sk, z, aux, tweak_point)
+        assert Schnorr.verify_encrypted_signature(ut_sig, pk, z, tweak_point, was_negated)
+
+        # decrypt to real Schnorr Signature using tweak
+        sig = Schnorr.decrypt_signature(ut_sig, tweak.d, was_negated)
+        # ensure valid Schnorr signature
+        assert Schnorr.verify_signature(pk, z, sig)
+      end
+    end
+
+    test "encrypt & recover descryption key" do
+      for _ <- 1..100 do
+        {sk, pk, tweak, tweak_point, z, aux} = get_rand_values_for_encrypted_sig()
+
+        # create adaptor sig
+        {:ok, ut_sig, was_negated} = Schnorr.encrypted_sign(sk, z, aux, tweak_point)
+        assert Schnorr.verify_encrypted_signature(ut_sig, pk, z, tweak_point, was_negated)
+
+        # decrypt to real Schnorr Signature using tweak
+        sig = Schnorr.decrypt_signature(ut_sig, tweak.d, was_negated)
+        # ensure valid Schnorr signature
+        assert Schnorr.verify_signature(pk, z, sig)
+
+        recovered_tweak = Schnorr.recover_decryption_key(ut_sig, sig, was_negated)
+        assert recovered_tweak == tweak
+      end
+    end
+  end
 end

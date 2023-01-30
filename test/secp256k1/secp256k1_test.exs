@@ -176,7 +176,7 @@ defmodule Bitcoinex.Secp256k1.Secp256k1Test do
 
         privkey = Secp256k1.force_even_y(%PrivateKey{d: secret})
         pubkey = PrivateKey.to_point(privkey)
-        assert rem(pubkey.y,2) == 0
+        assert rem(pubkey.y, 2) == 0
       end
     end
   end
