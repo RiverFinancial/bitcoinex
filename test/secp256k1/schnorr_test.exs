@@ -165,6 +165,7 @@ defmodule Bitcoinex.Secp256k1.SchnorrTest do
     # tweak
     tweak_int = :rand.uniform(@n - 1)
     {:ok, tweak} = PrivateKey.new(tweak_int)
+    tweak = Secp256k1.force_even_y(tweak)
     tweak_point = PrivateKey.to_point(tweak)
 
     msg = :rand.uniform(@n - 1) |> :binary.encode_unsigned()
@@ -334,7 +335,7 @@ defmodule Bitcoinex.Secp256k1.SchnorrTest do
         assert Schnorr.verify_signature(pk, z, sig)
 
         recovered_tweak = Schnorr.recover_decryption_key(ut_sig, sig, was_negated)
-        assert recovered_tweak == Secp256k1.force_even_y(tweak)
+        assert recovered_tweak == tweak
       end
     end
   end

@@ -169,6 +169,7 @@ defmodule Bitcoinex.Secp256k1.Schnorr do
     {:ok, k0} = calculate_k(t, d_point, z_bytes)
 
     r_point = PrivateKey.to_point(k0)
+    # ensure that tweak_point has even Y
     {:ok, tweak_point} = Point.lift_x(tweak_point_x)
     tweaked_r_point = Math.add(r_point, tweak_point)
     # ensure (R+T).y is even, if not, negate it, negate k, and set was_negated = true
@@ -195,6 +196,7 @@ defmodule Bitcoinex.Secp256k1.Schnorr do
       ) do
     z_bytes = Utils.int_to_big(z, 32)
 
+    # ensure that tweak_point has even Y
     {:ok, tweak_point} = Point.lift_x(tweak_point_x)
     {:ok, tweaked_r_point} = Point.lift_x(tweaked_r)
     # This is subtracting the tweak_point (T) from the tweaked_point (R + T) to get the original R
@@ -220,6 +222,7 @@ defmodule Bitcoinex.Secp256k1.Schnorr do
   """
   @spec decrypt_signature(Signature.t(), PrivateKey.t(), boolean) :: Signature.t()
   def decrypt_signature(%Signature{r: r, s: s}, tweak, was_negated) do
+    # force even on tweak is a backup. the passed tweak should already be properly negated
     tweak = Secp256k1.force_even_y(tweak)
     tweak = conditional_negate(tweak.d, was_negated)
     final_s = Math.modulo(tweak.d + s, @n)
