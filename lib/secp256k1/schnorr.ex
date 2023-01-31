@@ -100,6 +100,7 @@ defmodule Bitcoinex.Secp256k1.Schnorr do
 
       r_point.x != rx ->
         {:error, "x's do not match #{r_point.x} vs #{rx}"}
+
       true ->
         true
     end
@@ -110,12 +111,15 @@ defmodule Bitcoinex.Secp256k1.Schnorr do
       Point.is_inf(r_point) ->
         # {:error, "R point is infinite"}
         false
+
       !Point.has_even_y(r_point) ->
         # {:error, "R point is not even"}
         false
+
       r_point.x != rx ->
         # {:error, "x's do not match #{r_point.x} vs #{rx}"}
         false
+
       true ->
         true
     end
@@ -155,7 +159,8 @@ defmodule Bitcoinex.Secp256k1.Schnorr do
     as the encryption key. The signer need not know the decryption key / tweak itself, which can later be used
     to decrypt the signature into a valid Schnorr signature. This produces an Adaptor Signature.
   """
-  @spec encrypted_sign(PrivateKey.t(), non_neg_integer(), non_neg_integer(), Point.t()) :: {:ok, Signature.t(), boolean}
+  @spec encrypted_sign(PrivateKey.t(), non_neg_integer(), non_neg_integer(), Point.t()) ::
+          {:ok, Signature.t(), boolean}
   def encrypted_sign(sk = %PrivateKey{}, z, aux, %Point{x: tweak_point_x}) do
     z_bytes = Utils.int_to_big(z, 32)
     aux_bytes = Utils.int_to_big(aux, 32)
@@ -186,7 +191,13 @@ defmodule Bitcoinex.Secp256k1.Schnorr do
     verify_encrypted_signature verifies that an encrypted signature commits to a tweak_point / encryption key.
     This is different from a regular Schnorr signature verification, as encrypted signatures are not valid Schnorr Signatures.
   """
-  @spec verify_encrypted_signature(Signature.t(), Point.t(), non_neg_integer(), Point.t(), boolean) :: boolean
+  @spec verify_encrypted_signature(
+          Signature.t(),
+          Point.t(),
+          non_neg_integer(),
+          Point.t(),
+          boolean
+        ) :: boolean
   def verify_encrypted_signature(
         %Signature{r: tweaked_r, s: s},
         pk = %Point{},
