@@ -5,7 +5,7 @@ defmodule Bitcoinex.Script do
 
   import Bitcoinex.Opcode
 
-  alias Bitcoinex.Secp256k1.Point
+  alias Bitcoinex.Secp256k1.{Point, PrivateKey, Math}
 
   alias Bitcoinex.{Utils, Address, Segwit, Base58, Network}
 
@@ -610,6 +610,31 @@ defmodule Bitcoinex.Script do
   def create_p2tr(<<pk::binary-size(@tapkey_length)>>), do: create_witness_scriptpubkey(1, pk)
   def create_p2tr(q = %Point{}), do: create_witness_scriptpubkey(1, Point.x_bytes(q))
   def create_p2tr(_), do: {:error, "public key must be #{@tapkey_length}-bytes"}
+
+  @spec create_p2tr_key_only(<<_::256>> | Point.t()) ::
+          {:ok, Bitcoinex.Script.t()} | {:error, String.t()}
+  def create_p2tr_key_only(<<pk::binary-size(@tapkey_length)>>) do
+    # Q = P + (int(hash_TapTweak(P)) * G)
+    fake_s =
+      pk
+      |> Utils.tagged_hash_taptweak()
+      |> :binary.decode_unsigned()
+      |> PrivateKey.new()
+    pk = Point.lift_x(pk)
+
+      case {fake_s, pk} do
+        {{:error, msg}, _} -> {:error, msg}
+        {_, {:error, msg}} -> {:error, msg}
+
+        {{:ok, fake_s}, {:ok, pk}} ->
+          fake_s_point = PrivateKey.to_point(fake_s)
+          pk
+          |> Math.add(fake_s_point)
+          |> create_p2tr()
+      end
+  end
+  def create_p2tr_key_only(p = %Point{}), do: create_p2tr_key_only(Point.x_bytes(p))
+
 
   @doc """
   	create_p2sh_p2wpkh creates a p2wsh script using the passed 20-byte public key hash

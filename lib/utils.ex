@@ -13,6 +13,8 @@ defmodule Bitcoinex.Utils do
     sha256(tag_hash <> tag_hash <> str)
   end
 
+  def tagged_hash_taptweak(pkx), do: tagged_hash("TapTweak", pkx)
+
   @spec replicate(term(), integer()) :: list(term())
   def replicate(_num, 0) do
     []
