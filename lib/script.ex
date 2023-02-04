@@ -614,9 +614,10 @@ defmodule Bitcoinex.Script do
     or Point. If a point is passed, it's interpreted as p, the internal key.
     If only p is passed, the script_tree is assumed to be empty.
   """
-  @spec create_p2tr(<<_::256>> | Point.t(), Taproot.script_tree()) ::
-          {:ok, Bitcoinex.Script.t()}
-  def create_p2tr(p, script_tree \\ nil)
+  @spec create_p2tr(<<_::256>> | Point.t() | nil, Taproot.script_tree()) ::
+          {:ok, Bitcoinex.Script.t()} | {:ok, Bitcoinex.Script.t(), non_neg_integer()}  | {:error, String.t()}
+  def create_p2tr(p \\ nil, script_tree \\ nil)
+  def create_p2tr(nil, nil), do: {:error, "script_tree or internal pubkey must be non-nil"}
   def create_p2tr(p = %Point{}, script_tree), do: create_p2tr(Point.x_bytes(p), script_tree)
 
   def create_p2tr(<<px::binary-size(@tapkey_length)>>, script_tree) do
@@ -625,9 +626,16 @@ defmodule Bitcoinex.Script do
     q = Taproot.tweak_pubkey(p, hash)
     create_witness_scriptpubkey(1, Point.x_bytes(q))
   end
+  def create_p2tr(nil, script_tree) do
+    r =
+      32
+      |> :crypto.strong_rand_bytes()
+      |> :binary.decode_unsigned()
+    create_p2tr_script_only(script_tree, r)
+  end
 
   @spec create_p2tr_script_only(Taproot.script_tree(), non_neg_integer()) ::
-          {:ok, Bitcoinex.Script.t()}
+          {:ok, Bitcoinex.Script.t(), non_neg_integer()}
   def create_p2tr_script_only(script_tree, r) do
     case PrivateKey.new(r) do
       {:error, msg} ->
@@ -636,10 +644,13 @@ defmodule Bitcoinex.Script do
       {:ok, sk} ->
         {:ok, hk} = Point.lift_x(@h)
 
+      {:ok, script} =
         sk
         |> PrivateKey.to_point()
         |> Math.add(hk)
         |> create_p2tr(script_tree)
+
+      {:ok, script, r}
     end
   end
 
