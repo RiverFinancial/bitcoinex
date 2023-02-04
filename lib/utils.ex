@@ -13,8 +13,6 @@ defmodule Bitcoinex.Utils do
     sha256(tag_hash <> tag_hash <> str)
   end
 
-  def tagged_hash_taptweak(pkx), do: tagged_hash("TapTweak", pkx)
-
   @spec replicate(term(), integer()) :: list(term())
   def replicate(_num, 0) do
     []
@@ -108,5 +106,51 @@ defmodule Bitcoinex.Utils do
     Enum.zip(bl0, bl1)
     |> Enum.map(fn {b0, b1} -> Bitwise.bxor(b0, b1) end)
     |> :binary.list_to_bin()
+  end
+
+  # ascending order
+  def lexicographical_sort(bin0, bin1) when is_binary(bin0) and is_binary(bin1) do
+    if lexicographical_sort(:binary.bin_to_list(bin0), :binary.bin_to_list(bin1)) do
+      {bin0, bin1}
+    else
+      {bin1, bin0}
+    end
+  end
+
+  # equality case
+  def lexicographical_sort([], []), do: true
+
+  def lexicographical_sort([b0 | r0], [b1 | r1]) do
+    cond do
+      b0 == b1 ->
+        lexicographical_sort(r0, r1)
+
+      b1 < b0 ->
+        # initial order was incorrect, must be swapped
+        false
+
+      true ->
+        # bin0, bin1 was the correct order
+        true
+    end
+  end
+
+  @doc """
+    Returns the serialized variable length integer.
+  """
+  def serialize_compact_size_unsigned_int(compact_size) do
+    cond do
+      compact_size >= 0 and compact_size <= 0xFC ->
+        <<compact_size::little-size(8)>>
+
+      compact_size <= 0xFFFF ->
+        <<0xFD>> <> <<compact_size::little-size(16)>>
+
+      compact_size <= 0xFFFFFFFF ->
+        <<0xFE>> <> <<compact_size::little-size(32)>>
+
+      compact_size <= 0xFF ->
+        <<0xFF>> <> <<compact_size::little-size(64)>>
+    end
   end
 end

@@ -12,6 +12,7 @@ defmodule Bitcoinex.PSBT do
   alias Bitcoinex.PSBT.In
   alias Bitcoinex.PSBT.Out
   alias Bitcoinex.Transaction.Utils, as: TxUtils
+  alias Bitcoinex.Utils
 
   @type t() :: %__MODULE__{}
 
@@ -99,6 +100,7 @@ defmodule Bitcoinex.PSBT.Utils do
   Contains utility functions used throughout PSBT serialization.
   """
   alias Bitcoinex.Transaction.Utils, as: TxUtils
+  alias Bitcoinex.Utils
 
   def parse_compact_size_value(key_value) do
     {len, key_value} = TxUtils.get_counter(key_value)
@@ -123,8 +125,8 @@ defmodule Bitcoinex.PSBT.Utils do
   end
 
   def serialize_kv(key, val) do
-    key_len = TxUtils.serialize_compact_size_unsigned_int(byte_size(key))
-    val_len = TxUtils.serialize_compact_size_unsigned_int(byte_size(val))
+    key_len = Utils.serialize_compact_size_unsigned_int(byte_size(key))
+    val_len = Utils.serialize_compact_size_unsigned_int(byte_size(val))
     key_len <> key <> val_len <> val
   end
 end
@@ -258,6 +260,7 @@ defmodule Bitcoinex.PSBT.In do
   alias Bitcoinex.PSBT.In
   alias Bitcoinex.PSBT.Utils, as: PsbtUtils
   alias Bitcoinex.Transaction.Utils, as: TxUtils
+  alias Bitcoinex.Utils
 
   defstruct [
     :non_witness_utxo,
@@ -299,7 +302,7 @@ defmodule Bitcoinex.PSBT.In do
 
     val =
       <<value.value::little-size(64)>> <>
-        TxUtils.serialize_compact_size_unsigned_int(byte_size(script)) <> script
+        Utils.serialize_compact_size_unsigned_int(byte_size(script)) <> script
 
     PsbtUtils.serialize_kv(<<@psbt_in_witness_utxo::big-size(8)>>, val)
   end
