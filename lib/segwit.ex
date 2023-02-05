@@ -85,8 +85,8 @@ defmodule Bitcoinex.Segwit do
   @doc """
   Simpler Interface to check if address is valid
   """
-  @spec is_valid_segswit_address?(String.t()) :: boolean
-  def is_valid_segswit_address?(address) when is_binary(address) do
+  @spec is_valid_segwit_address?(String.t()) :: boolean
+  def is_valid_segwit_address?(address) when is_binary(address) do
     case decode_address(address) do
       {:ok, _} ->
         true

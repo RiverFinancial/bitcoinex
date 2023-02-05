@@ -1,7 +1,7 @@
 defmodule Bitcoinex.Taproot do
   alias Bitcoinex.Utils
 
-  alias Bitcoinex.Secp256k1
+  alias Bitcoinex.{Secp256k1, Script}
   alias Bitcoinex.Secp256k1.{Math, Params, Point, PrivateKey}
 
   @n Params.curve().n
@@ -50,14 +50,17 @@ defmodule Bitcoinex.Taproot do
     |> :binary.decode_unsigned()
   end
 
-  @spec tagged_hash_tapbranch(binary) :: binary
+  @spec tagged_hash_tapbranch(binary) :: <<_::256>>
   def tagged_hash_tapbranch(br), do: Utils.tagged_hash("TapBranch", br)
 
-  @spec tagged_hash_taptweak(binary) :: binary
+  @spec tagged_hash_taptweak(binary) :: <<_::256>>
   def tagged_hash_taptweak(root), do: Utils.tagged_hash("TapTweak", root)
 
-  @spec tagged_hash_tapleaf(binary) :: binary
+  @spec tagged_hash_tapleaf(binary) :: <<_::256>>
   def tagged_hash_tapleaf(leaf), do: Utils.tagged_hash("TapLeaf", leaf)
+
+  @spec tagged_hash_tapsighash(binary) :: <<_::256>>
+  def tagged_hash_tapsighash(sigmsg), do: Utils.tagged_hash("TapSighash", sigmsg)
 
   defmodule TapLeaf do
     alias Bitcoinex.Script
@@ -132,8 +135,8 @@ defmodule Bitcoinex.Taproot do
       {merkelize_script_tree(left), merkelize_script_tree(right)}
 
     # cross-mix the right hash with left branch and left hash with right branch
-    new_left = merge_branches(l_branches, r_hash)
-    new_right = merge_branches(r_branches, l_hash)
+    new_left = merkelize_branches(l_branches, r_hash)
+    new_right = merkelize_branches(r_branches, l_hash)
 
     node = new_left ++ new_right
 
@@ -143,10 +146,10 @@ defmodule Bitcoinex.Taproot do
     {node, hash}
   end
 
-  defp merge_branches([], _), do: []
+  defp merkelize_branches([], _), do: []
 
-  defp merge_branches([{leaf, c} | tail], hash) do
-    [{leaf, c <> hash} | merge_branches(tail, hash)]
+  defp merkelize_branches([{leaf, c} | tail], hash) do
+    [{leaf, c <> hash} | merkelize_branches(tail, hash)]
   end
 
   @spec build_control_block(Point.t(), script_tree(), non_neg_integer()) :: binary
@@ -157,5 +160,84 @@ defmodule Bitcoinex.Taproot do
     q_parity = if Point.has_even_y(q), do: 0, else: 1
 
     <<q_parity + tapleaf.version>> <> Point.x_bytes(p) <> merkle_path
+  end
+
+  # Should this take a Script or binary script
+  @spec merkelize_control_block(<<_::256>>, binary) :: any
+  def merkelize_control_block(<<k0::binary-size(32)>>, path) do
+    # Consume each 32-byte chunk of the rest of the control path, which are hashes of the merkle tree
+    path
+    |> :binary.bin_to_list()
+    |> Enum.chunk_every(32)
+    |> Enum.reduce(k0, fn e, k -> merkelize_path(e, k) end)
+  end
+
+  defp merkelize_path(<<e::binary-size(32)>>, <<k::binary-size(32)>>) do
+    {l, r} = Utils.lexicographical_sort(e, k)
+    {:cont, tagged_hash_tapbranch(l <> r)}
+  end
+
+  @spec validate_taproot_scriptpath_spend(Point.t(), binary, binary) ::
+          bool | {:error, String.t()}
+  def validate_taproot_scriptpath_spend(
+        q_point = %Point{},
+        script,
+        <<c::binary-size(1)>> <> <<p::binary-size(32)>> <> path
+      ) do
+    leaf_version = extract_leaf_version(c)
+
+    k0 =
+      tagged_hash_tapleaf(
+        leaf_version <> Utils.serialize_compact_size_unsigned_int(byte_size(script)) <> script
+      )
+
+    k = merkelize_control_block(k0, path)
+    # t is tweak
+    t = tagged_hash_taptweak(p <> k) |> :binary.decode_unsigned()
+
+    case {PrivateKey.to_point(t), Point.lift_x(p)} do
+      {{:error, _}, _} ->
+        {:error, "control block yielded invalid tweak"}
+
+      {_, {:error, _}} ->
+        {:error, "failed to parse point Q"}
+
+      {tk, {:ok, pk}} ->
+        validate_q(q_point, Math.add(pk, tk), c)
+        # TODO MUST EVALUATE THE ACTUAL SCRIPT
+    end
+  end
+
+  defp validate_q(given_q = %Point{}, calculated_q = %Point{}, <<c::binary-size(1)>>) do
+    q_parity = extract_q_parity(c)
+
+    cond do
+      q_parity != Point.has_even_y(given_q) ->
+        {:error, "incorrect Q parity"}
+
+      given_q.x != calculated_q.x ->
+        {:error, "Q points do not match"}
+
+      true ->
+        true
+    end
+  end
+
+  @spec extract_leaf_version(<<_::8>>) :: binary
+  defp extract_leaf_version(<<c::binary-size(1)>>) do
+    c
+    |> :binary.decode_unsigned()
+    |> Bitwise.band(0xFE)
+    |> :binary.encode_unsigned()
+  end
+
+  @spec extract_q_parity(<<_::8>>) :: bool
+  defp extract_q_parity(<<c::binary-size(1)>>) do
+    q_mod2 =
+      c
+      |> :binary.decode_unsigned()
+      |> Bitwise.band(1)
+
+    q_mod2 == 0
   end
 end

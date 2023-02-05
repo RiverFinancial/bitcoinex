@@ -9,6 +9,7 @@ defmodule Bitcoinex.Transaction do
   alias Bitcoinex.Transaction.Witness
   alias Bitcoinex.Utils
   alias Bitcoinex.Transaction.Utils, as: TxUtils
+  alias Bitcoinex.Taproot
 
   @type t() :: %__MODULE__{
           version: non_neg_integer(),
@@ -26,6 +27,27 @@ defmodule Bitcoinex.Transaction do
     :lock_time
   ]
 
+  @sighash_default 0x00
+  @sighash_all 0x01
+  @sighash_none 0x02
+  @sighash_single 0x03
+  @sighash_anyonecanpay 0x80
+  @sighash_anyonecanpay_all 0x81
+  @sighash_anyonecanpay_none 0x82
+  @sighash_anyonecanpay_single 0x83
+
+
+
+  @valid_sighash_flags [
+    @sighash_default,
+    @sighash_all,
+    @sighash_none,
+    @sighash_single,
+    @sighash_anyonecanpay_all,
+    @sighash_anyonecanpay_none,
+    @sighash_anyonecanpay_single
+  ]
+
   @doc """
     Returns the TxID of the given tranasction.
 
@@ -41,6 +63,197 @@ defmodule Bitcoinex.Transaction do
         )::little-size(256)>>,
       case: :lower
     )
+  end
+
+  def bip341_sighash( tx = %__MODULE__{},
+  hash_type,
+  ext_flag,
+  input_idx,
+  prev_amounts,
+  prev_scriptpubkeys) do
+    sigmsg = bip341_sigmsg(tx, hash_type, ext_flag, input_idx, prev_amounts, prev_scriptpubkeys)
+    Taproot.tagged_hash_tapsighash(sigmsg)
+  end
+
+  @spec bip341_sigmsg(
+          t(),
+          non_neg_integer(),
+          non_neg_integer(),
+          non_neg_integer(),
+          list(non_neg_integer()),
+          list(<<_::280>>)
+        ) :: binary
+  def bip341_sigmsg(_, _, ext_flag, _, _, _) when ext_flag < 0 or ext_flag > 127,
+    do: {:error, "ext_flag out of range 0-127"}
+
+  def bip341_sigmsg(_, hash_type, _, _, _, _) when hash_type not in @valid_sighash_flags,
+    do: {:error, "invalid sighash flag"}
+
+  def bip341_sigmsg(
+        tx = %__MODULE__{},
+        hash_type,
+        ext_flag,
+        input_idx,
+        prev_amounts,
+        prev_scriptpubkeys
+      ) do
+    tx_data = bip341_tx_data(tx, hash_type, prev_amounts, prev_scriptpubkeys)
+    bip341_sigmsg(tx, hash_type, ext_flag, input_idx, prev_amounts, prev_scriptpubkeys, tx_data)
+  end
+
+  # TODO: refactor this function to take in individual subhashes instead of single cache
+  def bip341_sigmsg(
+        tx = %__MODULE__{},
+        hash_type,
+        ext_flag,
+        input_idx,
+        prev_amounts,
+        prev_scriptpubkeys,
+        cached_tx_data
+      ) do
+    hash_byte = :binary.encode_unsigned(hash_type)
+
+    input_data =
+      bip341_input_data(
+        tx,
+        hash_type,
+        ext_flag,
+        input_idx,
+        Enum.at(prev_amounts, input_idx),
+        Enum.at(prev_scriptpubkeys, input_idx)
+      )
+
+    output_data = bip341_output_data(tx, input_idx, hash_type)
+
+    <<0>> <> hash_byte <> cached_tx_data <> input_data <> output_data
+  end
+
+  # The results of this function can be reused across input signings.
+  def bip341_tx_data(tx, hash_type, prev_amounts, prev_scriptpubkeys) do
+    version = <<tx.version::little-size(32)>>
+    lock_time = <<tx.lock_time::little-size(32)>>
+    acc = version <> lock_time
+
+    acc =
+      if !hash_type_is_anyonecanpay(hash_type) do
+        sha_prevouts = bip341_sha_prevouts(tx.inputs)
+        sha_amounts = bip341_sha_amounts(prev_amounts)
+        sha_scriptpubkeys = bip341_sha_scriptpubkeys(prev_scriptpubkeys)
+        sha_sequences = bip341_sha_sequences(tx.inputs)
+        acc <> sha_prevouts <> sha_amounts <> sha_scriptpubkeys <> sha_sequences
+      else
+        acc
+      end
+
+    if !hash_type_is_none_or_single(hash_type) do
+      sha_outputs = bip341_sha_outputs(tx.outputs)
+      acc <> sha_outputs
+    else
+      acc
+    end
+  end
+
+  defp bip341_input_data(
+         tx,
+         hash_type,
+         ext_flag,
+         input_idx,
+         prev_amount,
+         <<prev_scriptpubkey::binary-size(35)>>
+       ) do
+    annex = get_annex(tx, input_idx)
+    spend_type = ext_flag * 2 + if annex == nil, do: 0, else: 1
+
+    input_commit =
+      if hash_type_is_anyonecanpay(hash_type) do
+        input = Enum.at(tx.inputs, input_idx)
+        prev_outpoint = Transaction.In.serialize_prevout(input)
+
+        prev_outpoint <>
+          <<prev_amount::little-size(64)>> <>
+          prev_scriptpubkey <> <<input.sequence_no::little-size(32)>>
+      else
+        <<input_idx::little-size(32)>>
+      end
+
+    <<spend_type>> <> input_commit <> bip341_sha_annex(annex)
+  end
+
+  defp bip341_output_data(tx, input_idx, hash_type) do
+    if hash_type_is_single(hash_type) do
+      tx.outputs
+      |> Enum.at(input_idx)
+      |> Out.serialize_output()
+      |> :erlang.list_to_binary()
+      |> Utils.sha256()
+    else
+      <<>>
+    end
+  end
+
+  def hash_type_is_anyonecanpay(hash_type),
+    do: Bitwise.band(hash_type, @sighash_anyonecanpay) == @sighash_anyonecanpay
+
+  defp hash_type_is_none_or_single(hash_type) do
+    b = Bitwise.band(hash_type, 3)
+    b == @sighash_none || b == @sighash_single
+  end
+
+  defp hash_type_is_single(hash_type) do
+    Bitwise.band(hash_type, 3) == @sighash_single
+  end
+
+  @spec get_annex(t(), non_neg_integer()) :: nil | binary | {:error, }
+  def get_annex(%__MODULE__{witnesses: nil}, _), do: nil
+  def get_annex(%__MODULE__{witnesses: []}, _), do: nil
+  def get_annex(%__MODULE__{witnesses: witnesses, inputs: inputs}, input_idx)
+      when input_idx >= 0 and input_idx < length(inputs) do
+    witnesses
+    |> Enum.at(input_idx)
+    |> Witness.get_annex()
+  end
+
+  def get_annex(_, _), do: {:error, "input index is out of range"}
+
+  @spec bip341_sha_prevouts(list(In.t())) :: <<_::256>>
+  def bip341_sha_prevouts(inputs) do
+    inputs
+    |> Transaction.In.serialize_prevouts()
+    |> Utils.sha256()
+  end
+
+  def bip341_sha_amounts(prev_amounts) do
+    prev_amounts
+    |> Enum.reduce(<<>>, fn amount, acc -> acc <> <<amount::little-size(64)>> end)
+    |> Utils.sha256()
+  end
+
+  def bip341_sha_scriptpubkeys(prev_scriptpubkeys) do
+    prev_scriptpubkeys
+    |> Enum.reduce(<<>>, fn script, acc -> acc <> script end)
+    |> Utils.sha256()
+  end
+
+  def bip341_sha_sequences(inputs) do
+    inputs
+    |> Transaction.In.serialize_sequences()
+    |> Utils.sha256()
+  end
+
+  def bip341_sha_outputs(outputs) do
+    outputs
+    |> Transaction.Out.serialize_outputs()
+    |> Utils.sha256()
+  end
+
+  def bip341_sha_annex(nil), do: <<>>
+
+  def bip341_sha_annex(annex) do
+    annex
+    |> byte_size()
+    |> Utils.serialize_compact_size_unsigned_int()
+    |> Kernel.<>(annex)
+    |> Utils.sha256()
   end
 
   @doc """
@@ -189,7 +402,7 @@ defmodule Bitcoinex.Transaction.Witness do
   ]
 
   @doc """
-    Wtiness accepts a binary and deserializes it.
+    Witness accepts a binary and deserializes it.
   """
   @spec witness(binary) :: t()
   def witness(witness_bytes) do
@@ -270,6 +483,21 @@ defmodule Bitcoinex.Transaction.Witness do
       stack_size - 1
     )
   end
+
+  @spec get_annex(t()) :: nil | binary
+  def get_annex(%__MODULE__{txinwitness: witnesses}) when length(witnesses) < 2, do: nil
+  def get_annex(%__MODULE__{txinwitness: witnesses}) do
+    last =
+      witnesses
+      |> Enum.reverse()
+      |> Enum.at(0)
+
+    case last do
+      #TODO switch to binary or int once witnesses are no longer stored as strings
+      "50" <> _ -> last
+      _ -> nil
+    end
+  end
 end
 
 defmodule Bitcoinex.Transaction.In do
@@ -304,13 +532,7 @@ defmodule Bitcoinex.Transaction.In do
   defp serialize_input(inputs, serialized_inputs) do
     [input | inputs] = inputs
 
-    {:ok, prev_txid} = Base.decode16(input.prev_txid, case: :lower)
-
-    prev_txid =
-      prev_txid
-      |> :binary.decode_unsigned(:big)
-      |> :binary.encode_unsigned(:little)
-      |> Bitcoinex.Utils.pad(32, :trailing)
+    prev_txid = prev_txid_little_endian(input.prev_txid)
 
     {:ok, script_sig} = Base.decode16(input.script_sig, case: :lower)
 
@@ -325,6 +547,26 @@ defmodule Bitcoinex.Transaction.In do
     ]
 
     serialize_input(inputs, [serialized_inputs, serialized_input])
+  end
+
+  def serialize_prevouts(inputs) do
+    Enum.reduce(inputs, <<>>, fn input, acc -> acc <> serialize_prevout(input) end)
+  end
+
+  def serialize_prevout(input) do
+    prev_txid = prev_txid_little_endian(input.prev_txid)
+    prev_txid <> <<input.prev_vout::little-size(32)>>
+  end
+
+  def serialize_sequences(inputs) do
+    Enum.reduce(inputs, <<>>, fn input, acc -> acc <> <<input.sequence_no::little-size(32)>> end)
+  end
+
+  def prev_txid_little_endian(prev_txid_hex) do
+    prev_txid_hex
+    |> Base.decode16!(case: :lower)
+    |> Utils.flip_endianness()
+    |> Utils.pad(32, :trailing)
   end
 
   def parse_inputs(counter, inputs) do
@@ -375,20 +617,22 @@ defmodule Bitcoinex.Transaction.Out do
 
   @spec serialize_outputs(list(Out.t())) :: iolist()
   def serialize_outputs(outputs) do
-    serialize_output(outputs, [])
+    serialize_outputs(outputs, [])
   end
 
-  defp serialize_output([], serialized_outputs), do: serialized_outputs
+  def serialize_outputs([], serialized_outputs), do: serialized_outputs
 
-  defp serialize_output(outputs, serialized_outputs) do
-    [output | outputs] = outputs
+  def serialize_outputs([output | outputs], serialized_outputs) do
+    serialized_output = serialize_output(output)
+    serialize_outputs(outputs, [serialized_outputs, serialized_output])
+  end
 
+  def serialize_output(output) do
     {:ok, script_pub_key} = Base.decode16(output.script_pub_key, case: :lower)
 
     script_len = Utils.serialize_compact_size_unsigned_int(byte_size(script_pub_key))
 
-    serialized_output = [<<output.value::little-size(64)>>, script_len, script_pub_key]
-    serialize_output(outputs, [serialized_outputs, serialized_output])
+    [<<output.value::little-size(64)>>, script_len, script_pub_key]
   end
 
   def output(out_bytes) do

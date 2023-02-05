@@ -3,11 +3,12 @@ defmodule Bitcoinex.Utils do
   Contains useful utility functions used in Bitcoinex.
   """
 
-  @spec sha256(iodata()) :: binary
+  @spec sha256(iodata()) :: <<_::256>>
   def sha256(str) do
     :crypto.hash(:sha256, str)
   end
 
+  @spec tagged_hash(binary, iodata()) :: <<_::256>>
   def tagged_hash(tag, str) do
     tag_hash = sha256(tag)
     sha256(tag_hash <> tag_hash <> str)
@@ -22,7 +23,7 @@ defmodule Bitcoinex.Utils do
     for _ <- 1..num, do: x
   end
 
-  @spec double_sha256(iodata()) :: binary
+  @spec double_sha256(iodata()) :: <<_::256>>
   def double_sha256(preimage) do
     :crypto.hash(
       :sha256,
@@ -30,7 +31,7 @@ defmodule Bitcoinex.Utils do
     )
   end
 
-  @spec hash160(iodata()) :: binary
+  @spec hash160(iodata()) :: <<_::160>>
   def hash160(preimage) do
     :crypto.hash(
       :ripemd160,
@@ -61,6 +62,13 @@ defmodule Bitcoinex.Utils do
     bin <> <<0::size(pad_len)>>
   end
 
+  @spec flip_endianness(binary) :: binary
+  def flip_endianness(bin) do
+    bin
+    |> :binary.decode_unsigned(:big)
+    |> :binary.encode_unsigned(:little)
+  end
+
   @spec int_to_big(non_neg_integer(), non_neg_integer()) :: binary
   def int_to_big(i, p) do
     i
@@ -68,14 +76,17 @@ defmodule Bitcoinex.Utils do
     |> pad(p, :leading)
   end
 
+  @spec int_to_little(non_neg_integer(), integer) :: binary
   def int_to_little(i, p) do
     i
     |> :binary.encode_unsigned(:little)
     |> pad(p, :trailing)
   end
 
+  @spec little_to_int(binary) :: non_neg_integer
   def little_to_int(i), do: :binary.decode_unsigned(i, :little)
 
+  @spec encode_int(non_neg_integer()) :: binary | {:error, <<_::160>>}
   def encode_int(i) when i > 0 do
     cond do
       i < 0xFD -> :binary.encode_unsigned(i)
@@ -86,6 +97,7 @@ defmodule Bitcoinex.Utils do
     end
   end
 
+  @spec hex_to_bin(String.t()) :: binary | {:error, String.t()}
   def hex_to_bin(str) do
     str
     |> String.downcase()
@@ -109,8 +121,9 @@ defmodule Bitcoinex.Utils do
   end
 
   # ascending order
+  @spec lexicographical_sort(binary, binary) :: {binary, binary}
   def lexicographical_sort(bin0, bin1) when is_binary(bin0) and is_binary(bin1) do
-    if lexicographical_sort(:binary.bin_to_list(bin0), :binary.bin_to_list(bin1)) do
+    if lexicographical_cmp(:binary.bin_to_list(bin0), :binary.bin_to_list(bin1)) do
       {bin0, bin1}
     else
       {bin1, bin0}
@@ -118,9 +131,10 @@ defmodule Bitcoinex.Utils do
   end
 
   # equality case
-  def lexicographical_sort([], []), do: true
+  @spec lexicographical_cmp(list(byte), list(byte)) :: boolean
+  def lexicographical_cmp([], []), do: true
 
-  def lexicographical_sort([b0 | r0], [b1 | r1]) do
+  def lexicographical_cmp([b0 | r0], [b1 | r1]) do
     cond do
       b0 == b1 ->
         lexicographical_sort(r0, r1)
@@ -138,6 +152,7 @@ defmodule Bitcoinex.Utils do
   @doc """
     Returns the serialized variable length integer.
   """
+  @spec serialize_compact_size_unsigned_int(non_neg_integer()) :: binary
   def serialize_compact_size_unsigned_int(compact_size) do
     cond do
       compact_size >= 0 and compact_size <= 0xFC ->
