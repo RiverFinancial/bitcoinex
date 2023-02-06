@@ -19,21 +19,21 @@ internal_sk = new_privkey.()
 internal_pk = PrivateKey.to_point(internal_sk)
 
 # p2pk script key 1
-p2pk1_sk = new_privkey.()
-p2pk1_pk = PrivateKey.to_point(p2pk1_sk)
+p2pk0_sk = new_privkey.()
+p2pk1_pk = PrivateKey.to_point(p2pk0_sk)
 
-{:ok, p2pk1_script} = Script.create_p2pk(Point.x_bytes(p2pk1_pk))
+{:ok, p2pk0_script} = Script.create_p2pk(Point.x_bytes(p2pk1_pk))
 
 # p2pk script key 2
-p2pk2_sk = new_privkey.()
-p2pk2_pk = PrivateKey.to_point(p2pk2_sk)
+p2pk1_sk = new_privkey.()
+p2pk2_pk = PrivateKey.to_point(p2pk1_sk)
 
-{:ok, p2pk2_script} = Script.create_p2pk(Point.x_bytes(p2pk2_pk))
+{:ok, p2pk1_script} = Script.create_p2pk(Point.x_bytes(p2pk2_pk))
 
 
-leaf0 = Taproot.TapLeaf.from_script(Taproot.bip342_leaf_version(), p2pk1_script)
+leaf0 = Taproot.TapLeaf.from_script(Taproot.bip342_leaf_version(), p2pk0_script)
 
-leaf1 = Taproot.TapLeaf.from_script(Taproot.bip342_leaf_version(), p2pk2_script)
+leaf1 = Taproot.TapLeaf.from_script(Taproot.bip342_leaf_version(), p2pk1_script)
 
 # single leaf
 script_tree = {leaf0, leaf1}
@@ -79,10 +79,12 @@ ext_flag = 1
 input_idx = 0
 
 # here is where you choose which leaf to use. script_idx must match leaf #
+
+# SCRIPT 0
 script_idx = 0
 leaf = leaf0
-sk = p2pk1_sk
-script = p2pk1_script
+sk = p2pk0_sk
+script = p2pk0_script
 
 sighash = Transaction.bip341_sighash(
   tx,
@@ -125,8 +127,8 @@ Transaction.Utils.serialize(tx) |> Base.encode16(case: :lower)
 # ALTERNATE script
 script_idx = 1
 leaf = leaf1
-sk = p2pk2_sk
-script = p2pk2_script
+sk = p2pk1_sk
+script = p2pk1_script
 
 sighash = Transaction.bip341_sighash(
   tx,
@@ -164,5 +166,4 @@ tx = %Transaction{tx | witnesses: [
 
 Transaction.Utils.serialize(tx) |> Base.encode16(case: :lower)
 
-
-# a97fb556cff86dda196cb2c9fa4892de259dc8b910ec72b60975822b88b05130
+# 01000000000101685f596e4887279d81f7df8235fe92165a7b3c64a1f052f682c52181a4fa1bf10000000000000000800180f0fa02000000002251201650a2b627dd1fa42e7c9fd0a5caf5b858caed769228bb7235eb5553c5e15f68034077228590ea058878df865afdfbb950be53d55da15ee1a4a7f03ee5cc0c01003fb3d290c799b428a400d0743ebb3c9caa2b1c27f99d851cee6464ea7642f939582220e2aa46c4e1f43cb01c89195b39ea80dbf91d7054052fa0cb5805828b786cd734ac41c1a280169a8ed09e3c4b34f832c0ae44d78bb081631c00084f12a602218734a27d509753bb6e46ebbdcfb16bbd3c7c07b59b7aede009760ba50a5ae8ae1d0ee49200000000
