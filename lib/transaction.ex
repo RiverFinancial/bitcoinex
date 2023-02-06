@@ -63,6 +63,15 @@ defmodule Bitcoinex.Transaction do
     )
   end
 
+  @spec bip341_sighash(
+          t(),
+          non_neg_integer(),
+          non_neg_integer(),
+          non_neg_integer(),
+          list(non_neg_integer()),
+          list(<<_::280>>),
+          list({:tapleaf, Taproot.TapLeaf.t()})
+        ) :: <<_::256>>
   def bip341_sighash(
         tx = %__MODULE__{},
         hash_type,
@@ -178,6 +187,8 @@ defmodule Bitcoinex.Transaction do
   end
 
   # The results of this function can be reused across input signings.
+  @spec bip341_tx_data(t(), non_neg_integer(), list(non_neg_integer()), list(<<_::280>>)) ::
+          binary
   def bip341_tx_data(tx, hash_type, prev_amounts, prev_scriptpubkeys) do
     version = <<tx.version::little-size(32)>>
     lock_time = <<tx.lock_time::little-size(32)>>
@@ -240,6 +251,7 @@ defmodule Bitcoinex.Transaction do
     end
   end
 
+  @spec hash_type_is_anyonecanpay(non_neg_integer()) :: boolean
   def hash_type_is_anyonecanpay(hash_type),
     do: Bitwise.band(hash_type, @sighash_anyonecanpay) == @sighash_anyonecanpay
 
@@ -272,30 +284,35 @@ defmodule Bitcoinex.Transaction do
     |> Utils.sha256()
   end
 
+  @spec bip341_sha_amounts(list(non_neg_integer())) :: <<_::256>>
   def bip341_sha_amounts(prev_amounts) do
     prev_amounts
     |> Enum.reduce(<<>>, fn amount, acc -> acc <> <<amount::little-size(64)>> end)
     |> Utils.sha256()
   end
 
+  @spec bip341_sha_scriptpubkeys(list(<<_::280>>)) :: <<_::256>>
   def bip341_sha_scriptpubkeys(prev_scriptpubkeys) do
     prev_scriptpubkeys
     |> Enum.reduce(<<>>, fn script, acc -> acc <> script end)
     |> Utils.sha256()
   end
 
+  @spec bip341_sha_sequences(list(Transaction.In.t())) :: <<_::256>>
   def bip341_sha_sequences(inputs) do
     inputs
     |> Transaction.In.serialize_sequences()
     |> Utils.sha256()
   end
 
+  @spec bip341_sha_outputs(list(Transaction.Out.t())) :: <<_::256>>
   def bip341_sha_outputs(outputs) do
     outputs
     |> Transaction.Out.serialize_outputs()
     |> Utils.sha256()
   end
 
+  @spec bip341_sha_annex(nil | binary) :: <<_::256>>
   def bip341_sha_annex(nil), do: <<>>
 
   def bip341_sha_annex(annex) do

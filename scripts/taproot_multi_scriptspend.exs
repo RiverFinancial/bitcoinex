@@ -31,9 +31,9 @@ p2pk2_pk = PrivateKey.to_point(p2pk1_sk)
 {:ok, p2pk1_script} = Script.create_p2pk(Point.x_bytes(p2pk2_pk))
 
 
-leaf0 = Taproot.TapLeaf.from_script(Taproot.bip342_leaf_version(), p2pk0_script)
+leaf0 = Taproot.TapLeaf.new(Taproot.bip342_leaf_version(), p2pk0_script)
 
-leaf1 = Taproot.TapLeaf.from_script(Taproot.bip342_leaf_version(), p2pk1_script)
+leaf1 = Taproot.TapLeaf.new(Taproot.bip342_leaf_version(), p2pk1_script)
 
 # single leaf
 script_tree = {leaf0, leaf1}

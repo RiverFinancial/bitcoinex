@@ -1596,11 +1596,6 @@ defmodule Bitcoinex.ScriptTest do
     test "test bip341 test vectors" do
       for t <- @bip_341_script_pubkey_test_vectors do
         {:ok, p} = Point.lift_x(t.given.internal_pubkey)
-        # TODO move to Taproot_test
-        # {_node, hash} = Taproot.merkelize_script_tree(t.script_tree)
-        # assert Base.encode16(hash, case: :lower) == t.intermediary.merkle_root
-        # TODO check tweak & tweak_pubkey
-
         {:ok, script} = Script.create_p2tr(p, t.given.script_tree)
         assert Script.to_hex(script) == t.expected.script_pubkey
         assert Script.to_address(script, :mainnet) == {:ok, t.expected.bip350_address}

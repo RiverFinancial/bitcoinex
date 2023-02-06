@@ -8,6 +8,7 @@ defmodule Bitcoinex.Taproot do
 
   @bip342_leaf_version 0xC0
 
+  @spec bip342_leaf_version :: 192
   def bip342_leaf_version(), do: @bip342_leaf_version
 
   @type tapnode :: {tapnode, tapnode} | TapLeaf.t() | nil
@@ -65,12 +66,16 @@ defmodule Bitcoinex.Taproot do
   def tagged_hash_tapsighash(sigmsg), do: Utils.tagged_hash("TapSighash", sigmsg)
 
   defmodule TapLeaf do
+    @moduledoc """
+      TapLeaf represents a leaf of a Taproot Merkle tree. A leaf
+      contains a version and a Script.
+    """
     alias Bitcoinex.Script
     alias Bitcoinex.Taproot
 
     @type t :: %__MODULE__{
             version: non_neg_integer(),
-            script: binary
+            script: Script.t()
           }
     @enforce_keys [
       :version,
@@ -82,19 +87,18 @@ defmodule Bitcoinex.Taproot do
     ]
 
     @doc """
-      from_script constructs a TapLeaf from a leaf_version and Script.
+      new constructs a TapLeaf from a leaf_version and Script.
       The script is stored as binary with the compact size prepended to it.
     """
-    @spec from_script(non_neg_integer(), Script.t()) :: t()
-    def from_script(leaf_version, script = %Script{}) do
-      s = Script.serialize_with_compact_size(script)
-      %__MODULE__{version: leaf_version, script: s}
+    @spec new(non_neg_integer(), Script.t()) :: t()
+    def new(leaf_version, script = %Script{}) do
+      %__MODULE__{version: leaf_version, script: script}
     end
 
     @spec from_string(non_neg_integer(), String.t()) :: t()
     def from_string(leaf_version, script_hex) do
       {:ok, script} = Script.parse_script(script_hex)
-      from_script(leaf_version, script)
+      new(leaf_version, script)
     end
 
     @doc """
@@ -102,7 +106,8 @@ defmodule Bitcoinex.Taproot do
       store the Script in binary and alredy prepended with the compact size, so that is not added here.
     """
     @spec serialize(t()) :: binary
-    def serialize(%__MODULE__{version: v, script: s}), do: :binary.encode_unsigned(v) <> s
+    def serialize(%__MODULE__{version: v, script: s}),
+      do: :binary.encode_unsigned(v) <> Script.serialize_with_compact_size(s)
 
     @doc """
       hash returns the Hash_TapLeaf of the serialized TapLeaf
@@ -179,6 +184,11 @@ defmodule Bitcoinex.Taproot do
     {:cont, tagged_hash_tapbranch(l <> r)}
   end
 
+  @doc """
+    validate_taproot_scriptpath_spend DOES NOT validate the actual script according to BIP342.
+    It only validates the BIP341 rules around how a scriptPath spend works.
+    See: https://github.com/bitcoin/bips/blob/master/bip-0341.mediawiki#script-validation-rules
+  """
   @spec validate_taproot_scriptpath_spend(Point.t(), binary, binary) ::
           bool | {:error, String.t()}
   def validate_taproot_scriptpath_spend(
@@ -206,7 +216,7 @@ defmodule Bitcoinex.Taproot do
 
       {tk, {:ok, pk}} ->
         validate_q(q_point, Math.add(pk, tk), c)
-        # TODO MUST EVALUATE THE ACTUAL SCRIPT
+        # TODO evaluate actual script?
     end
   end
 

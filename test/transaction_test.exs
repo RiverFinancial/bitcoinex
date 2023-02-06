@@ -6,7 +6,7 @@ defmodule Bitcoinex.TransactionTest do
   alias Bitcoinex.Utils
   alias Bitcoinex.Script
   alias Bitcoinex.Taproot
-  alias Bitcoinex.Secp256k1.{PrivateKey, Schnorr, Signature, Point}
+  alias Bitcoinex.Secp256k1.{PrivateKey, Schnorr, Signature}
 
   @txn_serialization_1 %{
     tx_hex:
@@ -295,6 +295,7 @@ defmodule Bitcoinex.TransactionTest do
         prev_scriptpubkey: "512029d942d0408906b359397b6f87c5145814a9aefc8c396dd05efa8b5b73576bf2",
         value: 600_000_000,
         privkey: "cf3780a32ef3b2d70366f0124ee40195a251044e82a13146106be75ee049ac02",
+        # We don't know what aux was used, so this can't be recreated :/
         signature:
           "8608a76e87a5be42162284e8d7efc6cf71470351b36e07914fd0cfcb7beae98378fd9f664e274c9c2a2744197da522fdf1e3aba999b318e2587be098d90d4533"
       }
@@ -328,87 +329,34 @@ defmodule Bitcoinex.TransactionTest do
     }
   }
 
-  # TODO write test
   # SIGHASH_ANYONECANPAY(ALL)
-  # @bip341_sighash_anyonecanpay_all %{
-  #   sighash_flag: 0x81,
-  #   unsigned_tx:
-  #     "02000000015c82840e7a0e5283c5516e742352566408de5c40d45ab0a2f872b37f188976c200000000000000000002003b5808000000001600141192fac5233e4eefa18859396b74851de18f8f4700e1f5050000000022512032c22a6e048b9d4183f612bc1b73a58fc0d4e7f548fd71b732063645d43f420200000000",
-  #   signed_tx:
-  #     "020000000001015c82840e7a0e5283c5516e742352566408de5c40d45ab0a2f872b37f188976c200000000000000000002003b5808000000001600141192fac5233e4eefa18859396b74851de18f8f4700e1f5050000000022512032c22a6e048b9d4183f612bc1b73a58fc0d4e7f548fd71b732063645d43f4202014153fd82ff31642b92ae43cf0010e2aac2c51a781cb2ce8c72f80477a4900d2f3a4bb1eb986bc000bd5b055c62872ac8c426eb69186b3f2e46656189d1ba97a3078100000000",
-  #   inputs: [
-  #     %{
-  #       prev_scriptpubkey:
-  #         "5120fe7633a26b281a80ee75d344b07ec97e738d4038de288b6caf7d38e06a6c3ee1",
-  #       value: 250_000_000,
-  #       privkey: "3c1d300faf1d8706fd07137e1cc1d59967ccc0efa6212fc03b2ac7c382fa9133",
-  #       # has sighash anyonecanpay appended
-  #       signature:
-  #         "53fd82ff31642b92ae43cf0010e2aac2c51a781cb2ce8c72f80477a4900d2f3a4bb1eb986bc000bd5b055c62872ac8c426eb69186b3f2e46656189d1ba97a30781"
-  #     }
-  #   ],
-  #   intermediary: %{
-  #     data:
-  #       "00810200000000000000d070f96ca70c4dea1042a92e6abf04883e75bd3ad7dd4dcdf18153cda431cbd8005c82840e7a0e5283c5516e742352566408de5c40d45ab0a2f872b37f188976c20000000080b2e60e00000000225120fe7633a26b281a80ee75d344b07ec97e738d4038de288b6caf7d38e06a6c3ee100000000",
-  #     sighash: "11998278e8f4fe9ec6e360642a91536a5498a30cf711712ed3d9c25dfede876b",
-  #     sha_outputs: %{
-  #       data:
-  #         "003b5808000000001600141192fac5233e4eefa18859396b74851de18f8f4700e1f5050000000022512032c22a6e048b9d4183f612bc1b73a58fc0d4e7f548fd71b732063645d43f4202",
-  #       hash: "d070f96ca70c4dea1042a92e6abf04883e75bd3ad7dd4dcdf18153cda431cbd8"
-  #     }
-  #   }
-  # }
-
-  # TODO write test
-  # SIGHASH_SINGLE
-  # @bip341_sighash_single %{
-  #   sighash_flag: 0x03,
-  #   unsigned_tx:
-  #     "0200000002f4d49508b20d94df7d19b5ce7f7d713140cdad392c23a5ab3c996c19284d5f7b0100000000000000006912ceb41a4e62b77a3b7bec7cd777fbd5c8188821ecb2e1fd0a6e56ed3315920000000000000000000200c2eb0b000000001976a9143bfe0f94eb78a2227664c6ebcf81719467c0106f88ac00a3e11100000000220020f1dca6047a919edc31378db3c5fcd1e93eea73f9c7fd8632ab47f18c8b8165f400000000",
-  #   signed_tx:
-  #     "02000000000102f4d49508b20d94df7d19b5ce7f7d713140cdad392c23a5ab3c996c19284d5f7b010000006a483045022100cc57364c2fc8ec973a038a0d859ccfbec969165bd4a1b5cbf91cfa4cd1170b0102206460814f1093b241fc8afd04b61741d5d5ae90fd404e3e7a2500d298d4e8c73503201da42d0fb59c4aa380bb7c9775d6d2da16f01eda6b3921d227faaa999de16021000000006912ceb41a4e62b77a3b7bec7cd777fbd5c8188821ecb2e1fd0a6e56ed3315920000000000000000000200c2eb0b000000001976a9143bfe0f94eb78a2227664c6ebcf81719467c0106f88ac00a3e11100000000220020f1dca6047a919edc31378db3c5fcd1e93eea73f9c7fd8632ab47f18c8b8165f40141346f28fec0d31fafde1a1aa30634d6962d59e118a79456671347060697937424fd77d679deb1c7652ae15b5d932fe3bbace65b07d6cf6639b638e21688b485c0030000000000",
-  #   inputs: [
-  #     %{
-  #       prev_scriptpubkey:
-  #         "512088782d9105c8774f5f2f2857aec1519bf83aa53371bd44d3a0735e9841b73c28",
-  #       value: 100_000_000,
-  #       privkey: "eb54ef369f599d3da9ecfeab0529160dfc76c92f1e32ade4ba33abd8408a23b8",
-  #       signature:
-  #         "cc57364c2fc8ec973a038a0d859ccfbec969165bd4a1b5cbf91cfa4cd1170b016460814f1093b241fc8afd04b61741d5d5ae90fd404e3e7a2500d298d4e8c735",
-  #       der_signature:
-  #         "3045022100cc57364c2fc8ec973a038a0d859ccfbec969165bd4a1b5cbf91cfa4cd1170b0102206460814f1093b241fc8afd04b61741d5d5ae90fd404e3e7a2500d298d4e8c73503"
-  #     },
-  #     %{
-  #       prev_scriptpubkey: "76a914a589246bf9c64679b6d186608c2a2bee949f23e088ac",
-  #       value: 500_000_000,
-  #       privkey: "5dd3e4e9cd6073da94108e26e8c5c3ccbd510197ab12bd787b19b0e88181da9c",
-  #       pubkey: "1da42d0fb59c4aa380bb7c9775d6d2da16f01eda6b3921d227faaa999de16021"
-  #     }
-  #   ],
-  #   intermediary: %{
-  #     data:
-  #       "00030200000000000000c637b7e49b49272269dd8b409682f66cf28191d62028216cb200239ff5e2f8dd4a3c35ddd52f7ffa12848588e82193156f84a476894a095352892c8f274fc863480fb749c75701a17230706caddbfce6f422151d9722386e82bfcd3f4fdc2704af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc00000000007b1b0fd12e11d0c5792199a8cd4f4de1e823635e6947909f10d09a3e84cce760",
-  #     sighash: "278ba0eea80c753d166879a844b51f290770609ec171a21fdfb6c0232d25c2e0",
-  #     sha_prevouts: %{
-  #       data:
-  #         "f4d49508b20d94df7d19b5ce7f7d713140cdad392c23a5ab3c996c19284d5f7b010000006912ceb41a4e62b77a3b7bec7cd777fbd5c8188821ecb2e1fd0a6e56ed33159200000000",
-  #       hash: "c637b7e49b49272269dd8b409682f66cf28191d62028216cb200239ff5e2f8dd"
-  #     },
-  #     sha_amounts: %{
-  #       data: "00e1f505000000000065cd1d00000000",
-  #       hash: "4a3c35ddd52f7ffa12848588e82193156f84a476894a095352892c8f274fc863"
-  #     },
-  #     sha_scriptpubkeys: %{
-  #       data:
-  #         "22512088782d9105c8774f5f2f2857aec1519bf83aa53371bd44d3a0735e9841b73c281976a914a589246bf9c64679b6d186608c2a2bee949f23e088ac",
-  #       hash: "480fb749c75701a17230706caddbfce6f422151d9722386e82bfcd3f4fdc2704"
-  #     },
-  #     sha_sequences: %{
-  #       data: "0000000000000000",
-  #       hash: "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc"
-  #     }
-  #   }
-  # }
+  @bip341_sighash_anyonecanpay_all %{
+    sighash_flag: 0x81,
+    unsigned_tx:
+      "02000000015c82840e7a0e5283c5516e742352566408de5c40d45ab0a2f872b37f188976c200000000000000000002003b5808000000001600141192fac5233e4eefa18859396b74851de18f8f4700e1f5050000000022512032c22a6e048b9d4183f612bc1b73a58fc0d4e7f548fd71b732063645d43f420200000000",
+    signed_tx:
+      "020000000001015c82840e7a0e5283c5516e742352566408de5c40d45ab0a2f872b37f188976c200000000000000000002003b5808000000001600141192fac5233e4eefa18859396b74851de18f8f4700e1f5050000000022512032c22a6e048b9d4183f612bc1b73a58fc0d4e7f548fd71b732063645d43f4202014153fd82ff31642b92ae43cf0010e2aac2c51a781cb2ce8c72f80477a4900d2f3a4bb1eb986bc000bd5b055c62872ac8c426eb69186b3f2e46656189d1ba97a3078100000000",
+    inputs: [
+      %{
+        prev_scriptpubkey: "5120fe7633a26b281a80ee75d344b07ec97e738d4038de288b6caf7d38e06a6c3ee1",
+        value: 250_000_000,
+        privkey: "3c1d300faf1d8706fd07137e1cc1d59967ccc0efa6212fc03b2ac7c382fa9133",
+        # has sighash anyonecanpay appended
+        signature:
+          "53fd82ff31642b92ae43cf0010e2aac2c51a781cb2ce8c72f80477a4900d2f3a4bb1eb986bc000bd5b055c62872ac8c426eb69186b3f2e46656189d1ba97a30781"
+      }
+    ],
+    intermediary: %{
+      data:
+        "00810200000000000000d070f96ca70c4dea1042a92e6abf04883e75bd3ad7dd4dcdf18153cda431cbd8005c82840e7a0e5283c5516e742352566408de5c40d45ab0a2f872b37f188976c20000000080b2e60e00000000225120fe7633a26b281a80ee75d344b07ec97e738d4038de288b6caf7d38e06a6c3ee100000000",
+      sighash: "11998278e8f4fe9ec6e360642a91536a5498a30cf711712ed3d9c25dfede876b",
+      sha_outputs: %{
+        data:
+          "003b5808000000001600141192fac5233e4eefa18859396b74851de18f8f4700e1f5050000000022512032c22a6e048b9d4183f612bc1b73a58fc0d4e7f548fd71b732063645d43f4202",
+        hash: "d070f96ca70c4dea1042a92e6abf04883e75bd3ad7dd4dcdf18153cda431cbd8"
+      }
+    }
+  }
 
   describe "decode/1" do
     test "decodes legacy bitcoin transaction" do
@@ -732,40 +680,49 @@ defmodule Bitcoinex.TransactionTest do
       assert sigmsg == Utils.hex_to_bin(t.intermediary.data)
       sighash = Taproot.tagged_hash_tapsighash(sigmsg)
       assert sighash == Utils.hex_to_bin(t.intermediary.sighash)
-      # # TODO signing & check signed_tx
-      {:ok, sk} =
-        Enum.at(t.inputs, 1).privkey
-        |> Base.decode16!(case: :lower)
-        |> :binary.decode_unsigned()
-        |> PrivateKey.new()
-
-      # test vector gives us Q pk and sk, no need to tweak
-      pk = PrivateKey.to_point(sk)
-      # TODO I Don't know what Aux was used for this test vector?
-      assert <<0x51, 0x20>> <> Point.x_bytes(pk) ==
-               Utils.hex_to_bin(Enum.at(t.inputs, 1).prev_scriptpubkey)
-
-      # {:ok, sig} = Schnorr.sign(sk, :binary.decode_unsigned(sighash), 0)
-      # assert Signature.serialize_signature(sig) == Utils.hex_to_bin(Enum.at(t.inputs, 1).signature)
     end
 
-    # test "SIGHASH_ANYONECANPAY_ALL" do
-    #   t = @bip341_sighash_anyonecanpay_all
-    #   {:ok, unsigned_tx} = Transaction.decode(t.unsigned_tx)
+    test "SIGHASH_ANYONECANPAY_ALL" do
+      t = @bip341_sighash_anyonecanpay_all
+      {:ok, unsigned_tx} = Transaction.decode(t.unsigned_tx)
 
-    #   sha_outputs = Transaction.bip341_sha_outputs(unsigned_tx.outputs)
-    #   assert sha_outputs == Base.decode16!(t.intermediary.sha_outputs.hash)
+      sha_outputs = Transaction.bip341_sha_outputs(unsigned_tx.outputs)
+      assert sha_outputs == Utils.hex_to_bin(t.intermediary.sha_outputs.hash)
 
-    #   prev_amounts = Enum.map(t.inputs, fn input -> input.value end)
-    #   prev_scriptpubkeys = Enum.map(t.inputs, fn input -> Base.decode16!(input.prev_scriptpubkey) end)
+      prev_amounts = Enum.map(t.inputs, fn input -> input.value end)
 
-    #   sigmsg = Transaction.bip341_sigmsg(unsigned_tx, t.sighash_flag, 0, 0, prev_amounts, prev_scriptpubkeys)
-    #   assert sigmsg == Base.decode16!(t.intermediary.data)
+      prev_scriptpubkeys =
+        Enum.map(t.inputs, fn input ->
+          {:ok, s} = Script.parse_script(input.prev_scriptpubkey)
+          Script.serialize_with_compact_size(s)
+        end)
 
-    # end
+      sigmsg =
+        Transaction.bip341_sigmsg(
+          unsigned_tx,
+          t.sighash_flag,
+          0,
+          0,
+          prev_amounts,
+          prev_scriptpubkeys
+        )
 
-    # test "SIGHASH_SINGLE" do
+      assert sigmsg == Utils.hex_to_bin(t.intermediary.data)
 
-    # end
+      sighash = Taproot.tagged_hash_tapsighash(sigmsg)
+      assert sighash == Utils.hex_to_bin(t.intermediary.sighash)
+
+      sighash2 =
+        Transaction.bip341_sighash(
+          unsigned_tx,
+          t.sighash_flag,
+          0,
+          0,
+          prev_amounts,
+          prev_scriptpubkeys
+        )
+
+      assert sighash2 == Utils.hex_to_bin(t.intermediary.sighash)
+    end
   end
 end
