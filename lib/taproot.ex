@@ -6,7 +6,9 @@ defmodule Bitcoinex.Taproot do
 
   @n Params.curve().n
 
-  # @bip342_leaf_version 0xc0
+  @bip342_leaf_version 0xC0
+
+  def bip342_leaf_version(), do: @bip342_leaf_version
 
   @type tapnode :: {tapnode, tapnode} | TapLeaf.t() | nil
 

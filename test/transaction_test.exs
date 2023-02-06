@@ -328,6 +328,7 @@ defmodule Bitcoinex.TransactionTest do
     }
   }
 
+  # TODO write test
   # SIGHASH_ANYONECANPAY(ALL)
   # @bip341_sighash_anyonecanpay_all %{
   #   sighash_flag: 0x81,
@@ -358,6 +359,7 @@ defmodule Bitcoinex.TransactionTest do
   #   }
   # }
 
+  # TODO write test
   # SIGHASH_SINGLE
   # @bip341_sighash_single %{
   #   sighash_flag: 0x03,
@@ -651,6 +653,7 @@ defmodule Bitcoinex.TransactionTest do
             prev_amounts,
             prev_scriptpubkeys
           )
+
         assert Base.encode16(sigmsg, case: :lower) == i.intermediary.sigmsg
 
         sighash = Taproot.tagged_hash_tapsighash(sigmsg)
@@ -670,9 +673,10 @@ defmodule Bitcoinex.TransactionTest do
             |> Utils.hex_to_bin()
           end
 
-
         tweaked_sk = Taproot.tweak_privkey(sk, merkle_root)
-        assert tweaked_sk.d |> :binary.encode_unsigned() |> Base.encode16(case: :lower) == i.intermediary.tweaked_privkey
+
+        assert tweaked_sk.d |> :binary.encode_unsigned() |> Base.encode16(case: :lower) ==
+                 i.intermediary.tweaked_privkey
 
         # BIP341 declares test vectors to all use aux=0
         {:ok, sig} = Schnorr.sign(tweaked_sk, :binary.decode_unsigned(sighash), 0)
@@ -683,9 +687,10 @@ defmodule Bitcoinex.TransactionTest do
           else
             <<i.given.hash_type>>
           end
-        assert Base.encode16(Signature.serialize_signature(sig) <> hash_byte, case: :lower) == Enum.at(i.expected.witness, 0)
-      end
 
+        assert Base.encode16(Signature.serialize_signature(sig) <> hash_byte, case: :lower) ==
+                 Enum.at(i.expected.witness, 0)
+      end
     end
 
     test "SIGHASH_ALL" do
@@ -737,7 +742,9 @@ defmodule Bitcoinex.TransactionTest do
       # test vector gives us Q pk and sk, no need to tweak
       pk = PrivateKey.to_point(sk)
       # TODO I Don't know what Aux was used for this test vector?
-      assert <<0x51, 0x20>> <> Point.x_bytes(pk) == Utils.hex_to_bin(Enum.at(t.inputs, 1).prev_scriptpubkey)
+      assert <<0x51, 0x20>> <> Point.x_bytes(pk) ==
+               Utils.hex_to_bin(Enum.at(t.inputs, 1).prev_scriptpubkey)
+
       # {:ok, sig} = Schnorr.sign(sk, :binary.decode_unsigned(sighash), 0)
       # assert Signature.serialize_signature(sig) == Utils.hex_to_bin(Enum.at(t.inputs, 1).signature)
     end

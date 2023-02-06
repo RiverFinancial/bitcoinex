@@ -12,7 +12,7 @@ defmodule Bitcoinex.Script do
   @wsh_length 32
   @tapkey_length 32
   @h160_length 20
-  @pubkey_lengths [33, 65]
+  @pubkey_lengths [@tapkey_length, 33, 65]
 
   # hash of G.x, used to construct unsolvable internal taproot keys
   @h 0x0250929B74C1A04954B78B4B6035E97A5E078A5A0F28EC96D547BFEE9ACE803AC0
@@ -339,7 +339,7 @@ defmodule Bitcoinex.Script do
     true
   end
 
-  def is_p2pk?(%__MODULE__{}), do: false
+  def is_p2pk?(_), do: false
 
   @doc """
   	is_p2pkh? returns whether a given script is of the p2pkh format:
@@ -351,7 +351,7 @@ defmodule Bitcoinex.Script do
       }),
       do: true
 
-  def is_p2pkh?(%__MODULE__{}), do: false
+  def is_p2pkh?(_), do: false
 
   @doc """
   	is_p2sh? returns whether a given script is of the p2sh format:
@@ -361,7 +361,7 @@ defmodule Bitcoinex.Script do
   def is_p2sh?(%__MODULE__{items: [0xA9, @h160_length, <<_::binary-size(@h160_length)>>, 0x87]}),
     do: true
 
-  def is_p2sh?(%__MODULE__{}), do: false
+  def is_p2sh?(_), do: false
 
   @doc """
   	is_p2wpkh? returns whether a given script is of the p2wpkh format:
@@ -371,7 +371,7 @@ defmodule Bitcoinex.Script do
   def is_p2wpkh?(%__MODULE__{items: [0x00, @h160_length, <<_::binary-size(@h160_length)>>]}),
     do: true
 
-  def is_p2wpkh?(%__MODULE__{}), do: false
+  def is_p2wpkh?(_), do: false
 
   @doc """
   	is_p2wsh? returns whether a given script is of the p2wsh format:
@@ -381,7 +381,7 @@ defmodule Bitcoinex.Script do
   def is_p2wsh?(%__MODULE__{items: [0x00, @wsh_length, <<_::binary-size(@wsh_length)>>]}),
     do: true
 
-  def is_p2wsh?(%__MODULE__{}), do: false
+  def is_p2wsh?(_), do: false
 
   @doc """
   	is_p2tr? returns whether a given script is of the p2tr format:
@@ -391,7 +391,7 @@ defmodule Bitcoinex.Script do
   def is_p2tr?(%__MODULE__{items: [0x51, @tapkey_length, <<_::binary-size(@tapkey_length)>>]}),
     do: true
 
-  def is_p2tr?(%__MODULE__{}), do: false
+  def is_p2tr?(_), do: false
 
   @doc """
   	is_multisig? returns whether a given script is of the raw multisig format:
@@ -464,12 +464,13 @@ defmodule Bitcoinex.Script do
   	create_p2pk creates a p2pk script using the passed public key
   """
   @spec create_p2pk(binary) :: {:ok, t()} | {:error, String.t()}
-  def create_p2pk(pk) when is_binary(pk) and byte_size(pk) in [33, 65] do
+  def create_p2pk(pk) when is_binary(pk) and byte_size(pk) in @pubkey_lengths do
     {:ok, s} = push_op(new(), 0xAC)
     push_data(s, pk)
   end
 
-  def create_p2pk(_), do: {:error, "pubkey must be 33 or 65 bytes compressed or uncompressed SEC"}
+  def create_p2pk(_),
+    do: {:error, "pubkey must be 32, 33, 65 bytes compressed or uncompressed SEC"}
 
   @doc """
   	create_p2pkh creates a p2pkh script using the passed 20-byte public key hash

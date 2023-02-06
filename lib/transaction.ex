@@ -36,8 +36,6 @@ defmodule Bitcoinex.Transaction do
   @sighash_anyonecanpay_none 0x82
   @sighash_anyonecanpay_single 0x83
 
-
-
   @valid_sighash_flags [
     @sighash_default,
     @sighash_all,
@@ -65,13 +63,18 @@ defmodule Bitcoinex.Transaction do
     )
   end
 
-  def bip341_sighash( tx = %__MODULE__{},
-  hash_type,
-  ext_flag,
-  input_idx,
-  prev_amounts,
-  prev_scriptpubkeys) do
-    sigmsg = bip341_sigmsg(tx, hash_type, ext_flag, input_idx, prev_amounts, prev_scriptpubkeys)
+  def bip341_sighash(
+        tx = %__MODULE__{},
+        hash_type,
+        ext_flag,
+        input_idx,
+        prev_amounts,
+        prev_scriptpubkeys,
+        opts \\ []
+      ) do
+    sigmsg =
+      bip341_sigmsg(tx, hash_type, ext_flag, input_idx, prev_amounts, prev_scriptpubkeys, opts)
+
     Taproot.tagged_hash_tapsighash(sigmsg)
   end
 
@@ -81,12 +84,23 @@ defmodule Bitcoinex.Transaction do
           non_neg_integer(),
           non_neg_integer(),
           list(non_neg_integer()),
-          list(<<_::280>>)
+          list(<<_::280>>),
+          list({:tapleaf, Taproot.TapLeaf.t()})
         ) :: binary
-  def bip341_sigmsg(_, _, ext_flag, _, _, _) when ext_flag < 0 or ext_flag > 127,
+  def bip341_sigmsg(
+        tx,
+        hash_type,
+        ext_flag,
+        input_idx,
+        prev_amounts,
+        prev_scriptpubkeys,
+        opts \\ []
+      )
+
+  def bip341_sigmsg(_, _, ext_flag, _, _, _, _) when ext_flag < 0 or ext_flag > 127,
     do: {:error, "ext_flag out of range 0-127"}
 
-  def bip341_sigmsg(_, hash_type, _, _, _, _) when hash_type not in @valid_sighash_flags,
+  def bip341_sigmsg(_, hash_type, _, _, _, _, _) when hash_type not in @valid_sighash_flags,
     do: {:error, "invalid sighash flag"}
 
   def bip341_sigmsg(
@@ -95,21 +109,42 @@ defmodule Bitcoinex.Transaction do
         ext_flag,
         input_idx,
         prev_amounts,
-        prev_scriptpubkeys
+        prev_scriptpubkeys,
+        opts
       ) do
     tx_data = bip341_tx_data(tx, hash_type, prev_amounts, prev_scriptpubkeys)
-    bip341_sigmsg(tx, hash_type, ext_flag, input_idx, prev_amounts, prev_scriptpubkeys, tx_data)
+
+    bip341_sigmsg_with_cache(
+      tx,
+      hash_type,
+      ext_flag,
+      input_idx,
+      prev_amounts,
+      prev_scriptpubkeys,
+      tx_data,
+      opts
+    )
   end
 
-  # TODO: refactor this function to take in individual subhashes instead of single cache
-  def bip341_sigmsg(
+  @spec bip341_sigmsg_with_cache(
+          t(),
+          non_neg_integer(),
+          non_neg_integer(),
+          non_neg_integer(),
+          list(non_neg_integer()),
+          list(binary),
+          binary,
+          list({:tapleaf, Taproot.TapLeaf.t()})
+        ) :: binary
+  def bip341_sigmsg_with_cache(
         tx = %__MODULE__{},
         hash_type,
         ext_flag,
         input_idx,
         prev_amounts,
         prev_scriptpubkeys,
-        cached_tx_data
+        cached_tx_data,
+        opts \\ []
       ) do
     hash_byte = :binary.encode_unsigned(hash_type)
 
@@ -125,7 +160,21 @@ defmodule Bitcoinex.Transaction do
 
     output_data = bip341_output_data(tx, input_idx, hash_type)
 
-    <<0>> <> hash_byte <> cached_tx_data <> input_data <> output_data
+    tapleaf = Keyword.get(opts, :tapleaf, nil)
+
+    ext =
+      case tapleaf do
+        tl = %Taproot.TapLeaf{} ->
+          # TODO last_executed_codesep_pos not implemented
+          sigmsg_extension(ext_flag, tl)
+
+        nil ->
+          sigmsg_extension(ext_flag)
+      end
+
+    <<0>> <>
+      hash_byte <>
+      cached_tx_data <> input_data <> output_data <> ext
   end
 
   # The results of this function can be reused across input signings.
@@ -203,9 +252,10 @@ defmodule Bitcoinex.Transaction do
     Bitwise.band(hash_type, 3) == @sighash_single
   end
 
-  @spec get_annex(t(), non_neg_integer()) :: nil | binary | {:error, }
+  @spec get_annex(t(), non_neg_integer()) :: nil | binary | {:error}
   def get_annex(%__MODULE__{witnesses: nil}, _), do: nil
   def get_annex(%__MODULE__{witnesses: []}, _), do: nil
+
   def get_annex(%__MODULE__{witnesses: witnesses, inputs: inputs}, input_idx)
       when input_idx >= 0 and input_idx < length(inputs) do
     witnesses
@@ -254,6 +304,18 @@ defmodule Bitcoinex.Transaction do
     |> Utils.serialize_compact_size_unsigned_int()
     |> Kernel.<>(annex)
     |> Utils.sha256()
+  end
+
+  def sigmsg_extension(0), do: <<>>
+
+  def sigmsg_extension(1, tapleaf, last_executed_codesep_pos \\ 0xFFFFFFFF),
+    do: bip342_sigmsg_ext(tapleaf, last_executed_codesep_pos)
+
+  def bip342_sigmsg_ext(tapleaf = %Taproot.TapLeaf{}, last_executed_codesep_pos \\ 0xFFFFFFFF) do
+    key_version = 0x00
+
+    Taproot.TapLeaf.hash(tapleaf) <>
+      <<key_version>> <> <<last_executed_codesep_pos::little-size(32)>>
   end
 
   @doc """
@@ -486,6 +548,7 @@ defmodule Bitcoinex.Transaction.Witness do
 
   @spec get_annex(t()) :: nil | binary
   def get_annex(%__MODULE__{txinwitness: witnesses}) when length(witnesses) < 2, do: nil
+
   def get_annex(%__MODULE__{txinwitness: witnesses}) do
     last =
       witnesses
@@ -493,7 +556,7 @@ defmodule Bitcoinex.Transaction.Witness do
       |> Enum.at(0)
 
     case last do
-      #TODO switch to binary or int once witnesses are no longer stored as strings
+      # TODO switch to binary or int once witnesses are no longer stored as strings
       "50" <> _ -> last
       _ -> nil
     end
