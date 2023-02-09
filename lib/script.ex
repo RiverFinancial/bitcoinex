@@ -158,6 +158,17 @@ defmodule Bitcoinex.Script do
     end
   end
 
+  @spec push_num(t(), non_neg_integer()) :: t()
+  def push_num(%__MODULE__{items: stack}, num) when num >= 0 and num <= 16  do
+    op_num = num_to_op_num(num)
+    %__MODULE__{items: [op_num | stack]}
+  end
+
+  def num_to_op_num(0), do: 0
+  def num_to_op_num(num) when num > 0 and num <= 16 do
+    0x50 + num
+  end
+
   # SERIALIZE & PARSE
   defp serializer(%__MODULE__{items: []}, acc), do: acc
 
@@ -526,6 +537,26 @@ defmodule Bitcoinex.Script do
   end
 
   defp fill_multi_keys(_, _), do: raise(ArgumentError)
+
+  @spec create_taproot_multisig(non_neg_integer(), list(Point.t())) :: Script.t()
+  def create_taproot_multisig(m, pubkeys) when is_valid_multi(m, pubkeys) do
+    {:ok, s} = push_op(new(), :op_equal)
+    {:ok, s} = push_num(s, m)
+    fill_taproot_multi_keys(s, Enum.reverse(pubkeys))
+  end
+
+  # creates a script using the pubkeys *in reverse order*.
+  defp fill_taproot_multi_keys(s, []), do: s
+  defp fill_taproot_multi_keys(s, [last_key]) do
+    {:ok, s} = push_op(s, :op_checksig)
+    {:ok, s} = push_data(s, Point.x_bytes(last_key))
+    s
+  end
+  defp fill_taproot_multi_keys(s, [key | rest]) do
+    {:ok, s} = push_op(s, :op_checksigadd)
+    {:ok, s} = push_data(s, Point.x_bytes(key))
+    fill_taproot_multi_keys(s, rest)
+  end
 
   @doc """
     create_p2sh_multi returns both a P2SH-wrapped multisig script
