@@ -182,10 +182,8 @@ bob_dest_pk = PrivateKey.to_point(bob_dest_sk)
 {:ok, bob_dest_script} = Script.create_p2tr(bob_dest_pk, nil)
 {:ok, bob_dest_addr} = Script.to_address(bob_dest_script, :regtest)
 
-
 # CET hash type will be sighash default for both, for simplicity
 cet_hash_type = 0x00
-
 
 # First CET: MOON, alice wins, and gets 75% of the funding tx (excluding fees)
 moon_cet = %Transaction{
