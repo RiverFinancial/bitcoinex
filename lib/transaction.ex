@@ -94,6 +94,7 @@ defmodule Bitcoinex.Transaction do
           non_neg_integer(),
           list(non_neg_integer()),
           list(<<_::280>>),
+          # TODO do good caching
           list({:tapleaf, Taproot.TapLeaf.t()})
         ) :: binary
   def bip341_sigmsg(
@@ -186,6 +187,7 @@ defmodule Bitcoinex.Transaction do
       cached_tx_data <> input_data <> output_data <> ext
   end
 
+  # TODO good caching
   # The results of this function can be reused across input signings.
   @spec bip341_tx_data(t(), non_neg_integer(), list(non_neg_integer()), list(<<_::280>>)) ::
           binary

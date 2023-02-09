@@ -17,6 +17,45 @@ defmodule Bitcoinex.Secp256k1.Schnorr do
   @spec sign(PrivateKey.t(), non_neg_integer(), non_neg_integer()) ::
           {:ok, Signature.t()} | {:error, String.t()}
   def sign(privkey, z, aux) do
+    case calculate_signature_nonce(privkey, z, aux) do
+      {:error, msg} ->
+        {:error, msg}
+
+      {:ok, k, d} ->
+        sig = sign_with_nonce(d, k, z)
+        {:ok, sig}
+    end
+  end
+
+  @doc """
+    sign_with_nonce creates a signature (R,s) from a given
+    private key sk, nonce k, and sighash z
+    DANGER: signing different messages with the same sk and k
+    will leak sk.
+  """
+  def sign_with_nonce(sk, k, z) do
+    d = Secp256k1.force_even_y(sk)
+    k = Secp256k1.force_even_y(k)
+    case {d, k} do
+      {{:error, _}, _} ->
+        {:error, "failed to force signing key even"}
+      {_, {:error, _}} ->
+        {:error, "failed to force nonce secret even"}
+
+      {d = %PrivateKey{}, k = %PrivateKey{}} ->
+        r_point = PrivateKey.to_point(k)
+        d_point = PrivateKey.to_point(d)
+        z_bytes = Utils.int_to_big(z, 32)
+        e = calculate_e(Point.x_bytes(r_point), Point.x_bytes(d_point), z_bytes)
+        sig_s = calculate_s(k, sk, e)
+        %Signature{r: r_point.x, s: sig_s}
+    end
+  end
+
+  @spec calculate_signature_nonce(PrivateKey.t(), non_neg_integer(), non_neg_integer()) ::
+          {:error, String.t()}
+          | {:ok, PrivateKey.t(), PrivateKey.t()}
+  def calculate_signature_nonce(privkey, z, aux) do
     case PrivateKey.validate(privkey) do
       {:error, msg} ->
         {:error, msg}
@@ -40,20 +79,15 @@ defmodule Bitcoinex.Secp256k1.Schnorr do
             if k0.d == 0 do
               {:error, "invalid aux randomness"}
             else
-              r_point = PrivateKey.to_point(k0)
-
               case Secp256k1.force_even_y(k0) do
                 {:error, msg} ->
                   {:error, msg}
 
                 k ->
-                  e = calculate_e(Point.x_bytes(r_point), Point.x_bytes(d_point), z_bytes)
-                  sig_s = calculate_s(k, d, e)
-
-                  {:ok, %Signature{r: r_point.x, s: sig_s}}
-              end
+                  {:ok, k, d}
+                end
             end
-        end
+      end
     end
   end
 
@@ -243,7 +277,7 @@ defmodule Bitcoinex.Secp256k1.Schnorr do
   """
   @spec recover_decryption_key(Signature.t(), Signature.t(), boolean) ::
           PrivateKey.t() | {:error, String.t()}
-  def recover_decryption_key(%Signature{r: enc_r}, %Signature{r: r}, _, _) when enc_r != r,
+  def recover_decryption_key(%Signature{r: enc_r}, %Signature{r: r}, _) when enc_r != r,
     do: {:error, "invalid signature pair"}
 
   def recover_decryption_key(
@@ -254,4 +288,20 @@ defmodule Bitcoinex.Secp256k1.Schnorr do
     t = Math.modulo(s - enc_s, @n)
     conditional_negate(t, was_negated)
   end
+
+  # @spec calculate_signature_point(Point.t(), Point.(), <<_::256>>) :: Point.t() | {:error, String.t()}
+  def calculate_signature_point(r_point, pk, z_bytes) do
+    e =
+      calculate_e(Point.x_bytes(r_point), Point.x_bytes(pk), z_bytes)
+      |> PrivateKey.new()
+
+    case e do
+      {:error, msg} -> {:error, msg}
+
+      {:ok, e} ->
+        Math.multiply(pk, e.d)
+        |> Math.add(r_point)
+    end
+  end
+
 end

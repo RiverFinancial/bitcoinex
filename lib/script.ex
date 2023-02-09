@@ -15,7 +15,7 @@ defmodule Bitcoinex.Script do
   @pubkey_lengths [@tapkey_length, 33, 65]
 
   # hash of G.x, used to construct unsolvable internal taproot keys
-  @h 0x0250929B74C1A04954B78B4B6035E97A5E078A5A0F28EC96D547BFEE9ACE803AC0
+  @h 0x50929B74C1A04954B78B4B6035E97A5E078A5A0F28EC96D547BFEE9ACE803AC0
 
   @type script_type :: :p2pk | :p2pkh | :p2sh | :p2wpkh | :p2wsh | :p2tr | :multi | :non_standard
 
@@ -642,6 +642,12 @@ defmodule Bitcoinex.Script do
   @spec create_p2tr_script_only(Taproot.script_tree(), non_neg_integer()) ::
           {:ok, Bitcoinex.Script.t(), non_neg_integer()}
   def create_p2tr_script_only(script_tree, r) do
+    p = calculate_unsolvable_internal_key(r)
+    {:ok, script} = create_p2tr(p, script_tree)
+    {:ok, script, r}
+  end
+
+  def calculate_unsolvable_internal_key(r) do
     case PrivateKey.new(r) do
       {:error, msg} ->
         {:error, msg}
@@ -649,14 +655,16 @@ defmodule Bitcoinex.Script do
       {:ok, sk} ->
         {:ok, hk} = Point.lift_x(@h)
 
-        {:ok, script} =
-          sk
-          |> PrivateKey.to_point()
-          |> Math.add(hk)
-          |> create_p2tr(script_tree)
-
-        {:ok, script, r}
+        sk
+        |> PrivateKey.to_point()
+        |> Math.add(hk)
     end
+  end
+
+  @spec validate_unsolvable_internal_key(t(), Taproot.script_tree(), non_neg_integer) :: boolean
+  def validate_unsolvable_internal_key(p2tr_script, script_tree, r) do
+    {:ok, script, _} = create_p2tr_script_only(script_tree, r)
+    script == p2tr_script
   end
 
   @doc """

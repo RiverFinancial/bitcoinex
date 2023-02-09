@@ -26,7 +26,7 @@ script_tree = nil
 # EDIT to the unique addr
 # addr = "bcrt1pfh4qvlzrgmf6f8e6urjkf3ax83kz02xqc8zujnpeycxgc3wrqmxs8py692"
 # EDIT to the txid of your send to the addr above
-txid = "bcdf4b0088a75c139d0b4858164534585b735dcdd18321824a31936abcbf04b4"
+txid = "9d539c9fc4a17ddd920e0bd8d5d43f92382a36765f48a7725e92e184a21a50d7"
 # EDIT to the vout of the output you created for the addr
 vout = 0
 # EDIT to the amount you sent in the UTXO above
