@@ -647,6 +647,8 @@ defmodule Bitcoinex.Script do
     {:ok, script, r}
   end
 
+  @spec calculate_unsolvable_internal_key(non_neg_integer) ::
+          {:error, String.t()} | Bitcoinex.Secp256k1.Point.t()
   def calculate_unsolvable_internal_key(r) do
     case PrivateKey.new(r) do
       {:error, msg} ->

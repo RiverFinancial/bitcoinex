@@ -135,8 +135,7 @@ fund_scriptpubkeys = [Script.serialize_with_compact_size(fund_scriptpubkey)]
 oracle_sk = new_privkey.()
 oracle_pk = PrivateKey.to_point(oracle_sk)
 
-# Oracle creates 2 tweak/point pairs, one for each possible outcome
-# The bet will be a simple MOON or CRASH bet.
+# The bet will be a simple EAGLES or CHIEFS bet.
 
 # the same nonce must be used for both outcomes in order to guarantee that the Oracle
 # cannot sign both events without leaking their own private key. In a more trust-minimized
@@ -416,12 +415,6 @@ control_block_hex = control_block |> Base.encode16(case: :lower)
 
 
 # She then adds these to the Moon CET and broadcasts it
-tx = %Transaction{moon_cet | witnesses: [
-  %Transaction.Witness{
-    txinwitness: [bob_moon_sig_hex, alice_moon_sig_hex, fund_script_hex, control_block_hex]
-  }
-]
-}
 
 tx = %Transaction{moon_cet | witnesses: [
   %Transaction.Witness{
