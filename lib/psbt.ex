@@ -92,6 +92,29 @@ defmodule Bitcoinex.PSBT do
        outputs: outputs
      }}
   end
+
+  @spec from_tx(Transaction.t()) :: {:ok, Bitcoinex.PSBT.t()}
+  def from_tx(tx) do
+    inputs = In.from_tx_inputs(tx.inputs, tx.witnesses)
+    outputs = Out.from_tx_outputs(tx.outputs)
+
+    {:ok,
+     %PSBT{
+       global: Global.from_tx(tx),
+       inputs: inputs,
+       outputs: outputs
+     }}
+  end
+
+  def to_tx(psbt) do
+    tx = psbt.global.unsigned_tx
+
+    inputs = In.populate_script_sigs(tx.inputs, psbt.inputs)
+
+    witnesses = In.populate_witnesses(psbt.inputs)
+
+    %Bitcoinex.Transaction{ tx | witnesses: witnesses, inputs: inputs}
+  end
 end
 
 defmodule Bitcoinex.PSBT.Utils do
@@ -99,6 +122,7 @@ defmodule Bitcoinex.PSBT.Utils do
   Contains utility functions used throughout PSBT serialization.
   """
   alias Bitcoinex.Transaction.Utils, as: TxUtils
+  alias Bitcoinex.ExtendedKey.DerivationPath
 
   def parse_compact_size_value(key_value) do
     {len, key_value} = TxUtils.get_counter(key_value)
@@ -127,6 +151,18 @@ defmodule Bitcoinex.PSBT.Utils do
     val_len = TxUtils.serialize_compact_size_unsigned_int(byte_size(val))
     key_len <> key <> val_len <> val
   end
+
+  def parse_fingerprint_path(data) do
+    <<pfp::little-unsigned-32, paths::binary>> = data
+    {:ok, indexes} = DerivationPath.parse(paths)
+    {pfp, indexes}
+  end
+
+  def parse_leaf_hashes(value, leaf_hash_ct) do
+    <<leaf_hashes::binary-size(32*leaf_hash_ct), value>> = value
+    leaf_hashes = Enum.chunk_every(leaf_hashes, 32)
+    {leaf_hashes, value}
+  end
 end
 
 defmodule Bitcoinex.PSBT.Global do
@@ -143,12 +179,22 @@ defmodule Bitcoinex.PSBT.Global do
   defstruct [
     :unsigned_tx,
     :xpub,
+    :tx_version,
+    :fallback_locktime,
+    :input_count,
+    :output_count,
+    :tx_modifiable,
     :version,
     :proprietary
   ]
 
   @psbt_global_unsigned_tx 0x00
   @psbt_global_xpub 0x01
+  @psbt_global_tx_version 0x02
+  @psbt_global_fallback_locktime 0x03
+  @psbt_global_input_count 0x04
+  @psbt_global_output_count 0x05
+  @psbt_global_tx_modifiable 0x06
   @psbt_global_version 0xFB
   @psbt_global_proprietary 0xFC
 
@@ -156,13 +202,14 @@ defmodule Bitcoinex.PSBT.Global do
     PsbtUtils.parse_key_value(psbt, %Global{}, &parse/3)
   end
 
+  def from_tx(tx), do: %Global{unsigned_tx: tx}
+
   # unsigned transaction
   defp parse(<<@psbt_global_unsigned_tx::big-size(8)>>, psbt, global) do
     {txn_len, psbt} = TxUtils.get_counter(psbt)
 
     <<txn_bytes::binary-size(txn_len), psbt::binary>> = psbt
-    # TODO, different decode function for txn, directly in bytes
-    case Transaction.decode(Base.encode16(txn_bytes, case: :lower)) do
+    case Transaction.decode(txn_bytes) do
       {:ok, txn} ->
         {%Global{global | unsigned_tx: txn}, psbt}
 
@@ -212,6 +259,38 @@ defmodule Bitcoinex.PSBT.Global do
     {global, psbt}
   end
 
+  defp parse(<<@psbt_global_tx_version::big-size(8)>>, psbt, global) do
+    {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
+    global = %Global{global | tx_version: value}
+    {global, psbt}
+  end
+
+  defp parse(<<@psbt_global_fallback_locktime::big-size(8)>>, psbt, global) do
+    {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
+    global = %Global{global | fallback_locktime: value}
+    {global, psbt}
+  end
+
+  defp parse(<<@psbt_global_input_count::big-size(8)>>, psbt, global) do
+    {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
+    {input_count, _} = TxUtils.get_counter(value)
+    global = %Global{global | input_count: input_count}
+    {global, psbt}
+  end
+
+  defp parse(<<@psbt_global_output_count::big-size(8)>>, psbt, global) do
+    {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
+    {output_count, _} = TxUtils.get_counter(value)
+    global = %Global{global | output_count: output_count}
+    {global, psbt}
+  end
+
+  defp parse(<<@psbt_global_tx_modifiable::big-size(8)>>, psbt, global) do
+    {<<value>>, psbt} = PsbtUtils.parse_compact_size_value(psbt)
+    global = %Global{global | tx_modifiable: value}
+    {global, psbt}
+  end
+
   defp parse(<<@psbt_global_version::big-size(8)>>, psbt, global) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
     global = %Global{global | version: value}
@@ -238,6 +317,27 @@ defmodule Bitcoinex.PSBT.Global do
 
     PsbtUtils.serialize_kv(key <> key_data, val)
   end
+
+  defp serialize_kv(:tx_version, value) when value != nil do
+    PsbtUtils.serialize_kv(<<@psbt_global_tx_version::big-size(8)>>, <<value::little-size(32)>>)
+  end
+
+  defp serialize_kv(:fallback_locktime, value) when value != nil do
+    PsbtUtils.serialize_kv(<<@psbt_global_fallback_locktime::big-size(8)>>, <<value::little-size(32)>>)
+  end
+
+  defp serialize_kv(:input_count, value) when value != nil do
+    PsbtUtils.serialize_kv(<<@psbt_global_input_count::big-size(8)>>, TxUtils.serialize_compact_size_unsigned_int(value))
+  end
+
+  defp serialize_kv(:output_count, value) when value != nil do
+    PsbtUtils.serialize_kv(<<@psbt_global_output_count::big-size(8)>>, TxUtils.serialize_compact_size_unsigned_int(value))
+  end
+
+  defp serialize_kv(:tx_modifiable, value) when value != nil do
+    PsbtUtils.serialize_kv(<<@psbt_global_fallback_locktime::big-size(8)>>, <<value>>)
+  end
+
 
   def serialize_global(global) do
     # TODO: serialize all other fields in global.
@@ -266,6 +366,7 @@ defmodule Bitcoinex.PSBT.In do
   alias Bitcoinex.PSBT.Utils, as: PsbtUtils
   alias Bitcoinex.Transaction.Utils, as: TxUtils
   alias Bitcoinex.ExtendedKey.DerivationPath, as: DerivationPath
+  alias Bitcoinex.Script
 
   defstruct [
     :non_witness_utxo,
@@ -278,6 +379,21 @@ defmodule Bitcoinex.PSBT.In do
     :final_scriptsig,
     :final_scriptwitness,
     :por_commitment,
+    :ripemd160,
+    :sha256,
+    :hash160,
+    :hash256,
+    :previous_txid,
+    :output_index,
+    :sequence,
+    :required_time_locktime,
+    :required_height_locktime,
+    :tap_key_sig,
+    :tap_script_sig,
+    :tap_leaf_script,
+    :tap_bip32_derivation,
+    :tap_internal_key,
+    :tap_merkle_root,
     :proprietary
   ]
 
@@ -291,11 +407,55 @@ defmodule Bitcoinex.PSBT.In do
   @psbt_in_final_scriptsig 0x07
   @psbt_in_final_scriptwitness 0x08
   @psbt_in_por_commitment 0x09
+  @psbt_in_ripemd160 0x0a
+  @psbt_in_sha256 0x0b
+  @psbt_in_hash160 0x0c
+  @psbt_in_hash256 0x0d
+  @psbt_in_previous_txid 0x0e
+  @psbt_in_output_index 0x0f
+  @psbt_in_sequence 0x10
+  @psbt_in_required_time_locktime 0x11
+  @psbt_in_required_height_locktime 0x12
+  @psbt_in_tap_key_sig 0x13
+  @psbt_in_tap_script_sig 0x14
+  @psbt_in_tap_leaf_script 0x15
+  @psbt_in_tap_bip32_derivation 0x16
+  @psbt_in_tap_internal_key 0x17
+  @psbt_in_tap_merkle_root 0x18
   @psbt_in_proprietary 0xFC
 
   def parse_inputs(psbt, num_inputs) do
     psbt
     |> parse_input([], num_inputs)
+  end
+
+  @spec from_tx_inputs(list(Transaction.In.t()), list(Transaction.Witness.t())) :: list(%In{})
+  def from_tx_inputs(tx_inputs, tx_witnesses) do
+    inputs_witnesses = Enum.zip(tx_inputs, tx_witnesses)
+    Enum.reduce(inputs_witnesses, [], fn {input, witness}, acc ->
+      [%In{
+          final_scriptsig: input.script_sig,
+          final_scriptwitness: witness
+        } | acc]
+    end)
+    |> Enum.reverse()
+  end
+
+  def populate_script_sigs(tx_inputs, psbt_inputs) do
+    inputs = Enum.zip(tx_inputs, psbt_inputs)
+    Enum.reduce(inputs, [],
+      fn {tx_in, psbt_in}, acc ->
+        [%Transaction.In{ tx_in | script_sig: psbt_in.final_scriptsig} | acc]
+    end)
+    |> Enum.reverse()
+  end
+
+  def populate_witnesses(psbt_inputs) do
+    Enum.reduce(psbt_inputs, [],
+        fn psbt_in, acc ->
+          [psbt_in.final_scriptwitness | acc]
+      end)
+      |> Enum.reverse()
   end
 
   defp serialize_kv(:non_witness_utxo, value) when value != nil do
@@ -528,6 +688,152 @@ defmodule Bitcoinex.PSBT.In do
     {input, psbt}
   end
 
+  defp parse(<<@psbt_in_ripemd160::big-size(8), hash::binary-size(20)>>, psbt, input) do
+    # TODO:validation check hash
+    {preimage, psbt} = PsbtUtils.parse_compact_size_value(psbt)
+    data = %{
+      hash: hash,
+      preimage: preimage
+    }
+    input = %In{input | ripemd160: data}
+    {input, psbt}
+  end
+
+  defp parse(<<@psbt_in_sha256::big-size(8), hash::binary-size(32)>>, psbt, input) do
+    # TODO:validation check hash
+    {preimage, psbt} = PsbtUtils.parse_compact_size_value(psbt)
+    data = %{
+      hash: hash,
+      preimage: preimage
+    }
+    input = %In{input | sha256: data}
+    {input, psbt}
+  end
+
+  defp parse(<<@psbt_in_hash160::big-size(8), hash::binary-size(20)>>, psbt, input) do
+    # TODO:validation check hash
+    {preimage, psbt} = PsbtUtils.parse_compact_size_value(psbt)
+    data = %{
+      hash: hash,
+      preimage: preimage
+    }
+    input = %In{input | hash160: data}
+    {input, psbt}
+  end
+
+  defp parse(<<@psbt_in_hash256::big-size(8), hash::binary-size(32)>>, psbt, input) do
+    # TODO:validation check hash
+    {preimage, psbt} = PsbtUtils.parse_compact_size_value(psbt)
+    data = %{
+      hash: hash,
+      preimage: preimage
+    }
+    input = %In{input | hash256: data}
+    {input, psbt}
+  end
+
+  defp parse(<<@psbt_in_previous_txid::big-size(8)>>, psbt, input) do
+    {<<value::binary-size(32)>>, psbt} = PsbtUtils.parse_compact_size_value(psbt)
+    input = %In{input | previous_txid: value}
+    {input, psbt}
+  end
+
+  defp parse(<<@psbt_in_output_index::big-size(8)>>, psbt, input) do
+    {<<value::little-size(32)>>, psbt} = PsbtUtils.parse_compact_size_value(psbt)
+    input = %In{input | output_index: value}
+    {input, psbt}
+  end
+
+  defp parse(<<@psbt_in_sequence::big-size(8)>>, psbt, input) do
+    # TODO:validation must be > 500_000_000
+    {<<value::little-size(32)>>, psbt} = PsbtUtils.parse_compact_size_value(psbt)
+    input = %In{input | sequence: value}
+    {input, psbt}
+  end
+
+  defp parse(<<@psbt_in_required_time_locktime::big-size(8)>>, psbt, input) do
+    # TODO:validation must be < 500_000_000
+    {<<value::little-size(32)>>, psbt} = PsbtUtils.parse_compact_size_value(psbt)
+    input = %In{input | required_time_locktime: value}
+    {input, psbt}
+  end
+
+  defp parse(<<@psbt_in_required_height_locktime::big-size(8)>>, psbt, input) do
+    {<<value::little-size(32)>>, psbt} = PsbtUtils.parse_compact_size_value(psbt)
+    input = %In{input | required_height_locktime: value}
+    {input, psbt}
+  end
+
+  defp parse(<<@psbt_in_tap_key_sig::big-size(8)>>, psbt, input) do
+    # TODO:validation validate script len (64|65)
+    {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
+    input = %In{input | tap_key_sig: value}
+    {input, psbt}
+  end
+
+  defp parse(<<@psbt_in_tap_script_sig::big-size(8), pubkey::binary-size(32), leaf_hash::binary-size(32)>>, psbt, input) do
+    # TODO:validation validate script len (64|65)
+    {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
+    data = %{
+      pubkey: pubkey,
+      leaf_hash: leaf_hash,
+      signature: value
+    }
+    input = %In{input | tap_script_sig: data}
+    {input, psbt}
+  end
+
+  defp parse(<<@psbt_in_tap_leaf_script::big-size(8), control_block>>, psbt, input) do
+    {tapleaf, psbt} = PsbtUtils.parse_compact_size_value(psbt)
+    {script_bytes, <<leaf_version::little-size(8)>>} = PsbtUtils.parse_compact_size_value(tapleaf)
+    {:ok, script} = Script.parse_script(script_bytes)
+    data = %{
+      # TODO:taproot make this a TapLeaf object
+      leaf_version: leaf_version,
+      script: script,
+      control_block: control_block,
+    }
+    input = %In{input | tap_leaf_script: data}
+    {input, psbt}
+  end
+
+  defp parse(<<@psbt_in_tap_bip32_derivation::big-size(8), pubkey::binary-size(32)>>, psbt, input) do
+    {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
+
+    {leaf_hash_ct, value} = TxUtils.get_counter(value)
+    leaf_hashes = PsbtUtils.parse_leaf_hashes(value, leaf_hash_ct)
+    {pfp, path} = PsbtUtils.parse_fingerprint_path(value)
+
+    derivation = %{
+      pubkey: pubkey,
+      leaf_hashes: leaf_hashes,
+      pfp: pfp,
+      derivation: path
+    }
+
+    tap_bip32_derivation =
+      case input.tap_bip32_derivation do
+        nil ->
+          [derivation]
+
+        _ ->
+          [derivation | input.tap_bip32_derivation]
+      end
+
+    input = %In{input | tap_bip32_derivation: tap_bip32_derivation}
+    {input, psbt}
+  end
+  defp parse(<<@psbt_in_tap_internal_key::big-size(8)>>, psbt, input) do
+    {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
+    input = %In{input | tap_internal_key: value}
+    {input, psbt}
+  end
+  defp parse(<<@psbt_in_tap_merkle_root::big-size(8)>>, psbt, input) do
+    {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
+    input = %In{input | tap_merkle_root: value}
+    {input, psbt}
+  end
+
   defp parse(<<@psbt_in_proprietary::big-size(8)>>, psbt, input) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
     input = %In{input | proprietary: value}
@@ -548,18 +854,32 @@ defmodule Bitcoinex.PSBT.Out do
   """
   alias Bitcoinex.PSBT.Out
   alias Bitcoinex.PSBT.Utils, as: PsbtUtils
+  alias Bitcoinex.Transaction.Utils, as: TxUtils
   alias Bitcoinex.ExtendedKey.DerivationPath, as: DerivationPath
+  alias Bitcoinex.Script
 
   defstruct [
     :redeem_script,
     :witness_script,
     :bip32_derivation,
+    :amount,
+    :script,
+    :tap_internal_key,
+    :tap_tree,
+    :tap_bip32_derivation,
+    :proprietary,
     :proprietary
   ]
 
   @psbt_out_redeem_script 0x00
   @psbt_out_scriptwitness 0x01
   @psbt_out_bip32_derivation 0x02
+  @psbt_out_amount 0x03
+  @psbt_out_script 0x04
+  @psbt_out_tap_internal_key 0x05
+  @psbt_out_tap_tree 0x06
+  @psbt_out_tap_bip32_derivation 0x07
+  @psbt_out_proprietary 0xFC
 
   def serialize_outputs(outputs) when is_list(outputs) and length(outputs) > 0 do
     serialize_output(outputs, <<>>)
@@ -567,6 +887,11 @@ defmodule Bitcoinex.PSBT.Out do
 
   def serialize_outputs(_outputs) do
     <<>>
+  end
+
+  def from_tx_outputs(tx_outputs) do
+    Enum.reduce(tx_outputs, [], fn _, acc -> [%Out{} | acc] end)
+    |> Enum.reverse()
   end
 
   defp serialize_kv(:redeem_script, value) when value != nil do
@@ -707,4 +1032,78 @@ defmodule Bitcoinex.PSBT.Out do
 
     {output, psbt}
   end
+
+  defp parse(<<@psbt_out_amount::big-size(8)>>, psbt, output) do
+    {<<amount::little-size(64)>>, psbt} = PsbtUtils.parse_compact_size_value(psbt)
+    output = %Out{output | amount: amount}
+    {output, psbt}
+  end
+
+  defp parse(<<@psbt_out_script::big-size(8)>>, psbt, output) do
+    {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
+    {:ok, script} = Script.parse_script(value)
+    output = %Out{output | script: script}
+    {output, psbt}
+  end
+
+  defp parse(<<@psbt_out_tap_internal_key::big-size(8)>>, psbt, output) do
+    {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
+    output = %Out{output | tap_internal_key: value}
+    {output, psbt}
+  end
+
+  defp parse(<<@psbt_out_tap_tree::big-size(8)>>, psbt, output) do
+    {tree, psbt} = PsbtUtils.parse_compact_size_value(psbt)
+    leaves = parse_tap_tree(tree, [])
+    output = %Out{output | tap_tree: leaves}
+    {output, psbt}
+  end
+
+  defp parse(<<@psbt_out_tap_bip32_derivation::big-size(8), pubkey::binary-size(32)>>, psbt, output) do
+    {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
+
+    {leaf_hash_ct, value} = TxUtils.get_counter(value)
+    leaf_hashes = PsbtUtils.parse_leaf_hashes(value, leaf_hash_ct)
+    {pfp, path} = PsbtUtils.parse_fingerprint_path(value)
+
+    derivation = %{
+      pubkey: pubkey,
+      leaf_hashes: leaf_hashes,
+      pfp: pfp,
+      derivation: path
+    }
+
+    tap_bip32_derivation =
+      case output.tap_bip32_derivation do
+        nil ->
+          [derivation]
+
+        _ ->
+          [derivation | output.tap_bip32_derivation]
+      end
+
+    output = %Out{output | tap_bip32_derivation: tap_bip32_derivation}
+    {output, psbt}
+  end
+
+  defp parse(<<@psbt_out_proprietary::big-size(8)>>, psbt, output) do
+    {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
+    output = %Out{output | proprietary: value}
+    {output, psbt}
+  end
+
+  defp parse_tap_tree(<<>>, scripts), do: Enum.reverse(scripts)
+  defp parse_tap_tree(tree, scripts) do
+    <<depth::size(8), leaf_version::size(8), rest>> = tree
+    {script, tree} = PsbtUtils.parse_compact_size_value(rest)
+    {:ok, script} = Script.parse_script(script)
+    data = %{
+      # TODO:taproot make this TapLeaf
+      depth: depth,
+      leaf_version: leaf_version,
+      script: script
+    }
+    parse_tap_tree(tree, [data | scripts])
+  end
+
 end
