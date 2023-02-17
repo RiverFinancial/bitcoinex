@@ -165,7 +165,7 @@ defmodule Bitcoinex.PSBT.Utils do
   end
 
   def parse_leaf_hashes(value, leaf_hash_ct) do
-    <<leaf_hashes::binary-size(32*leaf_hash_ct), value>> = value
+    <<leaf_hashes::binary-size(32*leaf_hash_ct), value::binary>> = value
     leaf_hashes = Enum.chunk_every(leaf_hashes, 32)
     {leaf_hashes, value}
   end
@@ -937,7 +937,6 @@ defmodule Bitcoinex.PSBT.Out do
   alias Bitcoinex.PSBT.Out
   alias Bitcoinex.PSBT.Utils, as: PsbtUtils
   alias Bitcoinex.Transaction.Utils, as: TxUtils
-  alias Bitcoinex.ExtendedKey.DerivationPath, as: DerivationPath
   alias Bitcoinex.Script
 
   defstruct [
