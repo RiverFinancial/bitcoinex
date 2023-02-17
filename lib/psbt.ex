@@ -153,15 +153,26 @@ defmodule Bitcoinex.PSBT.Utils do
   end
 
   def parse_fingerprint_path(data) do
-    <<pfp::little-unsigned-32, paths::binary>> = data
+    <<pfp::binary-size(4), paths>> = data
     {:ok, indexes} = DerivationPath.parse(paths)
     {pfp, indexes}
+  end
+
+  # reuse this elsewhere
+  def serialize_fingerprint_path(pfp, path) do
+    {:ok, path} = DerivationPath.serialize(path)
+    <<pfp, path>>
   end
 
   def parse_leaf_hashes(value, leaf_hash_ct) do
     <<leaf_hashes::binary-size(32*leaf_hash_ct), value>> = value
     leaf_hashes = Enum.chunk_every(leaf_hashes, 32)
     {leaf_hashes, value}
+  end
+
+  def serialize_leaf_hashes(leaf_hashes) do
+    leaf_hashes = Enum.reduce(leaf_hashes, <<>>, fn leaf_hash, acc -> acc <> leaf_hash end)
+    TxUtils.serialize_compact_size_unsigned_int(length(leaf_hashes)) <> leaf_hashes
   end
 end
 
@@ -221,9 +232,7 @@ defmodule Bitcoinex.PSBT.Global do
   defp parse(<<@psbt_global_xpub::big-size(8), xpub::binary-size(78)>>, psbt, global) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
 
-    <<master::little-unsigned-32, paths::binary>> = value
-
-    {:ok, indexes} = DerivationPath.parse(paths)
+    {master, indexes} = PsbtUtils.parse_fingerprint_path(value)
     {:ok, xpub} = ExtendedKey.parse(xpub)
 
     if :binary.decode_unsigned(xpub.depth) != DerivationPath.depth(indexes),
@@ -238,7 +247,7 @@ defmodule Bitcoinex.PSBT.Global do
           [
             %{
               xpub: xpub,
-              master_pfp: master,
+              pfp: master,
               derivation: indexes
             }
           ]
@@ -248,7 +257,7 @@ defmodule Bitcoinex.PSBT.Global do
             [
               %{
                 xpub: xpub,
-                master_pfp: master,
+                pfp: master,
                 derivation: indexes
               }
             ]
@@ -260,13 +269,13 @@ defmodule Bitcoinex.PSBT.Global do
   end
 
   defp parse(<<@psbt_global_tx_version::big-size(8)>>, psbt, global) do
-    {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
+    {<<value::little-size(32)>>, psbt} = PsbtUtils.parse_compact_size_value(psbt)
     global = %Global{global | tx_version: value}
     {global, psbt}
   end
 
   defp parse(<<@psbt_global_fallback_locktime::big-size(8)>>, psbt, global) do
-    {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
+    {<<value::little-size(32)>>, psbt} = PsbtUtils.parse_compact_size_value(psbt)
     global = %Global{global | fallback_locktime: value}
     {global, psbt}
   end
@@ -311,9 +320,7 @@ defmodule Bitcoinex.PSBT.Global do
     key = <<@psbt_global_xpub::big-size(8)>>
     key_data = ExtendedKey.serialize(value.xpub, :no_checksum)
 
-    {:ok, deriv_bin} = DerivationPath.serialize(value.derivation)
-
-    val = <<value.master_pfp::little-size(32)>> <> deriv_bin
+    val = PsbtUtils.serialize_fingerprint_path(value.pfp, value.derivation)
 
     PsbtUtils.serialize_kv(key <> key_data, val)
   end
@@ -335,7 +342,11 @@ defmodule Bitcoinex.PSBT.Global do
   end
 
   defp serialize_kv(:tx_modifiable, value) when value != nil do
-    PsbtUtils.serialize_kv(<<@psbt_global_fallback_locktime::big-size(8)>>, <<value>>)
+    PsbtUtils.serialize_kv(<<@psbt_global_tx_modifiable::big-size(8)>>, <<value>>)
+  end
+
+  defp serialize_kv(:proprietary, value) when value != nil do
+    PsbtUtils.serialize_kv(<<@psbt_global_proprietary::big-size(8)>>, value)
   end
 
 
@@ -480,7 +491,7 @@ defmodule Bitcoinex.PSBT.In do
   end
 
   defp serialize_kv(:sighash_type, value) when value != nil do
-    PsbtUtils.serialize_kv(<<@psbt_in_sighash_type::big-size(8)>>, value)
+    PsbtUtils.serialize_kv(<<@psbt_in_sighash_type::big-size(8)>>, <<value::little-size(32)>>)
   end
 
   defp serialize_kv(:final_scriptsig, value) when value != nil do
@@ -514,11 +525,82 @@ defmodule Bitcoinex.PSBT.In do
   defp serialize_kv(:bip32_derivation, value) when value != nil do
     key_data = Base.decode16!(value.public_key, case: :lower)
 
-    {:ok, deriv_bin} = DerivationPath.serialize(value.derivation)
-
-    val = <<value.pfp::little-size(32)>> <> deriv_bin
+    val = PsbtUtils.serialize_fingerprint_path(value.pfp, value.derivation)
 
     PsbtUtils.serialize_kv(<<@psbt_in_bip32_derivation::big-size(8)>> <> key_data, val)
+  end
+
+  defp serialize_kv(:por_commitment, value) when value != nil do
+    PsbtUtils.serialize_kv(<<@psbt_in_por_commitment::big-size(8)>>, value)
+  end
+
+  defp serialize_kv(:in_ripemd160, value) when value != nil do
+    PsbtUtils.serialize_kv(<<@psbt_in_ripemd160::big-size(8), value.hash::binary-size(20)>>, value.preimage)
+  end
+
+  defp serialize_kv(:in_sha256, value) when value != nil do
+    PsbtUtils.serialize_kv(<<@psbt_in_sha256::big-size(8), value.hash::binary-size(32)>>, value.preimage)
+  end
+
+  defp serialize_kv(:in_hash160, value) when value != nil do
+    PsbtUtils.serialize_kv(<<@psbt_in_hash160::big-size(8), value.hash::binary-size(20)>>, value.preimage)
+  end
+
+  defp serialize_kv(:in_hash256, value) when value != nil do
+    PsbtUtils.serialize_kv(<<@psbt_in_hash256::big-size(8), value.hash::binary-size(32)>>, value.preimage)
+  end
+
+  defp serialize_kv(:previous_txid, value) when value != nil do
+    PsbtUtils.serialize_kv(<<@psbt_in_previous_txid::big-size(8)>>, value)
+  end
+
+  defp serialize_kv(:output_index, value) when value != nil do
+    PsbtUtils.serialize_kv(<<@psbt_in_output_index::big-size(8)>>, <<value::little-size(32)>>)
+  end
+
+  defp serialize_kv(:sequence, value) when value != nil do
+    PsbtUtils.serialize_kv(<<@psbt_in_sequence::big-size(8)>>, <<value::little-size(32)>>)
+  end
+
+  defp serialize_kv(:required_time_locktime, value) when value != nil do
+    PsbtUtils.serialize_kv(<<@psbt_in_required_time_locktime::big-size(8)>>, <<value::little-size(32)>>)
+  end
+
+  defp serialize_kv(:required_height_locktime, value) when value != nil do
+    PsbtUtils.serialize_kv(<<@psbt_in_required_height_locktime::big-size(8)>>, <<value::little-size(32)>>)
+  end
+
+  defp serialize_kv(:tap_key_sig, value) when value != nil do
+    PsbtUtils.serialize_kv(<<@psbt_in_tap_key_sig::big-size(8)>>, value)
+  end
+
+  defp serialize_kv(:tap_script_sig, value) when value != nil do
+    PsbtUtils.serialize_kv(<<@psbt_in_tap_script_sig::big-size(8), value.pubkey, value.leaf_hash>>, value.signature)
+  end
+
+  defp serialize_kv(:tap_leaf_script, value) when value != nil do
+    # TODO:taproot make this use TapLeaf
+    script_bytes = Script.serialize_script(value.script)
+    PsbtUtils.serialize_kv(<<@psbt_in_tap_leaf_script::big-size(8), value.control_block>>, script_bytes <> <<value.leaf_version::little-size(8)>> )
+  end
+
+  defp serialize_kv(:tap_bip32_derivation, value) when value != nil do
+    leaf_hashes = PsbtUtils.serialize_leaf_hashes(value.leaf_hashes)
+    fingerprint_path = PsbtUtils.serialize_fingerprint_path(value.pfp, value.path)
+
+    PsbtUtils.serialize_kv(<<@psbt_in_tap_bip32_derivation::big-size(8), value.pubkey>>, leaf_hashes <> fingerprint_path)
+  end
+
+  defp serialize_kv(:tap_internal_key, value) when value != nil do
+    PsbtUtils.serialize_kv(<<@psbt_in_tap_internal_key::big-size(8)>>, value)
+  end
+
+  defp serialize_kv(:tap_merkle_root, value) when value != nil do
+    PsbtUtils.serialize_kv(<<@psbt_in_tap_merkle_root::big-size(8)>>, value)
+  end
+
+  defp serialize_kv(:proprietary, value) when value != nil do
+    PsbtUtils.serialize_kv(<<@psbt_in_proprietary::big-size(8)>>, value)
   end
 
   defp serialize_kv(_key, _value) do
@@ -600,7 +682,7 @@ defmodule Bitcoinex.PSBT.In do
 
   defp parse(<<@psbt_in_non_witness_utxo::big-size(8)>>, psbt, input) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    {:ok, txn} = Transaction.decode(Base.encode16(value, case: :lower))
+    {:ok, txn} = Transaction.decode(value)
     input = %In{input | non_witness_utxo: txn}
     {input, psbt}
   end
@@ -627,7 +709,7 @@ defmodule Bitcoinex.PSBT.In do
   end
 
   defp parse(<<@psbt_in_sighash_type::big-size(8)>>, psbt, input) do
-    {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
+    {<<value::little-size(32)>>, psbt} = PsbtUtils.parse_compact_size_value(psbt)
     input = %In{input | sighash_type: value}
     {input, psbt}
   end
@@ -733,7 +815,7 @@ defmodule Bitcoinex.PSBT.In do
   end
 
   defp parse(<<@psbt_in_previous_txid::big-size(8)>>, psbt, input) do
-    {<<value::binary-size(32)>>, psbt} = PsbtUtils.parse_compact_size_value(psbt)
+    {value = <<_::binary-size(32)>>, psbt} = PsbtUtils.parse_compact_size_value(psbt)
     input = %In{input | previous_txid: value}
     {input, psbt}
   end
@@ -745,20 +827,20 @@ defmodule Bitcoinex.PSBT.In do
   end
 
   defp parse(<<@psbt_in_sequence::big-size(8)>>, psbt, input) do
-    # TODO:validation must be > 500_000_000
     {<<value::little-size(32)>>, psbt} = PsbtUtils.parse_compact_size_value(psbt)
     input = %In{input | sequence: value}
     {input, psbt}
   end
 
   defp parse(<<@psbt_in_required_time_locktime::big-size(8)>>, psbt, input) do
-    # TODO:validation must be < 500_000_000
+    # TODO:validation must be > 500_000_000
     {<<value::little-size(32)>>, psbt} = PsbtUtils.parse_compact_size_value(psbt)
     input = %In{input | required_time_locktime: value}
     {input, psbt}
   end
 
   defp parse(<<@psbt_in_required_height_locktime::big-size(8)>>, psbt, input) do
+    # TODO:validation must be < 500_000_000
     {<<value::little-size(32)>>, psbt} = PsbtUtils.parse_compact_size_value(psbt)
     input = %In{input | required_height_locktime: value}
     {input, psbt}
@@ -801,7 +883,7 @@ defmodule Bitcoinex.PSBT.In do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
 
     {leaf_hash_ct, value} = TxUtils.get_counter(value)
-    leaf_hashes = PsbtUtils.parse_leaf_hashes(value, leaf_hash_ct)
+    {leaf_hashes, value} = PsbtUtils.parse_leaf_hashes(value, leaf_hash_ct)
     {pfp, path} = PsbtUtils.parse_fingerprint_path(value)
 
     derivation = %{
@@ -910,12 +992,38 @@ defmodule Bitcoinex.PSBT.Out do
 
   defp serialize_kv(:bip32_derivation, value) when value != nil do
     key_data = Base.decode16!(value.public_key, case: :lower)
-
-    {:ok, deriv_bin} = DerivationPath.serialize(value.derivation)
-
-    val = <<value.pfp::little-size(32)>> <> deriv_bin
+    val = PsbtUtils.serialize_fingerprint_path(value.pfp, value.derivation)
 
     PsbtUtils.serialize_kv(<<@psbt_out_bip32_derivation::big-size(8)>> <> key_data, val)
+  end
+
+  defp serialize_kv(:amount, value) when value != nil do
+    PsbtUtils.serialize_kv(<<@psbt_out_amount::big-size(8)>>, <<value::little-size(64)>>)
+  end
+
+  defp serialize_kv(:script, value) when value != nil do
+    PsbtUtils.serialize_kv(<<@psbt_out_script::big-size(8)>>, Script.serialize_script(value))
+  end
+
+  defp serialize_kv(:tap_internal_key, value) when value != nil do
+    PsbtUtils.serialize_kv(<<@psbt_out_tap_internal_key::big-size(8)>>, value)
+  end
+
+  defp serialize_kv(:tap_tree, value) when value != nil do
+    tree = serialize_tap_tree(value)
+    PsbtUtils.serialize_kv(<<@psbt_out_tap_tree::big-size(8)>>, tree)
+  end
+
+  defp serialize_kv(:tap_bip32_derivation, value) when value != nil do
+    key = <<@psbt_out_tap_bip32_derivation::big-size(8), value.pubkey>>
+    leaf_hashes = PsbtUtils.serialize_leaf_hashes(value.leaf_hashes)
+    fingerprint_path = PsbtUtils.serialize_fingerprint_path(value.pfp, value.path)
+
+    PsbtUtils.serialize_kv(key, leaf_hashes <> fingerprint_path)
+  end
+
+  defp serialize_kv(:proprietary, value) when value != nil do
+    PsbtUtils.serialize_kv(<<@psbt_out_proprietary::big-size(8)>>, value)
   end
 
   defp serialize_kv(_key, _value) do
@@ -1000,8 +1108,7 @@ defmodule Bitcoinex.PSBT.Out do
        ) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
 
-    <<pfp::little-unsigned-32, paths::binary>> = value
-    {:ok, indexes} = DerivationPath.parse(paths)
+    {pfp, indexes} = PsbtUtils.parse_fingerprint_path(value)
 
     bip32_derivation =
       case output.bip32_derivation do
@@ -1104,6 +1211,17 @@ defmodule Bitcoinex.PSBT.Out do
       script: script
     }
     parse_tap_tree(tree, [data | scripts])
+  end
+
+  defp serialize_tap_tree(leaves) do
+    Enum.reduce(leaves, <<>>, fn leaf, acc ->
+      # TODO:taproot use Script.serialize_with_compact_size
+      script_bytes = Script.serialize_script(leaf.script)
+
+      acc <> <<leaf.depth, leaf.leaf_version>>
+      <> TxUtils.serialize_compact_size_unsigned_int(byte_size(script_bytes))
+      <> script_bytes
+    end)
   end
 
 end
