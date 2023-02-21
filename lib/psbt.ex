@@ -153,6 +153,7 @@ defmodule Bitcoinex.PSBT.Utils do
   end
 
   def serialize_repeatable_fields(_, nil, _), do: <<>>
+
   def serialize_repeatable_fields(field, values, serialize_func) do
     for(kv <- values, do: serialize_func.(field, kv))
     |> :erlang.list_to_binary()
@@ -207,7 +208,8 @@ defmodule Bitcoinex.PSBT.Global do
     :output_count,
     :tx_modifiable,
     :version,
-    :proprietary
+    :proprietary,
+    :unknown
   ]
 
   @psbt_global_unsigned_tx 0x00
@@ -253,29 +255,15 @@ defmodule Bitcoinex.PSBT.Global do
           message: "invalid xpub in PSBT: depth does not match number of indexes provided"
         )
 
-    global_xpub =
-      case global.xpub do
-        nil ->
-          [
-            %{
-              xpub: xpub,
-              pfp: master,
-              derivation: path
-            }
-          ]
+    global_xpub = %{
+      xpub: xpub,
+      pfp: master,
+      derivation: path
+    }
 
-        _ ->
-          global.xpub ++
-            [
-              %{
-                xpub: xpub,
-                pfp: master,
-                derivation: path
-              }
-            ]
-      end
+    global_xpubs = PsbtUtils.append(global.xpub, global_xpub)
 
-    global = %Global{global | xpub: global_xpub}
+    global = %Global{global | xpub: global_xpubs}
 
     {global, psbt}
   end
@@ -371,18 +359,39 @@ defmodule Bitcoinex.PSBT.Global do
   end
 
   def serialize_global(global) do
-    # TODO: serialize all other fields in global.
-    serialized_global = serialize_kv(:unsigned_tx, global.unsigned_tx)
+    serialized_global =
+      Enum.reduce(
+        [
+          :unsigned_tx,
+          :xpub,
+          :tx_version,
+          :fallback_locktime,
+          :input_count,
+          :output_count,
+          :tx_modifiable,
+          :version,
+          :proprietary,
+          :unknown
+        ],
+        <<>>,
+        fn k, acc ->
+          case Map.get(global, k) do
+            nil ->
+              acc
 
-    bip32 =
-      if global.xpub != nil do
-        for(bip32 <- global.xpub, do: serialize_kv(:xpub, bip32))
-        |> :erlang.list_to_binary()
-      else
-        <<>>
-      end
+            [] ->
+              acc
 
-    serialized_global <> bip32 <> <<0x00::big-size(8)>>
+            v = [_ | _] ->
+              acc <> PsbtUtils.serialize_repeatable_fields(k, v, &serialize_kv/2)
+
+            v ->
+              acc <> serialize_kv(k, v)
+          end
+        end
+      )
+
+    serialized_global <> <<0x00::big-size(8)>>
   end
 end
 
@@ -725,8 +734,7 @@ defmodule Bitcoinex.PSBT.In do
         end
       )
 
-    serialized_input =
-      serialized_input <> <<0x00::big-size(8)>>
+    serialized_input = serialized_input <> <<0x00::big-size(8)>>
 
     serialize_input(inputs, serialized_inputs <> serialized_input)
   end
@@ -842,6 +850,7 @@ defmodule Bitcoinex.PSBT.In do
       hash: hash,
       preimage: preimage
     }
+
     sha256s = PsbtUtils.append(input.sha256, data)
     input = %In{input | sha256: sha256s}
     {input, psbt}
@@ -855,6 +864,7 @@ defmodule Bitcoinex.PSBT.In do
       hash: hash,
       preimage: preimage
     }
+
     hash160s = PsbtUtils.append(input.hash160, data)
     input = %In{input | hash160: hash160s}
     {input, psbt}
@@ -868,6 +878,7 @@ defmodule Bitcoinex.PSBT.In do
       hash: hash,
       preimage: preimage
     }
+
     hash256s = PsbtUtils.append(input.hash256, data)
     input = %In{input | hash256: hash256s}
     {input, psbt}
@@ -926,6 +937,7 @@ defmodule Bitcoinex.PSBT.In do
       leaf_hash: leaf_hash,
       signature: value
     }
+
     tap_script_sigs = PsbtUtils.append(input.tap_script_sig, data)
 
     input = %In{input | tap_script_sig: tap_script_sigs}
@@ -943,6 +955,7 @@ defmodule Bitcoinex.PSBT.In do
       script: script,
       control_block: control_block
     }
+
     tap_leaf_scripts = PsbtUtils.append(input.tap_leaf_script, data)
     input = %In{input | tap_leaf_script: tap_leaf_scripts}
     {input, psbt}
@@ -996,13 +1009,16 @@ defmodule Bitcoinex.PSBT.In do
   defp parse(key, psbt, input) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
     kv = %{key: key, value: value}
+
     unknown =
-    case input.unknown do
-      nil ->
-        [kv]
-      _ ->
-        input.unknown ++ [kv]
-    end
+      case input.unknown do
+        nil ->
+          [kv]
+
+        _ ->
+          input.unknown ++ [kv]
+      end
+
     input = %In{input | unknown: unknown}
     {input, psbt}
   end
@@ -1107,6 +1123,7 @@ defmodule Bitcoinex.PSBT.Out do
   end
 
   defp serialize_output([], serialized_outputs), do: serialized_outputs
+
   defp serialize_output(outputs, serialized_outputs) do
     [output | outputs] = outputs
 
@@ -1234,7 +1251,7 @@ defmodule Bitcoinex.PSBT.Out do
       derivation: path
     }
 
-    tap_bip32_derivation = PsbtUtils.append( output.tap_bip32_derivation, derivation)
+    tap_bip32_derivation = PsbtUtils.append(output.tap_bip32_derivation, derivation)
     output = %Out{output | tap_bip32_derivation: tap_bip32_derivation}
     {output, psbt}
   end
