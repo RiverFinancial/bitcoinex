@@ -113,7 +113,7 @@ defmodule Bitcoinex.PSBT do
 
     witnesses = In.populate_witnesses(psbt.inputs)
 
-    %Bitcoinex.Transaction{ tx | witnesses: witnesses, inputs: inputs}
+    %Bitcoinex.Transaction{tx | witnesses: witnesses, inputs: inputs}
   end
 end
 
@@ -152,28 +152,39 @@ defmodule Bitcoinex.PSBT.Utils do
     key_len <> key <> val_len <> val
   end
 
+  def serialize_repeatable_fields(_, nil, _), do: <<>>
+  def serialize_repeatable_fields(field, values, serialize_func) do
+    for(kv <- values, do: serialize_func.(field, kv))
+    |> :erlang.list_to_binary()
+  end
+
   def parse_fingerprint_path(data) do
-    <<pfp::binary-size(4), paths>> = data
-    {:ok, indexes} = DerivationPath.parse(paths)
-    {pfp, indexes}
+    <<pfp::binary-size(4), path_bin::binary>> = data
+    {:ok, path} = DerivationPath.parse(path_bin)
+    {pfp, path}
   end
 
   # reuse this elsewhere
+  @spec serialize_fingerprint_path(binary, DerivationPath.t()) :: binary
   def serialize_fingerprint_path(pfp, path) do
-    {:ok, path} = DerivationPath.serialize(path)
-    <<pfp, path>>
+    {:ok, path_bin} = DerivationPath.serialize(path)
+    pfp <> path_bin
   end
 
   def parse_leaf_hashes(value, leaf_hash_ct) do
-    <<leaf_hashes::binary-size(32*leaf_hash_ct), value::binary>> = value
+    <<leaf_hashes::binary-size(32 * leaf_hash_ct), value::binary>> = value
     leaf_hashes = Enum.chunk_every(leaf_hashes, 32)
     {leaf_hashes, value}
   end
 
+  @spec serialize_leaf_hashes(list(binary)) :: binary
   def serialize_leaf_hashes(leaf_hashes) do
-    leaf_hashes = Enum.reduce(leaf_hashes, <<>>, fn leaf_hash, acc -> acc <> leaf_hash end)
-    TxUtils.serialize_compact_size_unsigned_int(length(leaf_hashes)) <> leaf_hashes
+    leaf_hashes_bin = Enum.reduce(leaf_hashes, <<>>, fn leaf_hash, acc -> acc <> leaf_hash end)
+    TxUtils.serialize_compact_size_unsigned_int(length(leaf_hashes)) <> leaf_hashes_bin
   end
+
+  def append(nil, item), do: [item]
+  def append(items, item), do: items ++ [item]
 end
 
 defmodule Bitcoinex.PSBT.Global do
@@ -220,6 +231,7 @@ defmodule Bitcoinex.PSBT.Global do
     {txn_len, psbt} = TxUtils.get_counter(psbt)
 
     <<txn_bytes::binary-size(txn_len), psbt::binary>> = psbt
+
     case Transaction.decode(txn_bytes) do
       {:ok, txn} ->
         {%Global{global | unsigned_tx: txn}, psbt}
@@ -232,10 +244,10 @@ defmodule Bitcoinex.PSBT.Global do
   defp parse(<<@psbt_global_xpub::big-size(8), xpub::binary-size(78)>>, psbt, global) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
 
-    {master, indexes} = PsbtUtils.parse_fingerprint_path(value)
+    {master, path} = PsbtUtils.parse_fingerprint_path(value)
     {:ok, xpub} = ExtendedKey.parse(xpub)
 
-    if :binary.decode_unsigned(xpub.depth) != DerivationPath.depth(indexes),
+    if :binary.decode_unsigned(xpub.depth) != DerivationPath.depth(path),
       do:
         raise(ArgumentError,
           message: "invalid xpub in PSBT: depth does not match number of indexes provided"
@@ -248,7 +260,7 @@ defmodule Bitcoinex.PSBT.Global do
             %{
               xpub: xpub,
               pfp: master,
-              derivation: indexes
+              derivation: path
             }
           ]
 
@@ -258,7 +270,7 @@ defmodule Bitcoinex.PSBT.Global do
               %{
                 xpub: xpub,
                 pfp: master,
-                derivation: indexes
+                derivation: path
               }
             ]
       end
@@ -318,7 +330,7 @@ defmodule Bitcoinex.PSBT.Global do
 
   defp serialize_kv(:xpub, value) when value != nil do
     key = <<@psbt_global_xpub::big-size(8)>>
-    key_data = ExtendedKey.serialize(value.xpub, :no_checksum)
+    key_data = ExtendedKey.serialize(value.xpub, with_checksum?: false)
 
     val = PsbtUtils.serialize_fingerprint_path(value.pfp, value.derivation)
 
@@ -330,15 +342,24 @@ defmodule Bitcoinex.PSBT.Global do
   end
 
   defp serialize_kv(:fallback_locktime, value) when value != nil do
-    PsbtUtils.serialize_kv(<<@psbt_global_fallback_locktime::big-size(8)>>, <<value::little-size(32)>>)
+    PsbtUtils.serialize_kv(
+      <<@psbt_global_fallback_locktime::big-size(8)>>,
+      <<value::little-size(32)>>
+    )
   end
 
   defp serialize_kv(:input_count, value) when value != nil do
-    PsbtUtils.serialize_kv(<<@psbt_global_input_count::big-size(8)>>, TxUtils.serialize_compact_size_unsigned_int(value))
+    PsbtUtils.serialize_kv(
+      <<@psbt_global_input_count::big-size(8)>>,
+      TxUtils.serialize_compact_size_unsigned_int(value)
+    )
   end
 
   defp serialize_kv(:output_count, value) when value != nil do
-    PsbtUtils.serialize_kv(<<@psbt_global_output_count::big-size(8)>>, TxUtils.serialize_compact_size_unsigned_int(value))
+    PsbtUtils.serialize_kv(
+      <<@psbt_global_output_count::big-size(8)>>,
+      TxUtils.serialize_compact_size_unsigned_int(value)
+    )
   end
 
   defp serialize_kv(:tx_modifiable, value) when value != nil do
@@ -348,7 +369,6 @@ defmodule Bitcoinex.PSBT.Global do
   defp serialize_kv(:proprietary, value) when value != nil do
     PsbtUtils.serialize_kv(<<@psbt_global_proprietary::big-size(8)>>, value)
   end
-
 
   def serialize_global(global) do
     # TODO: serialize all other fields in global.
@@ -376,7 +396,6 @@ defmodule Bitcoinex.PSBT.In do
   alias Bitcoinex.PSBT.In
   alias Bitcoinex.PSBT.Utils, as: PsbtUtils
   alias Bitcoinex.Transaction.Utils, as: TxUtils
-  alias Bitcoinex.ExtendedKey.DerivationPath, as: DerivationPath
   alias Bitcoinex.Script
 
   defstruct [
@@ -405,7 +424,8 @@ defmodule Bitcoinex.PSBT.In do
     :tap_bip32_derivation,
     :tap_internal_key,
     :tap_merkle_root,
-    :proprietary
+    :proprietary,
+    :unknown
   ]
 
   @psbt_in_non_witness_utxo 0x00
@@ -418,12 +438,12 @@ defmodule Bitcoinex.PSBT.In do
   @psbt_in_final_scriptsig 0x07
   @psbt_in_final_scriptwitness 0x08
   @psbt_in_por_commitment 0x09
-  @psbt_in_ripemd160 0x0a
-  @psbt_in_sha256 0x0b
-  @psbt_in_hash160 0x0c
-  @psbt_in_hash256 0x0d
-  @psbt_in_previous_txid 0x0e
-  @psbt_in_output_index 0x0f
+  @psbt_in_ripemd160 0x0A
+  @psbt_in_sha256 0x0B
+  @psbt_in_hash160 0x0C
+  @psbt_in_hash256 0x0D
+  @psbt_in_previous_txid 0x0E
+  @psbt_in_output_index 0x0F
   @psbt_in_sequence 0x10
   @psbt_in_required_time_locktime 0x11
   @psbt_in_required_height_locktime 0x12
@@ -443,30 +463,34 @@ defmodule Bitcoinex.PSBT.In do
   @spec from_tx_inputs(list(Transaction.In.t()), list(Transaction.Witness.t())) :: list(%In{})
   def from_tx_inputs(tx_inputs, tx_witnesses) do
     inputs_witnesses = Enum.zip(tx_inputs, tx_witnesses)
+
     Enum.reduce(inputs_witnesses, [], fn {input, witness}, acc ->
-      [%In{
+      [
+        %In{
           final_scriptsig: input.script_sig,
           final_scriptwitness: witness
-        } | acc]
+        }
+        | acc
+      ]
     end)
     |> Enum.reverse()
   end
 
   def populate_script_sigs(tx_inputs, psbt_inputs) do
     inputs = Enum.zip(tx_inputs, psbt_inputs)
-    Enum.reduce(inputs, [],
-      fn {tx_in, psbt_in}, acc ->
-        [%Transaction.In{ tx_in | script_sig: psbt_in.final_scriptsig} | acc]
+
+    Enum.reduce(inputs, [], fn {tx_in, psbt_in}, acc ->
+      [%Transaction.In{tx_in | script_sig: psbt_in.final_scriptsig} | acc]
     end)
     |> Enum.reverse()
   end
 
+  @spec populate_witnesses(list(In)) :: list(binary)
   def populate_witnesses(psbt_inputs) do
-    Enum.reduce(psbt_inputs, [],
-        fn psbt_in, acc ->
-          [psbt_in.final_scriptwitness | acc]
-      end)
-      |> Enum.reverse()
+    Enum.reduce(psbt_inputs, [], fn psbt_in, acc ->
+      [psbt_in.final_scriptwitness | acc]
+    end)
+    |> Enum.reverse()
   end
 
   defp serialize_kv(:non_witness_utxo, value) when value != nil do
@@ -535,19 +559,31 @@ defmodule Bitcoinex.PSBT.In do
   end
 
   defp serialize_kv(:in_ripemd160, value) when value != nil do
-    PsbtUtils.serialize_kv(<<@psbt_in_ripemd160::big-size(8), value.hash::binary-size(20)>>, value.preimage)
+    PsbtUtils.serialize_kv(
+      <<@psbt_in_ripemd160::big-size(8), value.hash::binary-size(20)>>,
+      value.preimage
+    )
   end
 
   defp serialize_kv(:in_sha256, value) when value != nil do
-    PsbtUtils.serialize_kv(<<@psbt_in_sha256::big-size(8), value.hash::binary-size(32)>>, value.preimage)
+    PsbtUtils.serialize_kv(
+      <<@psbt_in_sha256::big-size(8), value.hash::binary-size(32)>>,
+      value.preimage
+    )
   end
 
   defp serialize_kv(:in_hash160, value) when value != nil do
-    PsbtUtils.serialize_kv(<<@psbt_in_hash160::big-size(8), value.hash::binary-size(20)>>, value.preimage)
+    PsbtUtils.serialize_kv(
+      <<@psbt_in_hash160::big-size(8), value.hash::binary-size(20)>>,
+      value.preimage
+    )
   end
 
   defp serialize_kv(:in_hash256, value) when value != nil do
-    PsbtUtils.serialize_kv(<<@psbt_in_hash256::big-size(8), value.hash::binary-size(32)>>, value.preimage)
+    PsbtUtils.serialize_kv(
+      <<@psbt_in_hash256::big-size(8), value.hash::binary-size(32)>>,
+      value.preimage
+    )
   end
 
   defp serialize_kv(:previous_txid, value) when value != nil do
@@ -563,11 +599,17 @@ defmodule Bitcoinex.PSBT.In do
   end
 
   defp serialize_kv(:required_time_locktime, value) when value != nil do
-    PsbtUtils.serialize_kv(<<@psbt_in_required_time_locktime::big-size(8)>>, <<value::little-size(32)>>)
+    PsbtUtils.serialize_kv(
+      <<@psbt_in_required_time_locktime::big-size(8)>>,
+      <<value::little-size(32)>>
+    )
   end
 
   defp serialize_kv(:required_height_locktime, value) when value != nil do
-    PsbtUtils.serialize_kv(<<@psbt_in_required_height_locktime::big-size(8)>>, <<value::little-size(32)>>)
+    PsbtUtils.serialize_kv(
+      <<@psbt_in_required_height_locktime::big-size(8)>>,
+      <<value::little-size(32)>>
+    )
   end
 
   defp serialize_kv(:tap_key_sig, value) when value != nil do
@@ -575,20 +617,30 @@ defmodule Bitcoinex.PSBT.In do
   end
 
   defp serialize_kv(:tap_script_sig, value) when value != nil do
-    PsbtUtils.serialize_kv(<<@psbt_in_tap_script_sig::big-size(8), value.pubkey, value.leaf_hash>>, value.signature)
+    PsbtUtils.serialize_kv(
+      <<@psbt_in_tap_script_sig::big-size(8), value.pubkey, value.leaf_hash>>,
+      value.signature
+    )
   end
 
   defp serialize_kv(:tap_leaf_script, value) when value != nil do
     # TODO:taproot make this use TapLeaf
     script_bytes = Script.serialize_script(value.script)
-    PsbtUtils.serialize_kv(<<@psbt_in_tap_leaf_script::big-size(8), value.control_block>>, script_bytes <> <<value.leaf_version::little-size(8)>> )
+
+    PsbtUtils.serialize_kv(
+      <<@psbt_in_tap_leaf_script::big-size(8), value.control_block>>,
+      script_bytes <> <<value.leaf_version::little-size(8)>>
+    )
   end
 
   defp serialize_kv(:tap_bip32_derivation, value) when value != nil do
     leaf_hashes = PsbtUtils.serialize_leaf_hashes(value.leaf_hashes)
     fingerprint_path = PsbtUtils.serialize_fingerprint_path(value.pfp, value.path)
 
-    PsbtUtils.serialize_kv(<<@psbt_in_tap_bip32_derivation::big-size(8), value.pubkey>>, leaf_hashes <> fingerprint_path)
+    PsbtUtils.serialize_kv(
+      <<@psbt_in_tap_bip32_derivation::big-size(8), value.pubkey>>,
+      leaf_hashes <> fingerprint_path
+    )
   end
 
   defp serialize_kv(:tap_internal_key, value) when value != nil do
@@ -601,6 +653,10 @@ defmodule Bitcoinex.PSBT.In do
 
   defp serialize_kv(:proprietary, value) when value != nil do
     PsbtUtils.serialize_kv(<<@psbt_in_proprietary::big-size(8)>>, value)
+  end
+
+  defp serialize_kv(:unknown, %{key: k, value: v}) do
+    PsbtUtils.serialize_kv(k, v)
   end
 
   defp serialize_kv(_key, _value) do
@@ -625,11 +681,31 @@ defmodule Bitcoinex.PSBT.In do
         [
           :non_witness_utxo,
           :witness_utxo,
-          :sighash_type,
           :partial_sig,
+          :sighash_type,
           :redeem_script,
+          :witness_script,
+          :bip32_derivation,
           :final_scriptsig,
-          :witness_script
+          :final_scriptwitness,
+          :por_commitment,
+          :ripemd160,
+          :sha256,
+          :hash160,
+          :hash256,
+          :previous_txid,
+          :output_index,
+          :sequence,
+          :required_time_locktime,
+          :required_height_locktime,
+          :tap_key_sig,
+          :tap_script_sig,
+          :tap_leaf_script,
+          :tap_bip32_derivation,
+          :tap_internal_key,
+          :tap_merkle_root,
+          :proprietary,
+          :unknown
         ],
         <<>>,
         fn k, acc ->
@@ -637,24 +713,20 @@ defmodule Bitcoinex.PSBT.In do
             nil ->
               acc
 
+            [] ->
+              acc
+
+            v = [_ | _] ->
+              acc <> PsbtUtils.serialize_repeatable_fields(k, v, &serialize_kv/2)
+
             v ->
               acc <> serialize_kv(k, v)
           end
         end
       )
 
-    bip32 =
-      if input.bip32_derivation != nil do
-        for(bip32 <- input.bip32_derivation, do: serialize_kv(:bip32_derivation, bip32))
-        |> :erlang.list_to_binary()
-      else
-        <<>>
-      end
-
     serialized_input =
-      serialized_input <>
-        bip32 <>
-        serialize_kv(:final_scriptwitness, input.final_scriptwitness) <> <<0x00::big-size(8)>>
+      serialized_input <> <<0x00::big-size(8)>>
 
     serialize_input(inputs, serialized_inputs <> serialized_input)
   end
@@ -663,19 +735,11 @@ defmodule Bitcoinex.PSBT.In do
 
   defp parse_input(psbt, inputs, num_inputs) do
     case PsbtUtils.parse_key_value(psbt, %In{}, &parse/3) do
+      # why are we not adding an empty in here?
       {nil, psbt} ->
         parse_input(psbt, inputs, num_inputs - 1)
 
       {input, psbt} ->
-        input =
-          case input do
-            %{bip32_derivation: bip32_derivation} when is_list(bip32_derivation) ->
-              %{input | bip32_derivation: Enum.reverse(bip32_derivation)}
-
-            _ ->
-              input
-          end
-
         parse_input(psbt, [input | inputs], num_inputs - 1)
     end
   end
@@ -697,13 +761,13 @@ defmodule Bitcoinex.PSBT.In do
   defp parse(<<@psbt_in_partial_sig::big-size(8), public_key::binary-size(33)>>, psbt, input) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
 
-    input = %In{
-      input
-      | partial_sig: %{
-          public_key: Base.encode16(public_key, case: :lower),
-          signature: Base.encode16(value, case: :lower)
-        }
+    partial_sig = %{
+      public_key: Base.encode16(public_key, case: :lower),
+      signature: Base.encode16(value, case: :lower)
     }
+
+    partial_sigs = PsbtUtils.append(input.partial_sig, partial_sig)
+    input = %In{input | partial_sig: partial_sigs}
 
     {input, psbt}
   end
@@ -729,30 +793,15 @@ defmodule Bitcoinex.PSBT.In do
   defp parse(<<@psbt_in_bip32_derivation::big-size(8), public_key::binary-size(33)>>, psbt, input) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
 
-    <<pfp::little-unsigned-32, paths::binary>> = value
-    {:ok, indexes} = DerivationPath.parse(paths)
+    {pfp, path} = PsbtUtils.parse_fingerprint_path(value)
 
-    bip32_derivation =
-      case input.bip32_derivation do
-        nil ->
-          [
-            %{
-              public_key: Base.encode16(public_key, case: :lower),
-              pfp: pfp,
-              derivation: indexes
-            }
-          ]
+    derivation = %{
+      public_key: Base.encode16(public_key, case: :lower),
+      pfp: pfp,
+      derivation: path
+    }
 
-        _ ->
-          [
-            %{
-              public_key: Base.encode16(public_key, case: :lower),
-              pfp: pfp,
-              derivation: indexes
-            }
-            | input.bip32_derivation
-          ]
-      end
+    bip32_derivation = PsbtUtils.append(input.bip32_derivation, derivation)
 
     input = %In{input | bip32_derivation: bip32_derivation}
     {input, psbt}
@@ -773,44 +822,54 @@ defmodule Bitcoinex.PSBT.In do
   defp parse(<<@psbt_in_ripemd160::big-size(8), hash::binary-size(20)>>, psbt, input) do
     # TODO:validation check hash
     {preimage, psbt} = PsbtUtils.parse_compact_size_value(psbt)
+
     data = %{
       hash: hash,
       preimage: preimage
     }
-    input = %In{input | ripemd160: data}
+
+    ripemd160s = PsbtUtils.append(input.ripemd160, data)
+
+    input = %In{input | ripemd160: ripemd160s}
     {input, psbt}
   end
 
   defp parse(<<@psbt_in_sha256::big-size(8), hash::binary-size(32)>>, psbt, input) do
     # TODO:validation check hash
     {preimage, psbt} = PsbtUtils.parse_compact_size_value(psbt)
+
     data = %{
       hash: hash,
       preimage: preimage
     }
-    input = %In{input | sha256: data}
+    sha256s = PsbtUtils.append(input.sha256, data)
+    input = %In{input | sha256: sha256s}
     {input, psbt}
   end
 
   defp parse(<<@psbt_in_hash160::big-size(8), hash::binary-size(20)>>, psbt, input) do
     # TODO:validation check hash
     {preimage, psbt} = PsbtUtils.parse_compact_size_value(psbt)
+
     data = %{
       hash: hash,
       preimage: preimage
     }
-    input = %In{input | hash160: data}
+    hash160s = PsbtUtils.append(input.hash160, data)
+    input = %In{input | hash160: hash160s}
     {input, psbt}
   end
 
   defp parse(<<@psbt_in_hash256::big-size(8), hash::binary-size(32)>>, psbt, input) do
     # TODO:validation check hash
     {preimage, psbt} = PsbtUtils.parse_compact_size_value(psbt)
+
     data = %{
       hash: hash,
       preimage: preimage
     }
-    input = %In{input | hash256: data}
+    hash256s = PsbtUtils.append(input.hash256, data)
+    input = %In{input | hash256: hash256s}
     {input, psbt}
   end
 
@@ -853,15 +912,23 @@ defmodule Bitcoinex.PSBT.In do
     {input, psbt}
   end
 
-  defp parse(<<@psbt_in_tap_script_sig::big-size(8), pubkey::binary-size(32), leaf_hash::binary-size(32)>>, psbt, input) do
-    # TODO:validation validate script len (64|65)
+  defp parse(
+         <<@psbt_in_tap_script_sig::big-size(8), pubkey::binary-size(32),
+           leaf_hash::binary-size(32)>>,
+         psbt,
+         input
+       ) do
+    # TODO:validation validate sig len (64|65)
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
+
     data = %{
       pubkey: pubkey,
       leaf_hash: leaf_hash,
       signature: value
     }
-    input = %In{input | tap_script_sig: data}
+    tap_script_sigs = PsbtUtils.append(input.tap_script_sig, data)
+
+    input = %In{input | tap_script_sig: tap_script_sigs}
     {input, psbt}
   end
 
@@ -869,13 +936,15 @@ defmodule Bitcoinex.PSBT.In do
     {tapleaf, psbt} = PsbtUtils.parse_compact_size_value(psbt)
     {script_bytes, <<leaf_version::little-size(8)>>} = PsbtUtils.parse_compact_size_value(tapleaf)
     {:ok, script} = Script.parse_script(script_bytes)
+
     data = %{
       # TODO:taproot make this a TapLeaf object
       leaf_version: leaf_version,
       script: script,
-      control_block: control_block,
+      control_block: control_block
     }
-    input = %In{input | tap_leaf_script: data}
+    tap_leaf_scripts = PsbtUtils.append(input.tap_leaf_script, data)
+    input = %In{input | tap_leaf_script: tap_leaf_scripts}
     {input, psbt}
   end
 
@@ -893,23 +962,18 @@ defmodule Bitcoinex.PSBT.In do
       derivation: path
     }
 
-    tap_bip32_derivation =
-      case input.tap_bip32_derivation do
-        nil ->
-          [derivation]
-
-        _ ->
-          [derivation | input.tap_bip32_derivation]
-      end
+    tap_bip32_derivation = PsbtUtils.append(input.tap_bip32_derivation, derivation)
 
     input = %In{input | tap_bip32_derivation: tap_bip32_derivation}
     {input, psbt}
   end
+
   defp parse(<<@psbt_in_tap_internal_key::big-size(8)>>, psbt, input) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
     input = %In{input | tap_internal_key: value}
     {input, psbt}
   end
+
   defp parse(<<@psbt_in_tap_merkle_root::big-size(8)>>, psbt, input) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
     input = %In{input | tap_merkle_root: value}
@@ -926,6 +990,20 @@ defmodule Bitcoinex.PSBT.In do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
     value = Witness.witness(value)
     input = %In{input | final_scriptwitness: value}
+    {input, psbt}
+  end
+
+  defp parse(key, psbt, input) do
+    {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
+    kv = %{key: key, value: value}
+    unknown =
+    case input.unknown do
+      nil ->
+        [kv]
+      _ ->
+        input.unknown ++ [kv]
+    end
+    input = %In{input | unknown: unknown}
     {input, psbt}
   end
 end
@@ -948,7 +1026,6 @@ defmodule Bitcoinex.PSBT.Out do
     :tap_internal_key,
     :tap_tree,
     :tap_bip32_derivation,
-    :proprietary,
     :proprietary
   ]
 
@@ -1029,31 +1106,43 @@ defmodule Bitcoinex.PSBT.Out do
     <<>>
   end
 
-  defp serialize_output([], serialize_outputs), do: serialize_outputs
-
+  defp serialize_output([], serialized_outputs), do: serialized_outputs
   defp serialize_output(outputs, serialized_outputs) do
     [output | outputs] = outputs
 
     serialized_output =
-      case output do
-        %Out{bip32_derivation: nil, proprietary: nil, redeem_script: nil, witness_script: nil} ->
-          <<0x00::big-size(8)>>
+      Enum.reduce(
+        [
+          :redeem_script,
+          :witness_script,
+          :bip32_derivation,
+          :amount,
+          :script,
+          :tap_internal_key,
+          :tap_tree,
+          :tap_bip32_derivation,
+          :proprietary,
+          :unknown
+        ],
+        <<>>,
+        fn k, acc ->
+          case Map.get(output, k) do
+            nil ->
+              acc
 
-        _ ->
-          serialized_output =
-            serialize_kv(:redeem_script, output.redeem_script) <>
-              serialize_kv(:witness_script, output.witness_script)
+            [] ->
+              acc
 
-          bip32 =
-            if output.bip32_derivation != nil do
-              for(bip32 <- output.bip32_derivation, do: serialize_kv(:bip32_derivation, bip32))
-              |> :erlang.list_to_binary()
-            else
-              <<>>
-            end
+            v = [_ | _] ->
+              acc <> PsbtUtils.serialize_repeatable_fields(k, v, &serialize_kv/2)
 
-          serialized_output <> bip32 <> <<0x00::big-size(8)>>
-      end
+            v ->
+              acc <> serialize_kv(k, v)
+          end
+        end
+      )
+
+    serialized_output = serialized_output <> <<0x00::big-size(8)>>
 
     serialize_output(outputs, serialized_outputs <> serialized_output)
   end
@@ -1065,27 +1154,8 @@ defmodule Bitcoinex.PSBT.Out do
   defp parse_output(psbt, outputs, 0), do: {Enum.reverse(outputs), psbt}
 
   defp parse_output(psbt, outputs, num_outputs) do
-    case PsbtUtils.parse_key_value(psbt, %Out{}, &parse/3) do
-      {output = %Out{
-         bip32_derivation: nil,
-         proprietary: nil,
-         redeem_script: nil,
-         witness_script: nil
-       }, psbt} ->
-        parse_output(psbt, [output | outputs], num_outputs - 1)
-
-      {output, psbt} ->
-        output =
-          case output do
-            %{bip32_derivation: bip32_derivation} when is_list(bip32_derivation) ->
-              %{output | bip32_derivation: Enum.reverse(bip32_derivation)}
-
-            _ ->
-              output
-          end
-
-        parse_output(psbt, [output | outputs], num_outputs - 1)
-    end
+    {output, psbt} = PsbtUtils.parse_key_value(psbt, %Out{}, &parse/3)
+    parse_output(psbt, [output | outputs], num_outputs - 1)
   end
 
   defp parse(<<@psbt_out_redeem_script::big-size(8)>>, psbt, output) do
@@ -1107,35 +1177,16 @@ defmodule Bitcoinex.PSBT.Out do
        ) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
 
-    {pfp, indexes} = PsbtUtils.parse_fingerprint_path(value)
+    {pfp, path} = PsbtUtils.parse_fingerprint_path(value)
 
-    bip32_derivation =
-      case output.bip32_derivation do
-        nil ->
-          [
-            %{
-              public_key: Base.encode16(public_key, case: :lower),
-              pfp: pfp,
-              derivation: indexes
-            }
-          ]
-
-        _ ->
-          [
-            %{
-              public_key: Base.encode16(public_key, case: :lower),
-              pfp: pfp,
-              derivation: indexes
-            }
-            | output.bip32_derivation
-          ]
-      end
-
-    output = %Out{
-      output
-      | bip32_derivation: bip32_derivation
+    derivation = %{
+      public_key: Base.encode16(public_key, case: :lower),
+      pfp: pfp,
+      derivation: path
     }
 
+    bip32_derivation = PsbtUtils.append(output.bip32_derivation, derivation)
+    output = %Out{output | bip32_derivation: bip32_derivation}
     {output, psbt}
   end
 
@@ -1165,7 +1216,11 @@ defmodule Bitcoinex.PSBT.Out do
     {output, psbt}
   end
 
-  defp parse(<<@psbt_out_tap_bip32_derivation::big-size(8), pubkey::binary-size(32)>>, psbt, output) do
+  defp parse(
+         <<@psbt_out_tap_bip32_derivation::big-size(8), pubkey::binary-size(32)>>,
+         psbt,
+         output
+       ) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
 
     {leaf_hash_ct, value} = TxUtils.get_counter(value)
@@ -1179,15 +1234,7 @@ defmodule Bitcoinex.PSBT.Out do
       derivation: path
     }
 
-    tap_bip32_derivation =
-      case output.tap_bip32_derivation do
-        nil ->
-          [derivation]
-
-        _ ->
-          [derivation | output.tap_bip32_derivation]
-      end
-
+    tap_bip32_derivation = PsbtUtils.append( output.tap_bip32_derivation, derivation)
     output = %Out{output | tap_bip32_derivation: tap_bip32_derivation}
     {output, psbt}
   end
@@ -1199,16 +1246,19 @@ defmodule Bitcoinex.PSBT.Out do
   end
 
   defp parse_tap_tree(<<>>, scripts), do: Enum.reverse(scripts)
+
   defp parse_tap_tree(tree, scripts) do
     <<depth::size(8), leaf_version::size(8), rest>> = tree
     {script, tree} = PsbtUtils.parse_compact_size_value(rest)
     {:ok, script} = Script.parse_script(script)
+
     data = %{
       # TODO:taproot make this TapLeaf
       depth: depth,
       leaf_version: leaf_version,
       script: script
     }
+
     parse_tap_tree(tree, [data | scripts])
   end
 
@@ -1217,10 +1267,10 @@ defmodule Bitcoinex.PSBT.Out do
       # TODO:taproot use Script.serialize_with_compact_size
       script_bytes = Script.serialize_script(leaf.script)
 
-      acc <> <<leaf.depth, leaf.leaf_version>>
-      <> TxUtils.serialize_compact_size_unsigned_int(byte_size(script_bytes))
-      <> script_bytes
+      acc <>
+        <<leaf.depth, leaf.leaf_version>> <>
+        TxUtils.serialize_compact_size_unsigned_int(byte_size(script_bytes)) <>
+        script_bytes
     end)
   end
-
 end

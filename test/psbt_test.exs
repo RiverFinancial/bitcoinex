@@ -132,30 +132,11 @@ defmodule Bitcoinex.PSBTTest do
       },
       expected_in: [
         %In{
-          bip32_derivation: nil,
           final_scriptsig:
-            "47304402204759661797c01b036b25928948686218347d89864b719e1f7fcf57d1e511658702205309eabf56aa4d8891ffd111fdf1336f3a29da866d7f8486d75546ceedaf93190121035cdc61fc7ba971c0b501a646a2a83b102cb43881217ca682dc86e2d73fa88292",
-          final_scriptwitness: nil,
-          non_witness_utxo: nil,
-          partial_sig: nil,
-          por_commitment: nil,
-          proprietary: nil,
-          redeem_script: nil,
-          sighash_type: nil,
-          witness_script: nil,
-          witness_utxo: nil
+            "47304402204759661797c01b036b25928948686218347d89864b719e1f7fcf57d1e511658702205309eabf56aa4d8891ffd111fdf1336f3a29da866d7f8486d75546ceedaf93190121035cdc61fc7ba971c0b501a646a2a83b102cb43881217ca682dc86e2d73fa88292"
         },
         %In{
-          bip32_derivation: nil,
-          final_scriptsig: nil,
-          final_scriptwitness: nil,
-          non_witness_utxo: nil,
-          partial_sig: nil,
-          por_commitment: nil,
-          proprietary: nil,
           redeem_script: "001485d13537f2e265405a34dbafa9e3dda01fb82308",
-          sighash_type: nil,
-          witness_script: nil,
           witness_utxo: %Bitcoinex.Transaction.Out{
             script_pub_key: "a9143545e6e33b832c47050f24d3eeb93c9c03948bc787",
             value: 100_000_000
@@ -163,25 +144,14 @@ defmodule Bitcoinex.PSBTTest do
         }
       ],
       expected_out: [
-        %Bitcoinex.PSBT.Out{
-          bip32_derivation: nil,
-          proprietary: nil,
-          redeem_script: nil,
-          witness_script: nil
-        },
-        %Bitcoinex.PSBT.Out{
-          bip32_derivation: nil,
-          proprietary: nil,
-          redeem_script: nil,
-          witness_script: nil
-        }
+        %Bitcoinex.PSBT.Out{},
+        %Bitcoinex.PSBT.Out{}
       ]
     },
     %{
       psbt:
         "cHNidP8BAFICAAAAAZ38ZijCbFiZ/hvT3DOGZb/VXXraEPYiCXPfLTht7BJ2AQAAAAD/////AfA9zR0AAAAAFgAUezoAv9wU0neVwrdJAdCdpu8TNXkAAAAATwEENYfPAto/0AiAAAAAlwSLGtBEWx7IJ1UXcnyHtOTrwYogP/oPlMAVZr046QADUbdDiH7h1A3DKmBDck8tZFmztaTXPa7I+64EcvO8Q+IM2QxqT64AAIAAAACATwEENYfPAto/0AiAAAABuQRSQnE5zXjCz/JES+NTzVhgXj5RMoXlKLQH+uP2FzUD0wpel8itvFV9rCrZp+OcFyLrrGnmaLbyZnzB1nHIPKsM2QxqT64AAIABAACAAAEBKwBlzR0AAAAAIgAgLFSGEmxJeAeagU4TcV1l82RZ5NbMre0mbQUIZFuvpjIBBUdSIQKdoSzbWyNWkrkVNq/v5ckcOrlHPY5DtTODarRWKZyIcSEDNys0I07Xz5wf6l0F1EFVeSe+lUKxYusC4ass6AIkwAtSriIGAp2hLNtbI1aSuRU2r+/lyRw6uUc9jkO1M4NqtFYpnIhxENkMak+uAACAAAAAgAAAAAAiBgM3KzQjTtfPnB/qXQXUQVV5J76VQrFi6wLhqyzoAiTACxDZDGpPrgAAgAEAAIAAAAAAACICA57/H1R6HV+S36K6evaslxpL0DukpzSwMVaiVritOh75EO3kXMUAAACAAAAAgAEAAIAA",
       expected_global: %Global{
-        proprietary: nil,
         unsigned_tx: %Bitcoinex.Transaction{
           inputs: [
             %Bitcoinex.Transaction.In{
@@ -198,16 +168,14 @@ defmodule Bitcoinex.PSBTTest do
               value: 499_990_000
             }
           ],
-          version: 2,
-          witnesses: nil
+          version: 2
         },
-        version: nil,
         xpub: [
           %{
             derivation: %Bitcoinex.ExtendedKey.DerivationPath{
               child_nums: [2_147_483_822, 2_147_483_648]
             },
-            master_pfp: 1_332_350_169,
+            pfp: <<217, 12, 106, 79>>,
             xpub:
               Bitcoinex.ExtendedKey.parse!(
                 "tpubDBkJeJo2X94Yq3RVz65DoUgyLUkaDrkfyrn2VcgyCRSKCRonvKvCF2FpYDGJWDkdRHBajXJGpc63GnumUt63ySvqCu2XaTRGVTKMYGuFk9H"
@@ -217,7 +185,7 @@ defmodule Bitcoinex.PSBTTest do
             derivation: %Bitcoinex.ExtendedKey.DerivationPath{
               child_nums: [2_147_483_822, 2_147_483_649]
             },
-            master_pfp: 1_332_350_169,
+            pfp: <<217, 12, 106, 79>>,
             xpub:
               Bitcoinex.ExtendedKey.parse!(
                 "tpubDBkJeJo2X94YsvtBEU1eKoibEWiNv51nW5iHhs6VZp59jsE6nen8KZMFyGHuGbCvqjRqirgeMcfpVBkttpUUT6brm4duzSGoZeTbhqCNUu6"
@@ -233,24 +201,16 @@ defmodule Bitcoinex.PSBTTest do
                 child_nums: [2_147_483_822, 2_147_483_648, 0]
               },
               public_key: "029da12cdb5b235692b91536afefe5c91c3ab9473d8e43b533836ab456299c8871",
-              pfp: 1_332_350_169
+              pfp: <<217, 12, 106, 79>>
             },
             %{
               derivation: %Bitcoinex.ExtendedKey.DerivationPath{
                 child_nums: [2_147_483_822, 2_147_483_649, 0]
               },
               public_key: "03372b34234ed7cf9c1fea5d05d441557927be9542b162eb02e1ab2ce80224c00b",
-              pfp: 1_332_350_169
+              pfp: <<217, 12, 106, 79>>
             }
           ],
-          final_scriptsig: nil,
-          final_scriptwitness: nil,
-          non_witness_utxo: nil,
-          partial_sig: nil,
-          por_commitment: nil,
-          proprietary: nil,
-          redeem_script: nil,
-          sighash_type: nil,
           witness_script:
             "5221029da12cdb5b235692b91536afefe5c91c3ab9473d8e43b533836ab456299c88712103372b34234ed7cf9c1fea5d05d441557927be9542b162eb02e1ab2ce80224c00b52ae",
           witness_utxo: %Bitcoinex.Transaction.Out{
@@ -268,12 +228,9 @@ defmodule Bitcoinex.PSBTTest do
                 child_nums: [2_147_483_648, 2_147_483_648, 2_147_483_649]
               },
               public_key: "039eff1f547a1d5f92dfa2ba7af6ac971a4bd03ba4a734b03156a256b8ad3a1ef9",
-              pfp: 3_311_199_469
+              pfp: <<237, 228, 92, 197>>
             }
-          ],
-          proprietary: nil,
-          redeem_script: nil,
-          witness_script: nil
+          ]
         }
       ]
     },
@@ -298,11 +255,8 @@ defmodule Bitcoinex.PSBTTest do
               value: 199_908_000
             }
           ],
-          version: 2,
-          witnesses: nil
-        },
-        version: nil,
-        xpub: nil
+          version: 2
+        }
       },
       expected_in: [
         %Bitcoinex.PSBT.In{
@@ -312,28 +266,22 @@ defmodule Bitcoinex.PSBTTest do
                 child_nums: [2_147_483_648, 2_147_483_648, 2_147_483_652]
               },
               public_key: "03b1341ccba7683b6af4f1238cd6e97e7167d569fac47f1e48d47541844355bd46",
-              pfp: 1_740_285_620
+              pfp: <<180, 166, 186, 103>>
             },
             %{
               derivation: %Bitcoinex.ExtendedKey.DerivationPath{
                 child_nums: [2_147_483_648, 2_147_483_648, 2_147_483_653]
               },
               public_key: "03de55d1e1dac805e3f8a58c1fbf9b94c02f3dbaafe127fefca4995f26f82083bd",
-              pfp: 1_740_285_620
+              pfp: <<180, 166, 186, 103>>
             }
           ],
-          final_scriptsig: nil,
-          final_scriptwitness: nil,
-          non_witness_utxo: nil,
-          partial_sig: %{
+          partial_sig: [%{
             public_key: "03b1341ccba7683b6af4f1238cd6e97e7167d569fac47f1e48d47541844355bd46",
             signature:
               "304302200424b58effaaa694e1559ea5c93bbfd4a89064224055cdf070b6771469442d07021f5c8eb0fea6516d60b8acb33ad64ede60e8785bfb3aa94b99bdf86151db9a9a01"
-          },
-          por_commitment: nil,
-          proprietary: nil,
+          }],
           redeem_script: "0020771fd18ad459666dd49f3d564e3dbc42f4c84774e360ada16816a8ed488d5681",
-          sighash_type: nil,
           witness_script:
             "522103b1341ccba7683b6af4f1238cd6e97e7167d569fac47f1e48d47541844355bd462103de55d1e1dac805e3f8a58c1fbf9b94c02f3dbaafe127fefca4995f26f82083bd52ae",
           witness_utxo: %Bitcoinex.Transaction.Out{
@@ -343,12 +291,7 @@ defmodule Bitcoinex.PSBTTest do
         }
       ],
       expected_out: [
-        %Bitcoinex.PSBT.Out{
-          bip32_derivation: nil,
-          proprietary: nil,
-          redeem_script: nil,
-          witness_script: nil
-        }
+        %Bitcoinex.PSBT.Out{}
       ]
     },
     %{
@@ -384,16 +327,11 @@ defmodule Bitcoinex.PSBTTest do
               value: 10_000_000
             }
           ],
-          version: 1,
-          witnesses: nil
-        },
-        version: nil,
-        xpub: nil
+          version: 1
+        }
       },
       expected_in: [
         %Bitcoinex.PSBT.In{
-          bip32_derivation: nil,
-          final_scriptsig: nil,
           final_scriptwitness: %Bitcoinex.Transaction.Witness{
             txinwitness: [
               "",
@@ -402,13 +340,6 @@ defmodule Bitcoinex.PSBTTest do
               "522102677a5cb03975b4f3530125bf805126fcf9562c49d024de61df6179aa60b653a0210357f2c9f601de66bb560e8928809d0ac4050fbfc87213657899e34da4c66c21602103fc57fd142e5513c79abc989e9e261e866821e41d70e44e79856e9651183b105553ae"
             ]
           },
-          non_witness_utxo: nil,
-          partial_sig: nil,
-          por_commitment: nil,
-          proprietary: nil,
-          redeem_script: nil,
-          sighash_type: nil,
-          witness_script: nil,
           witness_utxo: %Bitcoinex.Transaction.Out{
             script_pub_key:
               "002031fc2736bc4b44fa9d6902714e46aa0c31276ac61205858034868895452795b4",
@@ -416,8 +347,6 @@ defmodule Bitcoinex.PSBTTest do
           }
         },
         %Bitcoinex.PSBT.In{
-          bip32_derivation: nil,
-          final_scriptsig: nil,
           final_scriptwitness: %Bitcoinex.Transaction.Witness{
             txinwitness: [
               "",
@@ -426,13 +355,6 @@ defmodule Bitcoinex.PSBTTest do
               "522102083d519ea166041d11b1c83869cd3a84d2e059223063e430d78015f9416c1e7021022f90b5a57c62439ba2ba16404ae1d8114abe817997a84fb0c4f9d5e7dd28f87021034a1d2ba03df0a01d707708e6971b35fc11d68ab43eca1f27335fbd22a476a08c53ae"
             ]
           },
-          non_witness_utxo: nil,
-          partial_sig: nil,
-          por_commitment: nil,
-          proprietary: nil,
-          redeem_script: nil,
-          sighash_type: nil,
-          witness_script: nil,
           witness_utxo: %Bitcoinex.Transaction.Out{
             script_pub_key:
               "00208b75875c201b7914d42c8e843e56f7677f89d79dc85f8ccae5b1d1b2a9eb48ee",
@@ -448,155 +370,141 @@ defmodule Bitcoinex.PSBTTest do
                 child_nums: [2_147_483_648, 2_147_483_650, 2, 0, 0, 1, 13]
               },
               public_key: "023e1a92f74483a4c12a196d6c0253ac589cfadd5964ff3e6c63aef5d577051ed4",
-              pfp: 0
+              pfp: <<0, 0, 0, 0>>
             },
             %{
               derivation: %Bitcoinex.ExtendedKey.DerivationPath{
                 child_nums: [2_147_483_648, 2_147_483_650, 2, 0, 0, 1, 13]
               },
               public_key: "024d0e39b33ab57782a98fd06a7d0653385e509ee3b74dc45559e6db6391d31378",
-              pfp: 0
+              pfp: <<0, 0, 0, 0>>
             },
             %{
               derivation: %Bitcoinex.ExtendedKey.DerivationPath{
                 child_nums: [2_147_483_648, 2_147_483_650, 2, 0, 0, 1, 13]
               },
               public_key: "036c0bae6bcb02e47c857c480ed1d23888c8ad6a66b83ab111cb6b9242afb1c725",
-              pfp: 0
+              pfp: <<0, 0, 0, 0>>
             }
           ],
-          proprietary: nil,
-          redeem_script: nil,
           witness_script:
             "5221023e1a92f74483a4c12a196d6c0253ac589cfadd5964ff3e6c63aef5d577051ed421024d0e39b33ab57782a98fd06a7d0653385e509ee3b74dc45559e6db6391d3137821036c0bae6bcb02e47c857c480ed1d23888c8ad6a66b83ab111cb6b9242afb1c72553ae"
         },
-        %Bitcoinex.PSBT.Out{
-          bip32_derivation: nil,
-          proprietary: nil,
-          redeem_script: nil,
-          witness_script: nil
-        }
+        %Bitcoinex.PSBT.Out{}
       ]
     },
     %{
       psbt: "cHNidP8BAAoAAAAAAAAAAAAAAA==",
       expected_global: %Global{
-        proprietary: nil,
         unsigned_tx: %Bitcoinex.Transaction{
           inputs: [],
           lock_time: 0,
           outputs: [],
-          witnesses: nil,
           version: 0
-        },
-        version: nil,
-        xpub: nil
+        }
       },
       expected_in: [],
       expected_out: []
     },
     %{
       psbt:
-        "cHNidP8BAHUCAAAAASaBcTce3/KF6Tet7qSze3gADAVmy7OtZGQXE8pCFxv2AAAAAAD+////AtPf9QUAAAAAGXapFNDFmQPFusKGh2DpD9UhpGZap2UgiKwA4fUFAAAAABepFDVF5uM7gyxHBQ8k0+65PJwDlIvHh7MuEwAAAQD9pQEBAAAAAAECiaPHHqtNIOA3G7ukzGmPopXJRjr6Ljl/hTPMti+VZ+UBAAAAFxYAFL4Y0VKpsBIDna89p95PUzSe7LmF/////4b4qkOnHf8USIk6UwpyN+9rRgi7st0tAXHmOuxqSJC0AQAAABcWABT+Pp7xp0XpdNkCxDVZQ6vLNL1TU/////8CAMLrCwAAAAAZdqkUhc/xCX/Z4Ai7NK9wnGIZeziXikiIrHL++E4sAAAAF6kUM5cluiHv1irHU6m80GfWx6ajnQWHAkcwRAIgJxK+IuAnDzlPVoMR3HyppolwuAJf3TskAinwf4pfOiQCIAGLONfc0xTnNMkna9b7QPZzMlvEuqFEyADS8vAtsnZcASED0uFWdJQbrUqZY3LLh+GFbTZSYG2YVi/jnF6efkE/IQUCSDBFAiEA0SuFLYXc2WHS9fSrZgZU327tzHlMDDPOXMMJ/7X85Y0CIGczio4OFyXBl/saiK9Z9R5E5CVbIBZ8hoQDHAXR8lkqASECI7cr7vCWXRC+B3jv7NYfysb3mk6haTkzgHNEZPhPKrMAAAAAAQMEAQAAAAAAAA==",
+        "cHNidP8BAKACAAAAAqsJSaCMWvfEm4IS9Bfi8Vqz9cM9zxU4IagTn4d6W3vkAAAAAAD+////qwlJoIxa98SbghL0F+LxWrP1wz3PFTghqBOfh3pbe+QBAAAAAP7///8CYDvqCwAAAAAZdqkUdopAu9dAy+gdmI5x3ipNXHE5ax2IrI4kAAAAAAAAGXapFG9GILVT+glechue4O/p+gOcykWXiKwAAAAAAAEA3wIAAAABJoFxNx7f8oXpN63upLN7eAAMBWbLs61kZBcTykIXG/YAAAAAakcwRAIgcLIkUSPmv0dNYMW1DAQ9TGkaXSQ18Jo0p2YqncJReQoCIAEynKnazygL3zB0DsA5BCJCLIHLRYOUV663b8Eu3ZWzASECZX0RjTNXuOD0ws1G23s59tnDjZpwq8ubLeXcjb/kzjH+////AtPf9QUAAAAAGXapFNDFmQPFusKGh2DpD9UhpGZap2UgiKwA4fUFAAAAABepFDVF5uM7gyxHBQ8k0+65PJwDlIvHh7MuEwAAAQEgAOH1BQAAAAAXqRQ1RebjO4MsRwUPJNPuuTycA5SLx4cBBBYAFIXRNTfy4mVAWjTbr6nj3aAfuCMIACICAurVlmh8qAYEPtw94RbN8p1eklfBls0FXPaYyNAr8k6ZELSmumcAAACAAAAAgAIAAIAAIgIDlPYr6d8ZlSxVh3aK63aYBhrSxKJciU9H2MFitNchPQUQtKa6ZwAAAIABAACAAgAAgAA=",
       expected_global: %Global{
-        proprietary: nil,
         unsigned_tx: %Bitcoinex.Transaction{
+          version: 2,
           inputs: [
             %Bitcoinex.Transaction.In{
-              prev_txid: "f61b1742ca13176464adb3cb66050c00787bb3a4eead37e985f2df1e37718126",
+              prev_txid: "e47b5b7a879f13a8213815cf3dc3f5b35af1e217f412829bc4f75a8ca04909ab",
               prev_vout: 0,
+              script_sig: "",
+              sequence_no: 4_294_967_294
+            },
+            %Bitcoinex.Transaction.In{
+              prev_txid: "e47b5b7a879f13a8213815cf3dc3f5b35af1e217f412829bc4f75a8ca04909ab",
+              prev_vout: 1,
               script_sig: "",
               sequence_no: 4_294_967_294
             }
           ],
-          lock_time: 1_257_139,
           outputs: [
             %Bitcoinex.Transaction.Out{
-              script_pub_key: "76a914d0c59903c5bac2868760e90fd521a4665aa7652088ac",
-              value: 99_999_699
+              value: 199_900_000,
+              script_pub_key: "76a914768a40bbd740cbe81d988e71de2a4d5c71396b1d88ac"
             },
             %Bitcoinex.Transaction.Out{
-              script_pub_key: "a9143545e6e33b832c47050f24d3eeb93c9c03948bc787",
-              value: 100_000_000
+              value: 9358,
+              script_pub_key: "76a9146f4620b553fa095e721b9ee0efe9fa039cca459788ac"
             }
           ],
           witnesses: nil,
-          version: 2
-        },
-        version: nil,
-        xpub: nil
+          lock_time: 0
+        }
       },
       expected_in: [
         %Bitcoinex.PSBT.In{
-          bip32_derivation: nil,
-          final_scriptsig: nil,
-          final_scriptwitness: nil,
           non_witness_utxo: %Bitcoinex.Transaction{
+            version: 2,
             inputs: [
               %Bitcoinex.Transaction.In{
-                prev_txid: "e567952fb6cc33857f392efa3a46c995a28f69cca4bb1b37e0204dab1ec7a389",
-                prev_vout: 1,
-                script_sig: "160014be18d152a9b012039daf3da7de4f53349eecb985",
-                sequence_no: 4_294_967_295
-              },
-              %Bitcoinex.Transaction.In{
-                prev_txid: "b490486aec3ae671012dddb2bb08466bef37720a533a894814ff1da743aaf886",
-                prev_vout: 1,
-                script_sig: "160014fe3e9ef1a745e974d902c4355943abcb34bd5353",
-                sequence_no: 4_294_967_295
+                prev_txid: "f61b1742ca13176464adb3cb66050c00787bb3a4eead37e985f2df1e37718126",
+                prev_vout: 0,
+                script_sig:
+                  "473044022070b2245123e6bf474d60c5b50c043d4c691a5d2435f09a34a7662a9dc251790a022001329ca9dacf280bdf30740ec0390422422c81cb45839457aeb76fc12edd95b3012102657d118d3357b8e0f4c2cd46db7b39f6d9c38d9a70abcb9b2de5dc8dbfe4ce31",
+                sequence_no: 4_294_967_294
               }
             ],
-            lock_time: 0,
             outputs: [
               %Bitcoinex.Transaction.Out{
-                script_pub_key: "76a91485cff1097fd9e008bb34af709c62197b38978a4888ac",
-                value: 200_000_000
+                value: 99_999_699,
+                script_pub_key: "76a914d0c59903c5bac2868760e90fd521a4665aa7652088ac"
               },
               %Bitcoinex.Transaction.Out{
-                script_pub_key: "a914339725ba21efd62ac753a9bcd067d6c7a6a39d0587",
-                value: 190_303_501_938
+                value: 100_000_000,
+                script_pub_key: "a9143545e6e33b832c47050f24d3eeb93c9c03948bc787"
               }
             ],
-            version: 1,
-            witnesses: [
-              %Bitcoinex.Transaction.Witness{
-                txinwitness: [
-                  "304402202712be22e0270f394f568311dc7ca9a68970b8025fdd3b240229f07f8a5f3a240220018b38d7dcd314e734c9276bd6fb40f673325bc4baa144c800d2f2f02db2765c01",
-                  "03d2e15674941bad4a996372cb87e1856d3652606d98562fe39c5e9e7e413f2105"
-                ]
-              },
-              %Bitcoinex.Transaction.Witness{
-                txinwitness: [
-                  "3045022100d12b852d85dcd961d2f5f4ab660654df6eedcc794c0c33ce5cc309ffb5fce58d022067338a8e0e1725c197fb1a88af59f51e44e4255b20167c8684031c05d1f2592a01",
-                  "0223b72beef0965d10be0778efecd61fcac6f79a4ea169393380734464f84f2ab3"
-                ]
-              }
-            ]
+            witnesses: nil,
+            lock_time: 1_257_139
+          }
+        },
+        %Bitcoinex.PSBT.In{
+          witness_utxo: %Bitcoinex.Transaction.Out{
+            value: 100_000_000,
+            script_pub_key: "a9143545e6e33b832c47050f24d3eeb93c9c03948bc787"
           },
-          partial_sig: nil,
-          por_commitment: nil,
-          proprietary: nil,
-          redeem_script: nil,
-          sighash_type: <<1, 0, 0, 0>>,
-          witness_script: nil,
-          witness_utxo: nil
+          redeem_script: "001485d13537f2e265405a34dbafa9e3dda01fb82308"
         }
       ],
       expected_out: [
         %Bitcoinex.PSBT.Out{
-          bip32_derivation: nil,
-          proprietary: nil,
-          redeem_script: nil,
-          witness_script: nil
+          bip32_derivation: [
+            %{
+              derivation: %Bitcoinex.ExtendedKey.DerivationPath{
+                child_nums: [2_147_483_648, 2_147_483_648, 2_147_483_650]
+              },
+              pfp: <<180, 166, 186, 103>>,
+              public_key: "02ead596687ca806043edc3de116cdf29d5e9257c196cd055cf698c8d02bf24e99"
+            }
+          ]
         },
         %Bitcoinex.PSBT.Out{
-          bip32_derivation: nil,
-          proprietary: nil,
-          redeem_script: nil,
-          witness_script: nil
+          bip32_derivation: [
+            %{
+              derivation: %Bitcoinex.ExtendedKey.DerivationPath{
+                child_nums: [2_147_483_648, 2_147_483_649, 2_147_483_650]
+              },
+              pfp: <<180, 166, 186, 103>>,
+              public_key: "0394f62be9df19952c5587768aeb7698061ad2c4a25c894f47d8c162b4d7213d05"
+            }
+          ]
         }
       ]
-    }
+    },
+    # %{
+    #   psbt:
+    #     "cHNidP8BAD8CAAAAAf//////////////////////////////////////////AAAAAAD/////AQAAAAAAAAAAA2oBAAAAAAAACvABAgMEBQYHCAkPAQIDBAUGBwgJCgsMDQ4PAAA=",
+    #   expected_global: %{} #TODO fix
+    # }
   ]
 
   describe "decode/1" do
