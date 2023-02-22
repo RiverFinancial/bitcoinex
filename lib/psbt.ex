@@ -464,6 +464,129 @@ defmodule Bitcoinex.PSBT.In do
   @psbt_in_tap_merkle_root 0x18
   @psbt_in_proprietary 0xFC
 
+  @minimum_time_locktime Transaction.minimum_time_locktime()
+
+  def add_non_witness_utxo(input, tx = %Transaction{}) when input.non_witness_utxo == nil do
+    %In{input | non_witness_utxo: tx}
+  end
+
+  def add_witness_utxo(input, utxo = %Out{}) do
+    %In{input | witness_utxo: utxo}
+  end
+
+  def add_partial_sig(input, sig = %{public_key: _, signature: _}) do
+    sigs = PsbtUtils.append(input.partial_sig, sig)
+    %In{input | partial_sig: sigs}
+  end
+
+  # TODO only allow real sighash values?
+  def add_sighash_type(input, sighash_type) when is_integer(sighash_type) and sighash_type >= 0 do
+    %In{input | sighash_type: sighash_type}
+  end
+
+  def add_redeem_script(input, redeem_script) do
+    {:ok, _} = Base.decode16(redeem_script, case: :lower)
+    %In{input | redeem_script: redeem_script}
+  end
+
+  def add_witness_script(input, witness_script) do
+    {:ok, _} = Base.decode16(witness_script, case: :lower)
+    %In{input | witness_script: witness_script}
+  end
+
+  def add_bip32_derivation(input, derivation = %{public_key: _, pfp: _, derivation: _}) do
+    derivations = PsbtUtils.append(input.bip32_derivation, derivation)
+    %In{input | bip32_derivation: derivations}
+  end
+
+  def add_final_scriptsig(input, final_scriptsig) do
+    {:ok, _} = Base.decode16(final_scriptsig, case: :lower)
+    %In{input | final_scriptsig: final_scriptsig}
+  end
+
+  def add_final_scriptwitness(input, final_scriptwitness = %Transaction.Witness{}) do
+    %In{input | final_scriptwitness: final_scriptwitness}
+  end
+
+  def add_por_commitment(input, por_commitment) when is_binary(por_commitment) do
+    %In{input | por_commitment: por_commitment}
+  end
+
+  def add_ripemd160(input, ripemd160 = %{hash: h, preimage: p}) when is_binary(h) and is_binary(p) do
+    ripemd160s = PsbtUtils.append(input.ripemd160, ripemd160)
+    %In{input | ripemd160: ripemd160s}
+  end
+
+  def add_sha256(input, sha256 = %{hash: h, preimage: p}) when is_binary(h) and is_binary(p) do
+    sha256s = PsbtUtils.append(input.sha256, sha256)
+    %In{input | sha256: sha256s}
+  end
+
+  def add_hash160(input, hash160 = %{hash: h, preimage: p}) when is_binary(h) and is_binary(p) do
+    hash160s = PsbtUtils.append(input.hash160, hash160)
+    %In{input | hash160: hash160s}
+  end
+
+  def add_hash256(input, hash256 = %{hash: h, preimage: p}) when is_binary(h) and is_binary(p) do
+    hash256s = PsbtUtils.append(input.hash256, hash256)
+    %In{input | hash256: hash256s}
+  end
+
+  def add_previous_txid(input, <<previous_txid::binary-size(32)>>) do
+    %In{input | previous_txid: previous_txid}
+  end
+
+  def add_output_index(input, output_index) when is_integer(output_index) and output_index >= 0 do
+    %In{input | output_index: output_index}
+  end
+
+  def add_sequence(input, sequence) when is_integer(sequence) and sequence >= 0 do
+    %In{input | sequence: sequence}
+  end
+
+  def add_required_time_locktime(input, locktime) when is_integer(locktime) and locktime >= @minimum_time_locktime do
+    %In{input | required_time_locktime: locktime}
+  end
+
+  def add_required_height_locktime(input, locktime) when is_integer(locktime) and locktime < @minimum_time_locktime do
+    %In{input | required_height_locktime: locktime}
+  end
+
+  def add_tap_key_sig(input, tap_key_sig) when is_binary(tap_key_sig) and byte_size(tap_key_sig) in [64, 65] do
+    %In{input | tap_key_sig: tap_key_sig}
+  end
+
+
+  def add_tap_script_sig(input, tap_script_sig = %{pubkey: _, leaf_hash: _, signature: _}) do
+    sigs = PsbtUtils.append(input.tap_script_sig, tap_script_sig)
+    %In{input | tap_script_sig: sigs}
+  end
+
+  # TODO:taproot make this TapLeaf
+  def add_tap_leaf_script(input, tap_leaf_script = %{  leaf_version: _,  script: _,  control_block: _}) do
+    scripts = PsbtUtils.append(input.tap_leaf_script, tap_leaf_script)
+    %In{input | tap_leaf_script: scripts}
+  end
+
+  def add_tap_bip32_derivation(input, tap_bip32_derivation = %{pubkey: _, leaf_hashes: _, pfp: _, derivation: _}) do
+    derivations = PsbtUtils.append(input.tap_bip32_derivation, tap_bip32_derivation)
+    %In{input | tap_bip32_derivation: derivations}
+  end
+
+  def add_tap_internal_key(input, <<tap_internal_key::binary-size(32)>>) do
+    %In{input | tap_internal_key: tap_internal_key}
+  end
+
+  @spec add_tap_merkle_root(%In{}, <<_::256>>) :: %In{}
+  def add_tap_merkle_root(input, <<tap_merkle_root::binary-size(32)>>) do
+    %In{input | tap_merkle_root: tap_merkle_root}
+  end
+
+  @spec add_proprietary(%In{}, binary) :: %In{}
+  def add_proprietary(input, proprietary) when is_binary(proprietary) do
+    %In{input | proprietary: proprietary}
+  end
+
   def parse_inputs(psbt, num_inputs) do
     psbt
     |> parse_input([], num_inputs)
@@ -755,14 +878,14 @@ defmodule Bitcoinex.PSBT.In do
   defp parse(<<@psbt_in_non_witness_utxo::big-size(8)>>, psbt, input) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
     {:ok, txn} = Transaction.decode(value)
-    input = %In{input | non_witness_utxo: txn}
+    input = add_non_witness_utxo(input, txn)
     {input, psbt}
   end
 
   defp parse(<<@psbt_in_witness_utxo::big-size(8)>>, psbt, input) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
     out = Out.output(value)
-    input = %In{input | witness_utxo: out}
+    input = add_witness_utxo(input, out)
     {input, psbt}
   end
 
@@ -774,15 +897,14 @@ defmodule Bitcoinex.PSBT.In do
       signature: Base.encode16(value, case: :lower)
     }
 
-    partial_sigs = PsbtUtils.append(input.partial_sig, partial_sig)
-    input = %In{input | partial_sig: partial_sigs}
+    input = add_partial_sig(input, partial_sig)
 
     {input, psbt}
   end
 
   defp parse(<<@psbt_in_sighash_type::big-size(8)>>, psbt, input) do
     {<<value::little-size(32)>>, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    input = %In{input | sighash_type: value}
+    input = add_sighash_type(input, value)
     {input, psbt}
   end
 
@@ -794,7 +916,7 @@ defmodule Bitcoinex.PSBT.In do
 
   defp parse(<<@psbt_in_witness_script::big-size(8)>>, psbt, input) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    input = %In{input | witness_script: Base.encode16(value, case: :lower)}
+    input = add_witness_script(input, Base.encode16(value, case: :lower))
     {input, psbt}
   end
 
@@ -809,21 +931,19 @@ defmodule Bitcoinex.PSBT.In do
       derivation: path
     }
 
-    bip32_derivation = PsbtUtils.append(input.bip32_derivation, derivation)
-
-    input = %In{input | bip32_derivation: bip32_derivation}
+    input = add_bip32_derivation(input, derivation)
     {input, psbt}
   end
 
   defp parse(<<@psbt_in_final_scriptsig::big-size(8)>>, psbt, input) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    input = %In{input | final_scriptsig: Base.encode16(value, case: :lower)}
+    input = add_final_scriptsig(input, Base.encode16(value, case: :lower))
     {input, psbt}
   end
 
   defp parse(<<@psbt_in_por_commitment::big-size(8)>>, psbt, input) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    input = %In{input | por_commitment: value}
+    input = add_por_commitment(input, value)
     {input, psbt}
   end
 
@@ -836,9 +956,7 @@ defmodule Bitcoinex.PSBT.In do
       preimage: preimage
     }
 
-    ripemd160s = PsbtUtils.append(input.ripemd160, data)
-
-    input = %In{input | ripemd160: ripemd160s}
+    input = add_ripemd160(input, data)
     {input, psbt}
   end
 
@@ -851,8 +969,7 @@ defmodule Bitcoinex.PSBT.In do
       preimage: preimage
     }
 
-    sha256s = PsbtUtils.append(input.sha256, data)
-    input = %In{input | sha256: sha256s}
+    input = add_sha256(input, data)
     {input, psbt}
   end
 
@@ -865,8 +982,7 @@ defmodule Bitcoinex.PSBT.In do
       preimage: preimage
     }
 
-    hash160s = PsbtUtils.append(input.hash160, data)
-    input = %In{input | hash160: hash160s}
+    input = add_hash160(input, data)
     {input, psbt}
   end
 
@@ -879,47 +995,43 @@ defmodule Bitcoinex.PSBT.In do
       preimage: preimage
     }
 
-    hash256s = PsbtUtils.append(input.hash256, data)
-    input = %In{input | hash256: hash256s}
+    input = add_hash256(input, data)
     {input, psbt}
   end
 
   defp parse(<<@psbt_in_previous_txid::big-size(8)>>, psbt, input) do
     {value = <<_::binary-size(32)>>, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    input = %In{input | previous_txid: value}
+    input = add_previous_txid(input, value)
     {input, psbt}
   end
 
   defp parse(<<@psbt_in_output_index::big-size(8)>>, psbt, input) do
     {<<value::little-size(32)>>, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    input = %In{input | output_index: value}
+    input = add_output_index(input, value)
     {input, psbt}
   end
 
   defp parse(<<@psbt_in_sequence::big-size(8)>>, psbt, input) do
     {<<value::little-size(32)>>, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    input = %In{input | sequence: value}
+    input = add_sequence(input, value)
     {input, psbt}
   end
 
   defp parse(<<@psbt_in_required_time_locktime::big-size(8)>>, psbt, input) do
-    # TODO:validation must be > 500_000_000
     {<<value::little-size(32)>>, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    input = %In{input | required_time_locktime: value}
+    input = add_required_time_locktime(input, value)
     {input, psbt}
   end
 
   defp parse(<<@psbt_in_required_height_locktime::big-size(8)>>, psbt, input) do
-    # TODO:validation must be < 500_000_000
     {<<value::little-size(32)>>, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    input = %In{input | required_height_locktime: value}
+    input = add_required_height_locktime(input, value)
     {input, psbt}
   end
 
   defp parse(<<@psbt_in_tap_key_sig::big-size(8)>>, psbt, input) do
-    # TODO:validation validate script len (64|65)
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    input = %In{input | tap_key_sig: value}
+    input = add_tap_key_sig(input, value)
     {input, psbt}
   end
 
@@ -938,9 +1050,7 @@ defmodule Bitcoinex.PSBT.In do
       signature: value
     }
 
-    tap_script_sigs = PsbtUtils.append(input.tap_script_sig, data)
-
-    input = %In{input | tap_script_sig: tap_script_sigs}
+    input = add_tap_script_sig(input, data)
     {input, psbt}
   end
 
@@ -956,8 +1066,7 @@ defmodule Bitcoinex.PSBT.In do
       control_block: control_block
     }
 
-    tap_leaf_scripts = PsbtUtils.append(input.tap_leaf_script, data)
-    input = %In{input | tap_leaf_script: tap_leaf_scripts}
+    input = add_tap_leaf_script(input, data)
     {input, psbt}
   end
 
@@ -975,9 +1084,7 @@ defmodule Bitcoinex.PSBT.In do
       derivation: path
     }
 
-    tap_bip32_derivation = PsbtUtils.append(input.tap_bip32_derivation, derivation)
-
-    input = %In{input | tap_bip32_derivation: tap_bip32_derivation}
+    input = add_tap_bip32_derivation(input, derivation)
     {input, psbt}
   end
 
@@ -1002,7 +1109,7 @@ defmodule Bitcoinex.PSBT.In do
   defp parse(<<@psbt_in_final_scriptwitness::big-size(8)>>, psbt, input) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
     value = Witness.witness(value)
-    input = %In{input | final_scriptwitness: value}
+    input = add_final_scriptwitness(input, value)
     {input, psbt}
   end
 
@@ -1055,6 +1162,46 @@ defmodule Bitcoinex.PSBT.Out do
   @psbt_out_tap_bip32_derivation 0x07
   @psbt_out_proprietary 0xFC
 
+  def add_redeem_script(output, redeem_script) when is_binary(redeem_script) and output.redeem_script == nil do
+    %Out{output | redeem_script: redeem_script}
+  end
+
+  def add_witness_script(output, witness_script) when is_binary(witness_script) and output.witness_script == nil do
+    %Out{output | witness_script: witness_script}
+  end
+
+  def add_bip32_derivation(output, derivation = %{public_key: _, pfp: _, derivation: _}) do
+    # ensure no duplicate keys?
+    derivations = PsbtUtils.append(output.bip32_derivation, derivation)
+    %Out{output | bip32_derivation: derivations}
+  end
+
+  def add_amount(output, amount) when is_integer(amount) and amount > 0 do
+    %Out{output | amount: amount}
+  end
+
+  def add_script(output, script) when is_binary(script) do
+    %Out{output | script: script}
+  end
+
+  def add_tap_internal_key(output, pk) when is_binary(pk) do
+    %Out{output | tap_internal_key: pk}
+  end
+
+  # TODO:taproot find a good format for taptree
+  def add_tap_tree(output, _tree) do
+    output
+  end
+
+  def add_tap_bip32_derivation(output, derivation = %{public_key: _, pfp: _, derivation: _}) do
+    derivations = PsbtUtils.append(output.tap_bip32_derivation, derivation)
+    %Out{output | tap_bip32_derivation: derivations}
+  end
+
+  def add_proprietary(output, kv) when is_binary(kv) do
+    kvs = PsbtUtils.append(output.proprietary, kv)
+    %Out{output | proprietary: kvs}
+  end
   def serialize_outputs(outputs) when is_list(outputs) and length(outputs) > 0 do
     serialize_output(outputs, <<>>)
   end
@@ -1258,7 +1405,8 @@ defmodule Bitcoinex.PSBT.Out do
 
   defp parse(<<@psbt_out_proprietary::big-size(8)>>, psbt, output) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    output = %Out{output | proprietary: value}
+    kvs = PsbtUtils.append(output.proprietary, value)
+    output = %Out{output | proprietary: kvs}
     {output, psbt}
   end
 
