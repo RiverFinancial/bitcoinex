@@ -11,6 +11,7 @@ defmodule Bitcoinex.PSBT do
   alias Bitcoinex.PSBT.Global
   alias Bitcoinex.PSBT.In
   alias Bitcoinex.PSBT.Out
+  alias Bitcoinex.PSBT.Utils
   alias Bitcoinex.Transaction.Utils, as: TxUtils
 
   @type t() :: %__MODULE__{}
@@ -24,6 +25,7 @@ defmodule Bitcoinex.PSBT do
   @magic 0x70736274
   @separator 0xFF
 
+  @spec separator :: 255
   def separator, do: @separator
 
   @doc """
@@ -116,6 +118,28 @@ defmodule Bitcoinex.PSBT do
 
     %Bitcoinex.Transaction{tx | witnesses: witnesses, inputs: inputs}
   end
+
+  # Global
+
+  def add_global_field(psbt, field, value) do
+    global = Global.add_field(psbt.global, field, value)
+    %PSBT{psbt | global: global}
+  end
+
+  # Inputs
+
+  def add_input_field(psbt, input_idx, field, value) do
+    inputs = Utils.set_item_field(psbt.inputs, input_idx, &In.add_field/3, field, value)
+    %PSBT{psbt | inputs: inputs}
+  end
+
+  # Outputs
+
+  def set_output_field(psbt, output_idx, field, value) do
+    outputs = Utils.set_item_field(psbt.outputs, output_idx, &Out.add_field/3, field, value)
+    %PSBT{psbt | outputs: outputs}
+  end
+
 end
 
 defmodule Bitcoinex.PSBT.Utils do
@@ -190,6 +214,15 @@ defmodule Bitcoinex.PSBT.Utils do
   @spec append(nil | list, any) :: [any]
   def append(nil, item), do: [item]
   def append(items, item), do: items ++ [item]
+
+  def set_item_field(items, idx, add_field_func, field, value) do
+    item =
+      items
+      |> Enum.at(idx)
+      |> add_field_func.(field, value)
+    List.replace_at(items, idx, item)
+  end
+
 end
 
 defmodule Bitcoinex.PSBT.Global do
@@ -226,49 +259,40 @@ defmodule Bitcoinex.PSBT.Global do
   @psbt_global_version 0xFB
   @psbt_global_proprietary 0xFC
 
-  @spec add_unsigned_tx(%Global{}, Transaction.t()) :: %Global{}
-  def add_unsigned_tx(global, unsigned_tx = %Transaction{}) when global.unsigned_tx == nil do
+  def add_field(global, :unsigned_tx, unsigned_tx = %Transaction{}) when global.unsigned_tx == nil do
     %Global{global | unsigned_tx: unsigned_tx}
   end
 
-  @spec add_xpub(%Global{}, %{xpub: ExtendedKey.t(), pfp: <<_::64>>, derivation: DerivationPath.t()}) :: %Global{}
-  def add_xpub(global, global_xpub = %{xpub: %ExtendedKey{}, pfp: <<_::64>>, derivation: %DerivationPath{}}) do
+  def add_field(global, :xpub, global_xpub = %{xpub: %ExtendedKey{}, pfp: <<_::64>>, derivation: %DerivationPath{}}) do
     global_xpubs = PsbtUtils.append(global.xpub, global_xpub)
     %Global{global | xpub: global_xpubs}
   end
 
-  @spec add_tx_version(%Global{}, pos_integer) :: %Global{}
-  def add_tx_version(global, value) when global.tx_version == nil and value > 0 do
+  def add_field(global, :tx_version, value) when global.tx_version == nil and value > 0 do
     %Global{global | tx_version: value}
   end
 
-  @spec add_fallback_locktime(%Global{}, non_neg_integer) :: %Global{}
-  def add_fallback_locktime(global, value) when value >= 0 do
+  def add_field(global, :fallback_locktime, value) when value >= 0 do
     %Global{global | fallback_locktime: value}
   end
 
-  @spec add_input_count(%Global{}, non_neg_integer()) :: %Global{}
-  def add_input_count(global, input_count) when input_count > 0 do
+  def add_field(global, :input_count, input_count) when input_count > 0 do
     %Global{global | input_count: input_count}
   end
 
-  @spec add_output_count(%Global{}, non_neg_integer()) :: %Global{}
-  def add_output_count(global, output_count) when output_count > 0 do
+  def add_field(global, :output_count, output_count) when output_count > 0 do
     %Global{global | output_count: output_count}
   end
 
-  @spec add_tx_modifiable(%Global{}, non_neg_integer()) :: %Global{}
-  def add_tx_modifiable(global, value) do
+  def add_field(global, :tx_modifiable, value) do
     %Global{global | tx_modifiable: value}
   end
 
-  @spec add_version(%Global{}, non_neg_integer()) :: %Global{}
-  def add_version(global, value) do
+  def add_field(global, :version, value) do
     %Global{global | version: value}
   end
 
-  @spec add_proprietary(%Global{}, binary) :: %Global{}
-  def add_proprietary(global, value) do
+  def add_field(global, :proprietary, value) do
     proprietaries = PsbtUtils.append(global.proprietary, value)
     %Global{global | proprietary: proprietaries}
   end
@@ -529,130 +553,122 @@ defmodule Bitcoinex.PSBT.In do
 
   @minimum_time_locktime Transaction.minimum_time_locktime()
 
-  def add_non_witness_utxo(input, tx = %Transaction{}) when input.non_witness_utxo == nil do
+  def add_field(input, :non_witness_utxo, tx = %Transaction{}) when input.non_witness_utxo == nil do
     %In{input | non_witness_utxo: tx}
   end
 
-  def add_witness_utxo(input, utxo = %Out{}) do
+  def add_field(input, :witness_utxo, utxo = %Out{}) do
     %In{input | witness_utxo: utxo}
   end
 
-  def add_partial_sig(input, sig = %{public_key: _, signature: _}) do
+  def add_field(input, :partial_sig, sig = %{public_key: _, signature: _}) do
     sigs = PsbtUtils.append(input.partial_sig, sig)
     %In{input | partial_sig: sigs}
   end
 
   # TODO only allow real sighash values?
-  def add_sighash_type(input, sighash_type) when is_integer(sighash_type) and sighash_type >= 0 do
+  def add_field(input, :sighash_type, sighash_type) when is_integer(sighash_type) and sighash_type >= 0 do
     %In{input | sighash_type: sighash_type}
   end
 
-  def add_redeem_script(input, redeem_script) do
+  def add_field(input, :redeem_script, redeem_script) do
     {:ok, _} = Base.decode16(redeem_script, case: :lower)
     %In{input | redeem_script: redeem_script}
   end
 
-  def add_witness_script(input, witness_script) do
+  def add_field(input, :witness_script, witness_script) do
     {:ok, _} = Base.decode16(witness_script, case: :lower)
     %In{input | witness_script: witness_script}
   end
 
-  def add_bip32_derivation(input, derivation = %{public_key: _, pfp: _, derivation: _}) do
+  def add_field(input, :bip32_derivation, derivation = %{public_key: _, pfp: _, derivation: _}) do
     derivations = PsbtUtils.append(input.bip32_derivation, derivation)
     %In{input | bip32_derivation: derivations}
   end
 
-  def add_final_scriptsig(input, final_scriptsig) do
+  def add_field(input, :final_scriptsig, final_scriptsig) do
     {:ok, _} = Base.decode16(final_scriptsig, case: :lower)
     %In{input | final_scriptsig: final_scriptsig}
   end
 
-  def add_final_scriptwitness(input, final_scriptwitness = %Transaction.Witness{}) do
+  def add_field(input, :final_scriptwitness, final_scriptwitness = %Transaction.Witness{}) do
     %In{input | final_scriptwitness: final_scriptwitness}
   end
 
-  def add_por_commitment(input, por_commitment) when is_binary(por_commitment) do
+  def add_field(input, :por_commitment, por_commitment) when is_binary(por_commitment) do
     %In{input | por_commitment: por_commitment}
   end
 
-  def add_ripemd160(input, ripemd160 = %{hash: h, preimage: p}) when is_binary(h) and is_binary(p) do
+  def add_field(input, :ripemd160, ripemd160 = %{hash: h, preimage: p}) when is_binary(h) and is_binary(p) do
     ripemd160s = PsbtUtils.append(input.ripemd160, ripemd160)
     %In{input | ripemd160: ripemd160s}
   end
 
-  def add_sha256(input, sha256 = %{hash: h, preimage: p}) when is_binary(h) and is_binary(p) do
+  def add_field(input, :sha256, sha256 = %{hash: h, preimage: p}) when is_binary(h) and is_binary(p) do
     sha256s = PsbtUtils.append(input.sha256, sha256)
     %In{input | sha256: sha256s}
   end
 
-  def add_hash160(input, hash160 = %{hash: h, preimage: p}) when is_binary(h) and is_binary(p) do
+  def add_field(input, :hash160, hash160 = %{hash: h, preimage: p}) when is_binary(h) and is_binary(p) do
     hash160s = PsbtUtils.append(input.hash160, hash160)
     %In{input | hash160: hash160s}
   end
 
-  def add_hash256(input, hash256 = %{hash: h, preimage: p}) when is_binary(h) and is_binary(p) do
+  def add_field(input, :hash256, hash256 = %{hash: h, preimage: p}) when is_binary(h) and is_binary(p) do
     hash256s = PsbtUtils.append(input.hash256, hash256)
     %In{input | hash256: hash256s}
   end
 
-  def add_previous_txid(input, <<previous_txid::binary-size(32)>>) do
+  def add_field(input, :previous_txid, <<previous_txid::binary-size(32)>>) do
     %In{input | previous_txid: previous_txid}
   end
 
-  def add_output_index(input, output_index) when is_integer(output_index) and output_index >= 0 do
+  def add_field(input, :output_index, output_index) when is_integer(output_index) and output_index >= 0 do
     %In{input | output_index: output_index}
   end
 
-  def add_sequence(input, sequence) when is_integer(sequence) and sequence >= 0 do
+  def add_field(input, :sequence, sequence) when is_integer(sequence) and sequence >= 0 do
     %In{input | sequence: sequence}
   end
 
-  def add_required_time_locktime(input, locktime) when is_integer(locktime) and locktime >= @minimum_time_locktime do
+  def add_field(input, :required_time_locktime, locktime) when is_integer(locktime) and locktime >= @minimum_time_locktime do
     %In{input | required_time_locktime: locktime}
   end
 
-  def add_required_height_locktime(input, locktime) when is_integer(locktime) and locktime < @minimum_time_locktime do
+  def add_field(input, :required_height_locktime, locktime) when is_integer(locktime) and locktime < @minimum_time_locktime do
     %In{input | required_height_locktime: locktime}
   end
 
-  def add_tap_key_sig(input, tap_key_sig) when is_binary(tap_key_sig) and byte_size(tap_key_sig) in [64, 65] do
+  def add_field(input, :tap_key_sig, tap_key_sig) when is_binary(tap_key_sig) and byte_size(tap_key_sig) in [64, 65] do
     %In{input | tap_key_sig: tap_key_sig}
   end
 
-
-  def add_tap_script_sig(input, tap_script_sig = %{pubkey: _, leaf_hash: _, signature: _}) do
+  def add_field(input, :tap_script_sig, tap_script_sig = %{pubkey: _, leaf_hash: _, signature: _}) do
     sigs = PsbtUtils.append(input.tap_script_sig, tap_script_sig)
     %In{input | tap_script_sig: sigs}
   end
 
   # TODO:taproot make this TapLeaf
-  def add_tap_leaf_script(input, tap_leaf_script = %{  leaf_version: _,  script: _,  control_block: _}) do
+  def add_field(input, :tap_leaf_script, tap_leaf_script = %{  leaf_version: _,  script: _,  control_block: _}) do
     scripts = PsbtUtils.append(input.tap_leaf_script, tap_leaf_script)
     %In{input | tap_leaf_script: scripts}
   end
 
-  def add_tap_bip32_derivation(input, tap_bip32_derivation = %{pubkey: _, leaf_hashes: _, pfp: _, derivation: _}) do
+  def add_field(input, :tap_bip32_derivation, tap_bip32_derivation = %{pubkey: _, leaf_hashes: _, pfp: _, derivation: _}) do
     derivations = PsbtUtils.append(input.tap_bip32_derivation, tap_bip32_derivation)
     %In{input | tap_bip32_derivation: derivations}
   end
 
-  def add_tap_internal_key(input, <<tap_internal_key::binary-size(32)>>) do
+  def add_field(input, :tap_internal_key, <<tap_internal_key::binary-size(32)>>) do
     %In{input | tap_internal_key: tap_internal_key}
   end
 
-  @spec add_tap_merkle_root(%In{}, <<_::256>>) :: %In{}
-  def add_tap_merkle_root(input, <<tap_merkle_root::binary-size(32)>>) do
+  def add_field(input, :tap_merkle_root, <<tap_merkle_root::binary-size(32)>>) do
     %In{input | tap_merkle_root: tap_merkle_root}
   end
 
-  @spec add_proprietary(%In{}, binary) :: %In{}
-  def add_proprietary(input, proprietary) when is_binary(proprietary) do
+  def add_field(input, :proprietary, proprietary) when is_binary(proprietary) do
     %In{input | proprietary: proprietary}
-  end
-
-  def add_unknown(input, kv) do
-    unknowns = PsbtUtils.append(input.unknown, kv)
-    %In{input | unknown: unknowns}
   end
 
   def parse_inputs(psbt, num_inputs) do
@@ -1223,66 +1239,47 @@ defmodule Bitcoinex.PSBT.Out do
   @psbt_out_tap_bip32_derivation 0x07
   @psbt_out_proprietary 0xFC
 
-  @spec add_redeem_script(%Out{}, binary) :: %Out{}
-  def add_redeem_script(output, redeem_script) when is_binary(redeem_script) and output.redeem_script == nil do
+  def add_field(output, :redeem_script, redeem_script) when is_binary(redeem_script) and output.redeem_script == nil do
     %Out{output | redeem_script: redeem_script}
   end
 
-  @spec add_witness_script(%Out{}, binary) :: %Out{}
-  def add_witness_script(output, witness_script) when is_binary(witness_script) and output.witness_script == nil do
+  def add_field(output, :witness_script, witness_script) when is_binary(witness_script) and output.witness_script == nil do
     %Out{output | witness_script: witness_script}
   end
 
-  @spec add_bip32_derivation(%Out{}, %{:derivation => any, :pfp => any, :public_key => any} ) :: %Out{}
-  def add_bip32_derivation(output, derivation = %{public_key: _, pfp: _, derivation: _}) do
+  def add_field(output, :bip32_derivation, derivation = %{public_key: _, pfp: _, derivation: _}) do
     # ensure no duplicate keys?
     derivations = PsbtUtils.append(output.bip32_derivation, derivation)
     %Out{output | bip32_derivation: derivations}
   end
 
-  @spec add_amount(%Out{}, non_neg_integer) :: %Out{}
-  def add_amount(output, amount) when is_integer(amount) and amount >= 0 do
+  def add_field(output, :amount, amount) when is_integer(amount) and amount >= 0 do
     %Out{output | amount: amount}
   end
 
-  @spec add_script(%Out{}, binary) :: %Out{}
-  def add_script(output, script) when is_binary(script) do
+  def add_field(output, :script, script) when is_binary(script) do
     %Out{output | script: script}
   end
 
-  @spec add_tap_internal_key(%Out{}, <<_::256>>) :: %Out{}
-  def add_tap_internal_key(output, pk) when is_binary(pk) do
+  def add_field(output, :tap_internal_key, pk) when is_binary(pk) do
     %Out{output | tap_internal_key: pk}
   end
 
   # TODO:taproot find a good format for taptree
-  @spec add_tap_tree(%Out{}, any) :: %Out{}
-  def add_tap_tree(output, _tree) do
+  def add_field(output, :tap_tree, _tree) do
     output
   end
 
-  @spec add_tap_bip32_derivation(
-          %Out{},
-          %{
-            :derivation => any,
-            :leaf_hashes => any,
-            :pfp => any,
-            :public_key => any
-          }
-        ) :: %Out{}
-  def add_tap_bip32_derivation(output, derivation = %{public_key: _, leaf_hashes: _, pfp: _, derivation: _}) do
+  def add_field(output, :tap_bip32_derivation, derivation = %{public_key: _, leaf_hashes: _, pfp: _, derivation: _}) do
     derivations = PsbtUtils.append(output.tap_bip32_derivation, derivation)
     %Out{output | tap_bip32_derivation: derivations}
   end
 
-  @spec add_proprietary(
-          %Out{},
-          binary
-        ) :: %Out{}
-  def add_proprietary(output, kv) when is_binary(kv) do
+  def add_field(output, :proprietary, kv) when is_binary(kv) do
     kvs = PsbtUtils.append(output.proprietary, kv)
     %Out{output | proprietary: kvs}
   end
+
   def serialize_outputs(outputs) when is_list(outputs) and length(outputs) > 0 do
     serialize_output(outputs, <<>>)
   end
