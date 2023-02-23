@@ -119,22 +119,19 @@ defmodule Bitcoinex.PSBT do
     %Bitcoinex.Transaction{tx | witnesses: witnesses, inputs: inputs}
   end
 
-  # Global
-
+  @spec add_global_field(PSBT.t(),atom,any) :: PSBT.t()
   def add_global_field(psbt, field, value) do
     global = Global.add_field(psbt.global, field, value)
     %PSBT{psbt | global: global}
   end
 
-  # Inputs
-
+  @spec add_input_field(PSBT.t(), integer, atom, any) :: PSBT.t()
   def add_input_field(psbt, input_idx, field, value) do
     inputs = Utils.set_item_field(psbt.inputs, input_idx, &In.add_field/3, field, value)
     %PSBT{psbt | inputs: inputs}
   end
 
-  # Outputs
-
+  @spec set_output_field(PSBT.t(), non_neg_integer, atom, any) :: PSBT.t()
   def set_output_field(psbt, output_idx, field, value) do
     outputs = Utils.set_item_field(psbt.outputs, output_idx, &Out.add_field/3, field, value)
     %PSBT{psbt | outputs: outputs}
@@ -320,7 +317,7 @@ defmodule Bitcoinex.PSBT.Global do
 
     case Transaction.decode(txn_bytes) do
       {:ok, txn} ->
-        global = add_unsigned_tx(global, txn)
+        global = add_field(global, :unsigned_tx, txn)
         {global, psbt}
 
       {:error, error_msg} ->
@@ -346,51 +343,51 @@ defmodule Bitcoinex.PSBT.Global do
       derivation: path
     }
 
-    global = add_xpub(global, global_xpub)
+    global = add_field(global, :xpub, global_xpub)
     {global, psbt}
   end
 
   defp parse(<<@psbt_global_tx_version::big-size(8)>>, psbt, global) do
     {<<value::little-size(32)>>, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    global = add_tx_version(global, value)
+    global = add_field(global, :tx_version, value)
     {global, psbt}
   end
 
   defp parse(<<@psbt_global_fallback_locktime::big-size(8)>>, psbt, global) do
     {<<value::little-size(32)>>, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    global = add_fallback_locktime(global, value)
+    global = add_field(global, :fallback_locktime, value)
     {global, psbt}
   end
 
   defp parse(<<@psbt_global_input_count::big-size(8)>>, psbt, global) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
     {input_count, _} = TxUtils.get_counter(value)
-    global = add_input_count(global, input_count)
+    global = add_field(global, :input_count, input_count)
     {global, psbt}
   end
 
   defp parse(<<@psbt_global_output_count::big-size(8)>>, psbt, global) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
     {output_count, _} = TxUtils.get_counter(value)
-    global = add_output_count(global, output_count)
+    global = add_field(global, :output_count, output_count)
     {global, psbt}
   end
 
   defp parse(<<@psbt_global_tx_modifiable::big-size(8)>>, psbt, global) do
     {<<value>>, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    global = add_tx_modifiable(global, value)
+    global = add_field(global, :tx_modifiable, value)
     {global, psbt}
   end
 
   defp parse(<<@psbt_global_version::big-size(8)>>, psbt, global) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    global = add_version(global, value)
+    global = add_field(global, :version, value)
     {global, psbt}
   end
 
   defp parse(<<@psbt_global_proprietary::big-size(8)>>, psbt, global) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    global = add_proprietary(global, value)
+    global = add_field(global, :proprietary, value)
     {global, psbt}
   end
 
@@ -962,14 +959,14 @@ defmodule Bitcoinex.PSBT.In do
   defp parse(<<@psbt_in_non_witness_utxo::big-size(8)>>, psbt, input) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
     {:ok, txn} = Transaction.decode(value)
-    input = add_non_witness_utxo(input, txn)
+    input = add_field(input, :non_witness_utxo, txn)
     {input, psbt}
   end
 
   defp parse(<<@psbt_in_witness_utxo::big-size(8)>>, psbt, input) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
     out = Out.output(value)
-    input = add_witness_utxo(input, out)
+    input = add_field(input, :witness_utxo, out)
     {input, psbt}
   end
 
@@ -981,26 +978,26 @@ defmodule Bitcoinex.PSBT.In do
       signature: Base.encode16(value, case: :lower)
     }
 
-    input = add_partial_sig(input, partial_sig)
+    input = add_field(input, :partial_sig, partial_sig)
 
     {input, psbt}
   end
 
   defp parse(<<@psbt_in_sighash_type::big-size(8)>>, psbt, input) do
     {<<value::little-size(32)>>, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    input = add_sighash_type(input, value)
+    input = add_field(input, :sighash_type, value)
     {input, psbt}
   end
 
   defp parse(<<@psbt_in_redeem_script::big-size(8)>>, psbt, input) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    input = add_redeem_script(input, Base.encode16(value, case: :lower))
+    input = add_field(input, :redeem_script, Base.encode16(value, case: :lower))
     {input, psbt}
   end
 
   defp parse(<<@psbt_in_witness_script::big-size(8)>>, psbt, input) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    input = add_witness_script(input, Base.encode16(value, case: :lower))
+    input = add_field(input, :witness_script, Base.encode16(value, case: :lower))
     {input, psbt}
   end
 
@@ -1015,19 +1012,19 @@ defmodule Bitcoinex.PSBT.In do
       derivation: path
     }
 
-    input = add_bip32_derivation(input, derivation)
+    input = add_field(input, :bip32_derivation, derivation)
     {input, psbt}
   end
 
   defp parse(<<@psbt_in_final_scriptsig::big-size(8)>>, psbt, input) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    input = add_final_scriptsig(input, Base.encode16(value, case: :lower))
+    input = add_field(input, :final_scriptsig, Base.encode16(value, case: :lower))
     {input, psbt}
   end
 
   defp parse(<<@psbt_in_por_commitment::big-size(8)>>, psbt, input) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    input = add_por_commitment(input, value)
+    input = add_field(input, :por_commitment, value)
     {input, psbt}
   end
 
@@ -1040,7 +1037,7 @@ defmodule Bitcoinex.PSBT.In do
       preimage: preimage
     }
 
-    input = add_ripemd160(input, data)
+    input = add_field(input, :ripemd160, data)
     {input, psbt}
   end
 
@@ -1053,7 +1050,7 @@ defmodule Bitcoinex.PSBT.In do
       preimage: preimage
     }
 
-    input = add_sha256(input, data)
+    input = add_field(input, :sha256, data)
     {input, psbt}
   end
 
@@ -1066,7 +1063,7 @@ defmodule Bitcoinex.PSBT.In do
       preimage: preimage
     }
 
-    input = add_hash160(input, data)
+    input = add_field(input, :hash160, data)
     {input, psbt}
   end
 
@@ -1079,43 +1076,43 @@ defmodule Bitcoinex.PSBT.In do
       preimage: preimage
     }
 
-    input = add_hash256(input, data)
+    input = add_field(input, :hash256, data)
     {input, psbt}
   end
 
   defp parse(<<@psbt_in_previous_txid::big-size(8)>>, psbt, input) do
     {value = <<_::binary-size(32)>>, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    input = add_previous_txid(input, value)
+    input = add_field(input, :previous_txid, value)
     {input, psbt}
   end
 
   defp parse(<<@psbt_in_output_index::big-size(8)>>, psbt, input) do
     {<<value::little-size(32)>>, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    input = add_output_index(input, value)
+    input = add_field(input, :output_index, value)
     {input, psbt}
   end
 
   defp parse(<<@psbt_in_sequence::big-size(8)>>, psbt, input) do
     {<<value::little-size(32)>>, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    input = add_sequence(input, value)
+    input = add_field(input, :sequence, value)
     {input, psbt}
   end
 
   defp parse(<<@psbt_in_required_time_locktime::big-size(8)>>, psbt, input) do
     {<<value::little-size(32)>>, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    input = add_required_time_locktime(input, value)
+    input = add_field(input, :required_time_locktime, value)
     {input, psbt}
   end
 
   defp parse(<<@psbt_in_required_height_locktime::big-size(8)>>, psbt, input) do
     {<<value::little-size(32)>>, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    input = add_required_height_locktime(input, value)
+    input = add_field(input, :required_height_locktime, value)
     {input, psbt}
   end
 
   defp parse(<<@psbt_in_tap_key_sig::big-size(8)>>, psbt, input) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    input = add_tap_key_sig(input, value)
+    input = add_field(input, :tap_key_sig, value)
     {input, psbt}
   end
 
@@ -1134,7 +1131,7 @@ defmodule Bitcoinex.PSBT.In do
       signature: value
     }
 
-    input = add_tap_script_sig(input, data)
+    input = add_field(input, :tap_script_sig, data)
     {input, psbt}
   end
 
@@ -1150,7 +1147,7 @@ defmodule Bitcoinex.PSBT.In do
       control_block: control_block
     }
 
-    input = add_tap_leaf_script(input, data)
+    input = add_field(input, :tap_leaf_script, data)
     {input, psbt}
   end
 
@@ -1168,32 +1165,32 @@ defmodule Bitcoinex.PSBT.In do
       derivation: path
     }
 
-    input = add_tap_bip32_derivation(input, derivation)
+    input = add_field(input, :tap_bip32_derivation, derivation)
     {input, psbt}
   end
 
   defp parse(<<@psbt_in_tap_internal_key::big-size(8)>>, psbt, input) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    input = add_tap_internal_key(input, value)
+    input = add_field(input, :tap_internal_key, value)
     {input, psbt}
   end
 
   defp parse(<<@psbt_in_tap_merkle_root::big-size(8)>>, psbt, input) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    input = add_tap_merkle_root(input, value)
+    input = add_field(input, :tap_merkle_root, value)
     {input, psbt}
   end
 
   defp parse(<<@psbt_in_proprietary::big-size(8)>>, psbt, input) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    input = add_proprietary(input, value)
+    input = add_field(input, :proprietary, value)
     {input, psbt}
   end
 
   defp parse(<<@psbt_in_final_scriptwitness::big-size(8)>>, psbt, input) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
     value = Witness.witness(value)
-    input = add_final_scriptwitness(input, value)
+    input = add_field(input, :final_scriptwitness, value)
     {input, psbt}
   end
 
@@ -1201,7 +1198,7 @@ defmodule Bitcoinex.PSBT.In do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
     kv = %{key: key, value: value}
 
-    input = add_unknown(input, kv)
+    input = add_field(input, :unknown, kv)
     {input, psbt}
   end
 end
@@ -1407,13 +1404,13 @@ defmodule Bitcoinex.PSBT.Out do
 
   defp parse(<<@psbt_out_redeem_script::big-size(8)>>, psbt, output) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    output = add_redeem_script(output, Base.encode16(value, case: :lower))
+    output = add_field(output, :redeem_script, Base.encode16(value, case: :lower))
     {output, psbt}
   end
 
   defp parse(<<@psbt_out_scriptwitness::big-size(8)>>, psbt, output) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    output = add_witness_script(output, Base.encode16(value, case: :lower))
+    output = add_field(output, :witness_script, Base.encode16(value, case: :lower))
     {output, psbt}
   end
 
@@ -1432,33 +1429,33 @@ defmodule Bitcoinex.PSBT.Out do
       derivation: path
     }
 
-    output = add_bip32_derivation(output, derivation)
+    output = add_field(output, :bip32_derivation, derivation)
     {output, psbt}
   end
 
   defp parse(<<@psbt_out_amount::big-size(8)>>, psbt, output) do
     {<<amount::little-size(64)>>, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    output = add_amount(output, amount)
+    output = add_field(output, :amount, amount)
     {output, psbt}
   end
 
   defp parse(<<@psbt_out_script::big-size(8)>>, psbt, output) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
     {:ok, _} = Script.parse_script(value)
-    output = add_script(output, value)
+    output = add_field(output, :script, value)
     {output, psbt}
   end
 
   defp parse(<<@psbt_out_tap_internal_key::big-size(8)>>, psbt, output) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    output = add_tap_internal_key(output, value)
+    output = add_field(output, :tap_internal_key, value)
     {output, psbt}
   end
 
   defp parse(<<@psbt_out_tap_tree::big-size(8)>>, psbt, output) do
     {tree, psbt} = PsbtUtils.parse_compact_size_value(psbt)
     leaves = parse_tap_tree(tree, [])
-    output = add_tap_tree(output, leaves)
+    output = add_field(output, :tap_tree, leaves)
     {output, psbt}
   end
 
@@ -1480,13 +1477,13 @@ defmodule Bitcoinex.PSBT.Out do
       derivation: path
     }
 
-    output = add_tap_bip32_derivation(output, derivation)
+    output = add_field(output, :tap_bip32_derivation, derivation)
     {output, psbt}
   end
 
   defp parse(<<@psbt_out_proprietary::big-size(8)>>, psbt, output) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    output = add_proprietary(output, value)
+    output = add_field(output, :proprietary, value)
     {output, psbt}
   end
 
