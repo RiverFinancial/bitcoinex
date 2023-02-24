@@ -117,7 +117,6 @@ defmodule Bitcoinex.PSBTTest do
             }
           ],
           version: 2,
-          witnesses: nil
         }
       },
       expected_in: [
@@ -290,7 +289,6 @@ defmodule Bitcoinex.PSBTTest do
       psbt:
         "cHNidP8BAKcBAAAAAjHC7gs4NF4rUOrlta+j+wB8UHTEuLn0XY6FDUcGybQMAAAAAAD+////NUUKTkDqBbL9oqrAIk9199/ZANXi/8XEgguqQY8iiewAAAAAAP7///8CdImYAAAAAAAiACCs+u6eefBEoqCFYVWhxscCwh/WJZ+286/E8zNH9gRhd4CWmAAAAAAAF6kUV3ZMSDpAgQZkllBPVNL5uRPlwOOHAAAAAAABASuAlpgAAAAAACIAIDH8Jza8S0T6nWkCcU5GqgwxJ2rGEgWFgDSGiJVFJ5W0AQj9/QAEAEgwRQIhALL4SZucnmwtsJ2BguTQkajOkbvRTRcIMF2B/c26pnZDAiAwNPAWsW3b3PxNXZouG43Z2HJ4WufvpjM0x+VlprgFUAFHMEQCIGV66oyrbw0b9HXA8EeGKrIi88YhTGuhpQKdDxX1VivPAiAcxSrameybDohX8yINx2t452PyyqP6qUiTUMNnoAv+twFpUiECZ3pcsDl1tPNTASW/gFEm/PlWLEnQJN5h32F5qmC2U6AhA1fyyfYB3ma7Vg6JKICdCsQFD7/IchNleJnjTaTGbCFgIQP8V/0ULlUTx5q8mJ6eJh6GaCHkHXDkTnmFbpZRGDsQVVOuAAEBK4CWmAAAAAAAIgAgi3WHXCAbeRTULI6EPlb3Z3+J153IX4zK5bHRsqnrSO4BCPwEAEcwRAIgelTwDK+TOYwP6luGb5htloRgijKLoLmNrjk9imXolaICIFQ9Rq0MrOGcrYHC6BZIyyz+tB0Lm8FhqnARl7R+TpyaAUcwRAIgfHNbxYLcTt1yWeADHyo5ye4jtApn+YTgFzK16IsOW0QCIDcOnv2QYaZlc0etz9kfIrkpoepeTndtvEREKROzqqlCAWlSIQIIPVGeoWYEHRGxyDhpzTqE0uBZIjBj5DDXgBX5QWwecCECL5C1pXxiQ5uiuhZASuHYEUq+gXmXqE+wxPnV590o+HAhA0odK6A98KAdcHcI5pcbNfwR1oq0PsofJzNfvSKkdqCMU64AAQFpUiECPhqS90SDpMEqGW1sAlOsWJz63Vlk/z5sY6711XcFHtQhAk0OObM6tXeCqY/Qan0GUzheUJ7jt03EVVnm22OR0xN4IQNsC65rywLkfIV8SA7R0jiIyK1qZrg6sRHLa5JCr7HHJVOuIgICPhqS90SDpMEqGW1sAlOsWJz63Vlk/z5sY6711XcFHtQgAAAAAAAAAIACAACAAgAAAAAAAAAAAAAAAQAAAA0AAAAiAgJNDjmzOrV3gqmP0Gp9BlM4XlCe47dNxFVZ5ttjkdMTeCAAAAAAAAAAgAIAAIACAAAAAAAAAAAAAAABAAAADQAAACICA2wLrmvLAuR8hXxIDtHSOIjIrWpmuDqxEctrkkKvscclIAAAAAAAAACAAgAAgAIAAAAAAAAAAAAAAAEAAAANAAAAAAA=",
       expected_global: %Global{
-        proprietary: nil,
         unsigned_tx: %Bitcoinex.Transaction{
           inputs: [
             %Bitcoinex.Transaction.In{
@@ -745,7 +743,6 @@ defmodule Bitcoinex.PSBTTest do
               script_pub_key: "a9143545e6e33b832c47050f24d3eeb93c9c03948bc787"
             }
           ],
-          witnesses: nil,
           lock_time: 1_257_139
         }
       },
@@ -753,6 +750,1823 @@ defmodule Bitcoinex.PSBTTest do
       expected_out: [
         %Out{},
         %Out{}
+      ]
+    },
+    # BIP 370 https://github.com/bitcoin/bips/blob/master/bip-0370.mediawiki#test-vectors
+    %{
+      psbt:
+        "cHNidP8BAgQCAAAAAQQBAQEFAQIB+wQCAAAAAAEOIAsK2SFBnByHGXNdctxzn56p4GONH+TB7vD5lECEgV/IAQ8EAAAAAAABAwgACK8vAAAAAAEEFgAUxDD2TEdW2jENvRoIVXLvKZkmJywAAQMIi73rCwAAAAABBBYAFE3Rk6yWSlasG54cyoRU/i9HT4UTAA==",
+      expected_global: %Global{
+        tx_version: 2,
+        input_count: 1,
+        output_count: 2,
+        version: 2
+      },
+      expected_in: [
+        %Bitcoinex.PSBT.In{
+          previous_txid:
+            <<11, 10, 217, 33, 65, 156, 28, 135, 25, 115, 93, 114, 220, 115, 159, 158, 169, 224,
+              99, 141, 31, 228, 193, 238, 240, 249, 148, 64, 132, 129, 95, 200>>,
+          output_index: 0
+        }
+      ],
+      expected_out: [
+        %Bitcoinex.PSBT.Out{
+          amount: 800_000_000,
+          script: %Bitcoinex.Script{
+            items: [
+              0,
+              20,
+              <<196, 48, 246, 76, 71, 86, 218, 49, 13, 189, 26, 8, 85, 114, 239, 41, 153, 38, 39,
+                44>>
+            ]
+          }
+        },
+        %Bitcoinex.PSBT.Out{
+          amount: 199_998_859,
+          script: %Bitcoinex.Script{
+            items: [
+              0,
+              20,
+              <<77, 209, 147, 172, 150, 74, 86, 172, 27, 158, 28, 202, 132, 84, 254, 47, 71, 79,
+                133, 19>>
+            ]
+          }
+        }
+      ]
+    },
+    %{
+      psbt:
+        "cHNidP8BAgQCAAAAAQQBAQEFAQIB+wQCAAAAAAEAUgIAAAABwaolbiFLlqGCL5PeQr/ztfP/jQUZMG41FddRWl6AWxIAAAAAAP////8BGMaaOwAAAAAWABSwo68UQghBJpPKfRZoUrUtsK7wbgAAAAABAR8Yxpo7AAAAABYAFLCjrxRCCEEmk8p9FmhStS2wrvBuAQ4gCwrZIUGcHIcZc11y3HOfnqngY40f5MHu8PmUQISBX8gBDwQAAAAAACICAtYB+EhGpnVfd2vgDj2d6PsQrMk1+4PEX7AWLUytWreSGPadhz5UAACAAQAAgAAAAIAAAAAAKgAAAAEDCAAIry8AAAAAAQQWABTEMPZMR1baMQ29GghVcu8pmSYnLAAiAgLjb7/1PdU0Bwz4/TlmFGgPNXqbhdtzQL8c+nRdKtezQBj2nYc+VAAAgAEAAIAAAACAAQAAAGQAAAABAwiLvesLAAAAAAEEFgAUTdGTrJZKVqwbnhzKhFT+L0dPhRMA",
+      expected_global: %Global{
+        tx_version: 2,
+        input_count: 1,
+        output_count: 2,
+        version: 2
+      },
+      expected_in: [
+        %In{
+          non_witness_utxo: %Bitcoinex.Transaction{
+            version: 2,
+            inputs: [
+              %Bitcoinex.Transaction.In{
+                prev_txid: "125b805e5a51d715356e3019058dfff3b5f3bf42de932f82a1964b216e25aac1",
+                prev_vout: 0,
+                script_sig: "",
+                sequence_no: 4_294_967_295
+              }
+            ],
+            outputs: [
+              %Bitcoinex.Transaction.Out{
+                value: 999_999_000,
+                script_pub_key: "0014b0a3af144208412693ca7d166852b52db0aef06e"
+              }
+            ],
+            lock_time: 0
+          },
+          witness_utxo: %Bitcoinex.Transaction.Out{
+            value: 999_999_000,
+            script_pub_key: "0014b0a3af144208412693ca7d166852b52db0aef06e"
+          },
+          previous_txid:
+            <<11, 10, 217, 33, 65, 156, 28, 135, 25, 115, 93, 114, 220, 115, 159, 158, 169, 224,
+              99, 141, 31, 228, 193, 238, 240, 249, 148, 64, 132, 129, 95, 200>>,
+          output_index: 0
+        }
+      ],
+      expected_out: [
+        %Bitcoinex.PSBT.Out{
+          bip32_derivation: [
+            %{
+              derivation: %Bitcoinex.ExtendedKey.DerivationPath{
+                child_nums: [2_147_483_732, 2_147_483_649, 2_147_483_648, 0, 42]
+              },
+              pfp: <<246, 157, 135, 62>>,
+              public_key: "02d601f84846a6755f776be00e3d9de8fb10acc935fb83c45fb0162d4cad5ab792"
+            }
+          ],
+          amount: 800_000_000,
+          script: %Bitcoinex.Script{
+            items: [
+              0,
+              20,
+              <<196, 48, 246, 76, 71, 86, 218, 49, 13, 189, 26, 8, 85, 114, 239, 41, 153, 38, 39,
+                44>>
+            ]
+          }
+        },
+        %Bitcoinex.PSBT.Out{
+          bip32_derivation: [
+            %{
+              derivation: %Bitcoinex.ExtendedKey.DerivationPath{
+                child_nums: [2_147_483_732, 2_147_483_649, 2_147_483_648, 1, 100]
+              },
+              pfp: <<246, 157, 135, 62>>,
+              public_key: "02e36fbff53dd534070cf8fd396614680f357a9b85db7340bf1cfa745d2ad7b340"
+            }
+          ],
+          amount: 199_998_859,
+          script: %Bitcoinex.Script{
+            items: [
+              0,
+              20,
+              <<77, 209, 147, 172, 150, 74, 86, 172, 27, 158, 28, 202, 132, 84, 254, 47, 71, 79,
+                133, 19>>
+            ]
+          }
+        }
+      ]
+    },
+    %{
+      psbt:
+        "cHNidP8BAgQCAAAAAQQBAQEFAQIB+wQCAAAAAAEAUgIAAAABwaolbiFLlqGCL5PeQr/ztfP/jQUZMG41FddRWl6AWxIAAAAAAP////8BGMaaOwAAAAAWABSwo68UQghBJpPKfRZoUrUtsK7wbgAAAAABAR8Yxpo7AAAAABYAFLCjrxRCCEEmk8p9FmhStS2wrvBuAQ4gCwrZIUGcHIcZc11y3HOfnqngY40f5MHu8PmUQISBX8gBDwQAAAAAARAE/v///wAiAgLWAfhIRqZ1X3dr4A49nej7EKzJNfuDxF+wFi1MrVq3khj2nYc+VAAAgAEAAIAAAACAAAAAACoAAAABAwgACK8vAAAAAAEEFgAUxDD2TEdW2jENvRoIVXLvKZkmJywAIgIC42+/9T3VNAcM+P05ZhRoDzV6m4Xbc0C/HPp0XSrXs0AY9p2HPlQAAIABAACAAAAAgAEAAABkAAAAAQMIi73rCwAAAAABBBYAFE3Rk6yWSlasG54cyoRU/i9HT4UTAA==",
+      expected_global: %Global{
+        tx_version: 2,
+        input_count: 1,
+        output_count: 2,
+        version: 2
+      },
+      expected_in: [
+        %Bitcoinex.PSBT.In{
+          non_witness_utxo: %Bitcoinex.Transaction{
+            version: 2,
+            inputs: [
+              %Bitcoinex.Transaction.In{
+                prev_txid: "125b805e5a51d715356e3019058dfff3b5f3bf42de932f82a1964b216e25aac1",
+                prev_vout: 0,
+                script_sig: "",
+                sequence_no: 4_294_967_295
+              }
+            ],
+            outputs: [
+              %Bitcoinex.Transaction.Out{
+                value: 999_999_000,
+                script_pub_key: "0014b0a3af144208412693ca7d166852b52db0aef06e"
+              }
+            ],
+            lock_time: 0
+          },
+          witness_utxo: %Bitcoinex.Transaction.Out{
+            value: 999_999_000,
+            script_pub_key: "0014b0a3af144208412693ca7d166852b52db0aef06e"
+          },
+          previous_txid:
+            <<11, 10, 217, 33, 65, 156, 28, 135, 25, 115, 93, 114, 220, 115, 159, 158, 169, 224,
+              99, 141, 31, 228, 193, 238, 240, 249, 148, 64, 132, 129, 95, 200>>,
+          output_index: 0,
+          sequence: 4_294_967_294
+        }
+      ],
+      expected_out: [
+        %Bitcoinex.PSBT.Out{
+          bip32_derivation: [
+            %{
+              derivation: %Bitcoinex.ExtendedKey.DerivationPath{
+                child_nums: [2_147_483_732, 2_147_483_649, 2_147_483_648, 0, 42]
+              },
+              pfp: <<246, 157, 135, 62>>,
+              public_key: "02d601f84846a6755f776be00e3d9de8fb10acc935fb83c45fb0162d4cad5ab792"
+            }
+          ],
+          amount: 800_000_000,
+          script: %Bitcoinex.Script{
+            items: [
+              0,
+              20,
+              <<196, 48, 246, 76, 71, 86, 218, 49, 13, 189, 26, 8, 85, 114, 239, 41, 153, 38, 39,
+                44>>
+            ]
+          }
+        },
+        %Bitcoinex.PSBT.Out{
+          bip32_derivation: [
+            %{
+              derivation: %Bitcoinex.ExtendedKey.DerivationPath{
+                child_nums: [2_147_483_732, 2_147_483_649, 2_147_483_648, 1, 100]
+              },
+              pfp: <<246, 157, 135, 62>>,
+              public_key: "02e36fbff53dd534070cf8fd396614680f357a9b85db7340bf1cfa745d2ad7b340"
+            }
+          ],
+          amount: 199_998_859,
+          script: %Bitcoinex.Script{
+            items: [
+              0,
+              20,
+              <<77, 209, 147, 172, 150, 74, 86, 172, 27, 158, 28, 202, 132, 84, 254, 47, 71, 79,
+                133, 19>>
+            ]
+          }
+        }
+      ]
+    },
+    %{
+      psbt:
+        "cHNidP8BAgQCAAAAAQMEAAAAAAEEAQEBBQECAfsEAgAAAAABAFICAAAAAcGqJW4hS5ahgi+T3kK/87Xz/40FGTBuNRXXUVpegFsSAAAAAAD/////ARjGmjsAAAAAFgAUsKOvFEIIQSaTyn0WaFK1LbCu8G4AAAAAAQEfGMaaOwAAAAAWABSwo68UQghBJpPKfRZoUrUtsK7wbgEOIAsK2SFBnByHGXNdctxzn56p4GONH+TB7vD5lECEgV/IAQ8EAAAAAAEQBP7///8BEQSMjcRiARIEECcAAAAiAgLWAfhIRqZ1X3dr4A49nej7EKzJNfuDxF+wFi1MrVq3khj2nYc+VAAAgAEAAIAAAACAAAAAACoAAAABAwgACK8vAAAAAAEEFgAUxDD2TEdW2jENvRoIVXLvKZkmJywAIgIC42+/9T3VNAcM+P05ZhRoDzV6m4Xbc0C/HPp0XSrXs0AY9p2HPlQAAIABAACAAAAAgAEAAABkAAAAAQMIi73rCwAAAAABBBYAFE3Rk6yWSlasG54cyoRU/i9HT4UTAA==",
+      expected_global: %Global{
+        tx_version: 2,
+        fallback_locktime: 0,
+        input_count: 1,
+        output_count: 2,
+        version: 2
+      },
+      expected_in: [
+        %Bitcoinex.PSBT.In{
+          non_witness_utxo: %Bitcoinex.Transaction{
+            version: 2,
+            inputs: [
+              %Bitcoinex.Transaction.In{
+                prev_txid: "125b805e5a51d715356e3019058dfff3b5f3bf42de932f82a1964b216e25aac1",
+                prev_vout: 0,
+                script_sig: "",
+                sequence_no: 4_294_967_295
+              }
+            ],
+            outputs: [
+              %Bitcoinex.Transaction.Out{
+                value: 999_999_000,
+                script_pub_key: "0014b0a3af144208412693ca7d166852b52db0aef06e"
+              }
+            ],
+            lock_time: 0
+          },
+          witness_utxo: %Bitcoinex.Transaction.Out{
+            value: 999_999_000,
+            script_pub_key: "0014b0a3af144208412693ca7d166852b52db0aef06e"
+          },
+          previous_txid:
+            <<11, 10, 217, 33, 65, 156, 28, 135, 25, 115, 93, 114, 220, 115, 159, 158, 169, 224,
+              99, 141, 31, 228, 193, 238, 240, 249, 148, 64, 132, 129, 95, 200>>,
+          output_index: 0,
+          sequence: 4_294_967_294,
+          required_time_locktime: 1_657_048_460,
+          required_height_locktime: 10000
+        }
+      ],
+      expected_out: [
+        %Bitcoinex.PSBT.Out{
+          bip32_derivation: [
+            %{
+              derivation: %Bitcoinex.ExtendedKey.DerivationPath{
+                child_nums: [2_147_483_732, 2_147_483_649, 2_147_483_648, 0, 42]
+              },
+              pfp: <<246, 157, 135, 62>>,
+              public_key: "02d601f84846a6755f776be00e3d9de8fb10acc935fb83c45fb0162d4cad5ab792"
+            }
+          ],
+          amount: 800_000_000,
+          script: %Bitcoinex.Script{
+            items: [
+              0,
+              20,
+              <<196, 48, 246, 76, 71, 86, 218, 49, 13, 189, 26, 8, 85, 114, 239, 41, 153, 38, 39,
+                44>>
+            ]
+          }
+        },
+        %Bitcoinex.PSBT.Out{
+          bip32_derivation: [
+            %{
+              derivation: %Bitcoinex.ExtendedKey.DerivationPath{
+                child_nums: [2_147_483_732, 2_147_483_649, 2_147_483_648, 1, 100]
+              },
+              pfp: <<246, 157, 135, 62>>,
+              public_key: "02e36fbff53dd534070cf8fd396614680f357a9b85db7340bf1cfa745d2ad7b340"
+            }
+          ],
+          amount: 199_998_859,
+          script: %Bitcoinex.Script{
+            items: [
+              0,
+              20,
+              <<77, 209, 147, 172, 150, 74, 86, 172, 27, 158, 28, 202, 132, 84, 254, 47, 71, 79,
+                133, 19>>
+            ]
+          }
+        }
+      ]
+    },
+    %{
+      psbt:
+        "cHNidP8BAgQCAAAAAQQBAQEFAQIBBgEBAfsEAgAAAAABAFICAAAAAcGqJW4hS5ahgi+T3kK/87Xz/40FGTBuNRXXUVpegFsSAAAAAAD/////ARjGmjsAAAAAFgAUsKOvFEIIQSaTyn0WaFK1LbCu8G4AAAAAAQEfGMaaOwAAAAAWABSwo68UQghBJpPKfRZoUrUtsK7wbgEOIAsK2SFBnByHGXNdctxzn56p4GONH+TB7vD5lECEgV/IAQ8EAAAAAAAiAgLWAfhIRqZ1X3dr4A49nej7EKzJNfuDxF+wFi1MrVq3khj2nYc+VAAAgAEAAIAAAACAAAAAACoAAAABAwgACK8vAAAAAAEEFgAUxDD2TEdW2jENvRoIVXLvKZkmJywAIgIC42+/9T3VNAcM+P05ZhRoDzV6m4Xbc0C/HPp0XSrXs0AY9p2HPlQAAIABAACAAAAAgAEAAABkAAAAAQMIi73rCwAAAAABBBYAFE3Rk6yWSlasG54cyoRU/i9HT4UTAA==",
+      expected_global: %Global{
+        tx_version: 2,
+        input_count: 1,
+        output_count: 2,
+        tx_modifiable: 1,
+        version: 2
+      },
+      expected_in: [
+        %Bitcoinex.PSBT.In{
+          non_witness_utxo: %Bitcoinex.Transaction{
+            version: 2,
+            inputs: [
+              %Bitcoinex.Transaction.In{
+                prev_txid: "125b805e5a51d715356e3019058dfff3b5f3bf42de932f82a1964b216e25aac1",
+                prev_vout: 0,
+                script_sig: "",
+                sequence_no: 4_294_967_295
+              }
+            ],
+            outputs: [
+              %Bitcoinex.Transaction.Out{
+                value: 999_999_000,
+                script_pub_key: "0014b0a3af144208412693ca7d166852b52db0aef06e"
+              }
+            ],
+            lock_time: 0
+          },
+          witness_utxo: %Bitcoinex.Transaction.Out{
+            value: 999_999_000,
+            script_pub_key: "0014b0a3af144208412693ca7d166852b52db0aef06e"
+          },
+          previous_txid:
+            <<11, 10, 217, 33, 65, 156, 28, 135, 25, 115, 93, 114, 220, 115, 159, 158, 169, 224,
+              99, 141, 31, 228, 193, 238, 240, 249, 148, 64, 132, 129, 95, 200>>,
+          output_index: 0
+        }
+      ],
+      expected_out: [
+        %Bitcoinex.PSBT.Out{
+          bip32_derivation: [
+            %{
+              derivation: %Bitcoinex.ExtendedKey.DerivationPath{
+                child_nums: [2_147_483_732, 2_147_483_649, 2_147_483_648, 0, 42]
+              },
+              pfp: <<246, 157, 135, 62>>,
+              public_key: "02d601f84846a6755f776be00e3d9de8fb10acc935fb83c45fb0162d4cad5ab792"
+            }
+          ],
+          amount: 800_000_000,
+          script: %Bitcoinex.Script{
+            items: [
+              0,
+              20,
+              <<196, 48, 246, 76, 71, 86, 218, 49, 13, 189, 26, 8, 85, 114, 239, 41, 153, 38, 39,
+                44>>
+            ]
+          }
+        },
+        %Bitcoinex.PSBT.Out{
+          bip32_derivation: [
+            %{
+              derivation: %Bitcoinex.ExtendedKey.DerivationPath{
+                child_nums: [2_147_483_732, 2_147_483_649, 2_147_483_648, 1, 100]
+              },
+              pfp: <<246, 157, 135, 62>>,
+              public_key: "02e36fbff53dd534070cf8fd396614680f357a9b85db7340bf1cfa745d2ad7b340"
+            }
+          ],
+          amount: 199_998_859,
+          script: %Bitcoinex.Script{
+            items: [
+              0,
+              20,
+              <<77, 209, 147, 172, 150, 74, 86, 172, 27, 158, 28, 202, 132, 84, 254, 47, 71, 79,
+                133, 19>>
+            ]
+          }
+        }
+      ]
+    },
+    %{
+      psbt:
+        "cHNidP8BAgQCAAAAAQQBAQEFAQIBBgECAfsEAgAAAAABAFICAAAAAcGqJW4hS5ahgi+T3kK/87Xz/40FGTBuNRXXUVpegFsSAAAAAAD/////ARjGmjsAAAAAFgAUsKOvFEIIQSaTyn0WaFK1LbCu8G4AAAAAAQEfGMaaOwAAAAAWABSwo68UQghBJpPKfRZoUrUtsK7wbgEOIAsK2SFBnByHGXNdctxzn56p4GONH+TB7vD5lECEgV/IAQ8EAAAAAAAiAgLWAfhIRqZ1X3dr4A49nej7EKzJNfuDxF+wFi1MrVq3khj2nYc+VAAAgAEAAIAAAACAAAAAACoAAAABAwgACK8vAAAAAAEEFgAUxDD2TEdW2jENvRoIVXLvKZkmJywAIgIC42+/9T3VNAcM+P05ZhRoDzV6m4Xbc0C/HPp0XSrXs0AY9p2HPlQAAIABAACAAAAAgAEAAABkAAAAAQMIi73rCwAAAAABBBYAFE3Rk6yWSlasG54cyoRU/i9HT4UTAA==",
+      expected_global: %Global{
+        tx_version: 2,
+        input_count: 1,
+        output_count: 2,
+        tx_modifiable: 2,
+        version: 2
+      },
+      expected_in: [
+        %Bitcoinex.PSBT.In{
+          non_witness_utxo: %Bitcoinex.Transaction{
+            version: 2,
+            inputs: [
+              %Bitcoinex.Transaction.In{
+                prev_txid: "125b805e5a51d715356e3019058dfff3b5f3bf42de932f82a1964b216e25aac1",
+                prev_vout: 0,
+                script_sig: "",
+                sequence_no: 4_294_967_295
+              }
+            ],
+            outputs: [
+              %Bitcoinex.Transaction.Out{
+                value: 999_999_000,
+                script_pub_key: "0014b0a3af144208412693ca7d166852b52db0aef06e"
+              }
+            ],
+            lock_time: 0
+          },
+          witness_utxo: %Bitcoinex.Transaction.Out{
+            value: 999_999_000,
+            script_pub_key: "0014b0a3af144208412693ca7d166852b52db0aef06e"
+          },
+          previous_txid:
+            <<11, 10, 217, 33, 65, 156, 28, 135, 25, 115, 93, 114, 220, 115, 159, 158, 169, 224,
+              99, 141, 31, 228, 193, 238, 240, 249, 148, 64, 132, 129, 95, 200>>,
+          output_index: 0
+        }
+      ],
+      expected_out: [
+        %Bitcoinex.PSBT.Out{
+          bip32_derivation: [
+            %{
+              derivation: %Bitcoinex.ExtendedKey.DerivationPath{
+                child_nums: [2_147_483_732, 2_147_483_649, 2_147_483_648, 0, 42]
+              },
+              pfp: <<246, 157, 135, 62>>,
+              public_key: "02d601f84846a6755f776be00e3d9de8fb10acc935fb83c45fb0162d4cad5ab792"
+            }
+          ],
+          amount: 800_000_000,
+          script: %Bitcoinex.Script{
+            items: [
+              0,
+              20,
+              <<196, 48, 246, 76, 71, 86, 218, 49, 13, 189, 26, 8, 85, 114, 239, 41, 153, 38, 39,
+                44>>
+            ]
+          }
+        },
+        %Bitcoinex.PSBT.Out{
+          bip32_derivation: [
+            %{
+              derivation: %Bitcoinex.ExtendedKey.DerivationPath{
+                child_nums: [2_147_483_732, 2_147_483_649, 2_147_483_648, 1, 100]
+              },
+              pfp: <<246, 157, 135, 62>>,
+              public_key: "02e36fbff53dd534070cf8fd396614680f357a9b85db7340bf1cfa745d2ad7b340"
+            }
+          ],
+          amount: 199_998_859,
+          script: %Bitcoinex.Script{
+            items: [
+              0,
+              20,
+              <<77, 209, 147, 172, 150, 74, 86, 172, 27, 158, 28, 202, 132, 84, 254, 47, 71, 79,
+                133, 19>>
+            ]
+          }
+        }
+      ]
+    },
+    %{
+      psbt:
+        "cHNidP8BAgQCAAAAAQQBAQEFAQIBBgEEAfsEAgAAAAABAFICAAAAAcGqJW4hS5ahgi+T3kK/87Xz/40FGTBuNRXXUVpegFsSAAAAAAD/////ARjGmjsAAAAAFgAUsKOvFEIIQSaTyn0WaFK1LbCu8G4AAAAAAQEfGMaaOwAAAAAWABSwo68UQghBJpPKfRZoUrUtsK7wbgEOIAsK2SFBnByHGXNdctxzn56p4GONH+TB7vD5lECEgV/IAQ8EAAAAAAAiAgLWAfhIRqZ1X3dr4A49nej7EKzJNfuDxF+wFi1MrVq3khj2nYc+VAAAgAEAAIAAAACAAAAAACoAAAABAwgACK8vAAAAAAEEFgAUxDD2TEdW2jENvRoIVXLvKZkmJywAIgIC42+/9T3VNAcM+P05ZhRoDzV6m4Xbc0C/HPp0XSrXs0AY9p2HPlQAAIABAACAAAAAgAEAAABkAAAAAQMIi73rCwAAAAABBBYAFE3Rk6yWSlasG54cyoRU/i9HT4UTAA==",
+      expected_global: %Global{
+        tx_version: 2,
+        input_count: 1,
+        output_count: 2,
+        tx_modifiable: 4,
+        version: 2,
+      },
+      expected_in: [
+        %Bitcoinex.PSBT.In{
+          non_witness_utxo: %Bitcoinex.Transaction{
+            version: 2,
+            inputs: [
+              %Bitcoinex.Transaction.In{
+                prev_txid: "125b805e5a51d715356e3019058dfff3b5f3bf42de932f82a1964b216e25aac1",
+                prev_vout: 0,
+                script_sig: "",
+                sequence_no: 4_294_967_295
+              }
+            ],
+            outputs: [
+              %Bitcoinex.Transaction.Out{
+                value: 999_999_000,
+                script_pub_key: "0014b0a3af144208412693ca7d166852b52db0aef06e"
+              }
+            ],
+            lock_time: 0
+          },
+          witness_utxo: %Bitcoinex.Transaction.Out{
+            value: 999_999_000,
+            script_pub_key: "0014b0a3af144208412693ca7d166852b52db0aef06e"
+          },
+          previous_txid:
+            <<11, 10, 217, 33, 65, 156, 28, 135, 25, 115, 93, 114, 220, 115, 159, 158, 169, 224,
+              99, 141, 31, 228, 193, 238, 240, 249, 148, 64, 132, 129, 95, 200>>,
+          output_index: 0,
+        }
+      ],
+      expected_out: [
+        %Bitcoinex.PSBT.Out{
+          bip32_derivation: [
+            %{
+              derivation: %Bitcoinex.ExtendedKey.DerivationPath{
+                child_nums: [2_147_483_732, 2_147_483_649, 2_147_483_648, 0, 42]
+              },
+              pfp: <<246, 157, 135, 62>>,
+              public_key: "02d601f84846a6755f776be00e3d9de8fb10acc935fb83c45fb0162d4cad5ab792"
+            }
+          ],
+          amount: 800_000_000,
+          script: %Bitcoinex.Script{
+            items: [
+              0,
+              20,
+              <<196, 48, 246, 76, 71, 86, 218, 49, 13, 189, 26, 8, 85, 114, 239, 41, 153, 38, 39,
+                44>>
+            ]
+          }
+        },
+        %Bitcoinex.PSBT.Out{
+          bip32_derivation: [
+            %{
+              derivation: %Bitcoinex.ExtendedKey.DerivationPath{
+                child_nums: [2_147_483_732, 2_147_483_649, 2_147_483_648, 1, 100]
+              },
+              pfp: <<246, 157, 135, 62>>,
+              public_key: "02e36fbff53dd534070cf8fd396614680f357a9b85db7340bf1cfa745d2ad7b340"
+            }
+          ],
+          amount: 199_998_859,
+          script: %Bitcoinex.Script{
+            items: [
+              0,
+              20,
+              <<77, 209, 147, 172, 150, 74, 86, 172, 27, 158, 28, 202, 132, 84, 254, 47, 71, 79,
+                133, 19>>
+            ]
+          }
+        }
+      ]
+    },
+    %{
+      psbt:
+        "cHNidP8BAgQCAAAAAQQBAQEFAQIBBgEIAfsEAgAAAAABAFICAAAAAcGqJW4hS5ahgi+T3kK/87Xz/40FGTBuNRXXUVpegFsSAAAAAAD/////ARjGmjsAAAAAFgAUsKOvFEIIQSaTyn0WaFK1LbCu8G4AAAAAAQEfGMaaOwAAAAAWABSwo68UQghBJpPKfRZoUrUtsK7wbgEOIAsK2SFBnByHGXNdctxzn56p4GONH+TB7vD5lECEgV/IAQ8EAAAAAAAiAgLWAfhIRqZ1X3dr4A49nej7EKzJNfuDxF+wFi1MrVq3khj2nYc+VAAAgAEAAIAAAACAAAAAACoAAAABAwgACK8vAAAAAAEEFgAUxDD2TEdW2jENvRoIVXLvKZkmJywAIgIC42+/9T3VNAcM+P05ZhRoDzV6m4Xbc0C/HPp0XSrXs0AY9p2HPlQAAIABAACAAAAAgAEAAABkAAAAAQMIi73rCwAAAAABBBYAFE3Rk6yWSlasG54cyoRU/i9HT4UTAA==",
+      expected_global: %Bitcoinex.PSBT.Global{
+        tx_version: 2,
+        input_count: 1,
+        output_count: 2,
+        tx_modifiable: 8,
+        version: 2
+      },
+      expected_in: [
+        %Bitcoinex.PSBT.In{
+          non_witness_utxo: %Bitcoinex.Transaction{
+            version: 2,
+            inputs: [
+              %Bitcoinex.Transaction.In{
+                prev_txid: "125b805e5a51d715356e3019058dfff3b5f3bf42de932f82a1964b216e25aac1",
+                prev_vout: 0,
+                script_sig: "",
+                sequence_no: 4_294_967_295
+              }
+            ],
+            outputs: [
+              %Bitcoinex.Transaction.Out{
+                value: 999_999_000,
+                script_pub_key: "0014b0a3af144208412693ca7d166852b52db0aef06e"
+              }
+            ],
+            lock_time: 0
+          },
+          witness_utxo: %Bitcoinex.Transaction.Out{
+            value: 999_999_000,
+            script_pub_key: "0014b0a3af144208412693ca7d166852b52db0aef06e"
+          },
+          previous_txid:
+            <<11, 10, 217, 33, 65, 156, 28, 135, 25, 115, 93, 114, 220, 115, 159, 158, 169, 224,
+              99, 141, 31, 228, 193, 238, 240, 249, 148, 64, 132, 129, 95, 200>>,
+          output_index: 0
+        }
+      ],
+      expected_out: [
+        %Bitcoinex.PSBT.Out{
+          bip32_derivation: [
+            %{
+              derivation: %Bitcoinex.ExtendedKey.DerivationPath{
+                child_nums: [2_147_483_732, 2_147_483_649, 2_147_483_648, 0, 42]
+              },
+              pfp: <<246, 157, 135, 62>>,
+              public_key: "02d601f84846a6755f776be00e3d9de8fb10acc935fb83c45fb0162d4cad5ab792"
+            }
+          ],
+          amount: 800_000_000,
+          script: %Bitcoinex.Script{
+            items: [
+              0,
+              20,
+              <<196, 48, 246, 76, 71, 86, 218, 49, 13, 189, 26, 8, 85, 114, 239, 41, 153, 38, 39,
+                44>>
+            ]
+          }
+        },
+        %Bitcoinex.PSBT.Out{
+          bip32_derivation: [
+            %{
+              derivation: %Bitcoinex.ExtendedKey.DerivationPath{
+                child_nums: [2_147_483_732, 2_147_483_649, 2_147_483_648, 1, 100]
+              },
+              pfp: <<246, 157, 135, 62>>,
+              public_key: "02e36fbff53dd534070cf8fd396614680f357a9b85db7340bf1cfa745d2ad7b340"
+            }
+          ],
+          amount: 199_998_859,
+          script: %Bitcoinex.Script{
+            items: [
+              0,
+              20,
+              <<77, 209, 147, 172, 150, 74, 86, 172, 27, 158, 28, 202, 132, 84, 254, 47, 71, 79,
+                133, 19>>
+            ]
+          }
+        }
+      ]
+    },
+    %{
+      psbt: "cHNidP8BAgQCAAAAAQQBAQEFAQIBBgEDAfsEAgAAAAABAFICAAAAAcGqJW4hS5ahgi+T3kK/87Xz/40FGTBuNRXXUVpegFsSAAAAAAD/////ARjGmjsAAAAAFgAUsKOvFEIIQSaTyn0WaFK1LbCu8G4AAAAAAQEfGMaaOwAAAAAWABSwo68UQghBJpPKfRZoUrUtsK7wbgEOIAsK2SFBnByHGXNdctxzn56p4GONH+TB7vD5lECEgV/IAQ8EAAAAAAAiAgLWAfhIRqZ1X3dr4A49nej7EKzJNfuDxF+wFi1MrVq3khj2nYc+VAAAgAEAAIAAAACAAAAAACoAAAABAwgACK8vAAAAAAEEFgAUxDD2TEdW2jENvRoIVXLvKZkmJywAIgIC42+/9T3VNAcM+P05ZhRoDzV6m4Xbc0C/HPp0XSrXs0AY9p2HPlQAAIABAACAAAAAgAEAAABkAAAAAQMIi73rCwAAAAABBBYAFE3Rk6yWSlasG54cyoRU/i9HT4UTAA==",
+      expected_global: %Global{
+        tx_version: 2,
+        input_count: 1,
+        output_count: 2,
+        tx_modifiable: 3,
+        version: 2,
+      },
+      expected_in: [
+        %Bitcoinex.PSBT.In{
+          non_witness_utxo: %Bitcoinex.Transaction{
+            version: 2,
+            inputs: [
+              %Bitcoinex.Transaction.In{
+                prev_txid: "125b805e5a51d715356e3019058dfff3b5f3bf42de932f82a1964b216e25aac1",
+                prev_vout: 0,
+                script_sig: "",
+                sequence_no: 4294967295
+              }
+            ],
+            outputs: [
+              %Bitcoinex.Transaction.Out{
+                value: 999999000,
+                script_pub_key: "0014b0a3af144208412693ca7d166852b52db0aef06e"
+              }
+            ],
+            lock_time: 0
+          },
+          witness_utxo: %Bitcoinex.Transaction.Out{
+            value: 999999000,
+            script_pub_key: "0014b0a3af144208412693ca7d166852b52db0aef06e"
+          },
+          previous_txid: <<11, 10, 217, 33, 65, 156, 28, 135, 25, 115, 93, 114, 220, 115, 159, 158, 169, 224,
+          99, 141, 31, 228, 193, 238, 240, 249, 148, 64, 132, 129, 95, 200>>,
+          output_index: 0,
+        }
+      ],
+      expected_out: [
+        %Bitcoinex.PSBT.Out{
+          bip32_derivation: [
+            %{
+              derivation: %Bitcoinex.ExtendedKey.DerivationPath{
+                child_nums: [2147483732, 2147483649, 2147483648, 0, 42]
+              },
+              pfp: <<246, 157, 135, 62>>,
+              public_key: "02d601f84846a6755f776be00e3d9de8fb10acc935fb83c45fb0162d4cad5ab792"
+            }
+          ],
+          amount: 800000000,
+          script: %Bitcoinex.Script{
+            items: [
+              0,
+              20,
+              <<196, 48, 246, 76, 71, 86, 218, 49, 13, 189, 26, 8, 85, 114, 239,
+                41, 153, 38, 39, 44>>
+            ]
+          },
+        },
+        %Bitcoinex.PSBT.Out{
+          bip32_derivation: [
+            %{
+              derivation: %Bitcoinex.ExtendedKey.DerivationPath{
+                child_nums: [2147483732, 2147483649, 2147483648, 1, 100]
+              },
+              pfp: <<246, 157, 135, 62>>,
+              public_key: "02e36fbff53dd534070cf8fd396614680f357a9b85db7340bf1cfa745d2ad7b340"
+            }
+          ],
+          amount: 199998859,
+          script: %Bitcoinex.Script{
+            items: [
+              0,
+              20,
+              <<77, 209, 147, 172, 150, 74, 86, 172, 27, 158, 28, 202, 132, 84,
+                254, 47, 71, 79, 133, 19>>
+            ]
+          },
+        }
+      ]
+    },
+    %{
+      psbt: "cHNidP8BAgQCAAAAAQQBAQEFAQIBBgEFAfsEAgAAAAABAFICAAAAAcGqJW4hS5ahgi+T3kK/87Xz/40FGTBuNRXXUVpegFsSAAAAAAD/////ARjGmjsAAAAAFgAUsKOvFEIIQSaTyn0WaFK1LbCu8G4AAAAAAQEfGMaaOwAAAAAWABSwo68UQghBJpPKfRZoUrUtsK7wbgEOIAsK2SFBnByHGXNdctxzn56p4GONH+TB7vD5lECEgV/IAQ8EAAAAAAAiAgLWAfhIRqZ1X3dr4A49nej7EKzJNfuDxF+wFi1MrVq3khj2nYc+VAAAgAEAAIAAAACAAAAAACoAAAABAwgACK8vAAAAAAEEFgAUxDD2TEdW2jENvRoIVXLvKZkmJywAIgIC42+/9T3VNAcM+P05ZhRoDzV6m4Xbc0C/HPp0XSrXs0AY9p2HPlQAAIABAACAAAAAgAEAAABkAAAAAQMIi73rCwAAAAABBBYAFE3Rk6yWSlasG54cyoRU/i9HT4UTAA==",
+      expected_global: %Global{
+        tx_version: 2,
+        input_count: 1,
+        output_count: 2,
+        tx_modifiable: 5,
+        version: 2,
+      },
+      expected_in: [
+        %Bitcoinex.PSBT.In{
+          non_witness_utxo: %Bitcoinex.Transaction{
+            version: 2,
+            inputs: [
+              %Bitcoinex.Transaction.In{
+                prev_txid: "125b805e5a51d715356e3019058dfff3b5f3bf42de932f82a1964b216e25aac1",
+                prev_vout: 0,
+                script_sig: "",
+                sequence_no: 4294967295
+              }
+            ],
+            outputs: [
+              %Bitcoinex.Transaction.Out{
+                value: 999999000,
+                script_pub_key: "0014b0a3af144208412693ca7d166852b52db0aef06e"
+              }
+            ],
+            lock_time: 0
+          },
+          witness_utxo: %Bitcoinex.Transaction.Out{
+            value: 999999000,
+            script_pub_key: "0014b0a3af144208412693ca7d166852b52db0aef06e"
+          },
+          previous_txid: <<11, 10, 217, 33, 65, 156, 28, 135, 25, 115, 93, 114, 220, 115, 159, 158, 169, 224,
+          99, 141, 31, 228, 193, 238, 240, 249, 148, 64, 132, 129, 95, 200>>,
+          output_index: 0,
+        }
+      ],
+      expected_out: [
+        %Bitcoinex.PSBT.Out{
+          bip32_derivation: [
+            %{
+              derivation: %Bitcoinex.ExtendedKey.DerivationPath{
+                child_nums: [2147483732, 2147483649, 2147483648, 0, 42]
+              },
+              pfp: <<246, 157, 135, 62>>,
+              public_key: "02d601f84846a6755f776be00e3d9de8fb10acc935fb83c45fb0162d4cad5ab792"
+            }
+          ],
+          amount: 800000000,
+          script: %Bitcoinex.Script{
+            items: [
+              0,
+              20,
+              <<196, 48, 246, 76, 71, 86, 218, 49, 13, 189, 26, 8, 85, 114, 239,
+                41, 153, 38, 39, 44>>
+            ]
+          },
+        },
+        %Bitcoinex.PSBT.Out{
+          bip32_derivation: [
+            %{
+              derivation: %Bitcoinex.ExtendedKey.DerivationPath{
+                child_nums: [2147483732, 2147483649, 2147483648, 1, 100]
+              },
+              pfp: <<246, 157, 135, 62>>,
+              public_key: "02e36fbff53dd534070cf8fd396614680f357a9b85db7340bf1cfa745d2ad7b340"
+            }
+          ],
+          amount: 199998859,
+          script: %Bitcoinex.Script{
+            items: [
+              0,
+              20,
+              <<77, 209, 147, 172, 150, 74, 86, 172, 27, 158, 28, 202, 132, 84,
+                254, 47, 71, 79, 133, 19>>
+            ]
+          },
+        }
+      ]
+    },
+    %{
+      psbt: "cHNidP8BAgQCAAAAAQQBAQEFAQIBBgEGAfsEAgAAAAABAFICAAAAAcGqJW4hS5ahgi+T3kK/87Xz/40FGTBuNRXXUVpegFsSAAAAAAD/////ARjGmjsAAAAAFgAUsKOvFEIIQSaTyn0WaFK1LbCu8G4AAAAAAQEfGMaaOwAAAAAWABSwo68UQghBJpPKfRZoUrUtsK7wbgEOIAsK2SFBnByHGXNdctxzn56p4GONH+TB7vD5lECEgV/IAQ8EAAAAAAAiAgLWAfhIRqZ1X3dr4A49nej7EKzJNfuDxF+wFi1MrVq3khj2nYc+VAAAgAEAAIAAAACAAAAAACoAAAABAwgACK8vAAAAAAEEFgAUxDD2TEdW2jENvRoIVXLvKZkmJywAIgIC42+/9T3VNAcM+P05ZhRoDzV6m4Xbc0C/HPp0XSrXs0AY9p2HPlQAAIABAACAAAAAgAEAAABkAAAAAQMIi73rCwAAAAABBBYAFE3Rk6yWSlasG54cyoRU/i9HT4UTAA==",
+      expected_global: %Global{
+        tx_version: 2,
+        input_count: 1,
+        output_count: 2,
+        tx_modifiable: 6,
+        version: 2,
+      },
+      expected_in: [
+        %Bitcoinex.PSBT.In{
+          non_witness_utxo: %Bitcoinex.Transaction{
+            version: 2,
+            inputs: [
+              %Bitcoinex.Transaction.In{
+                prev_txid: "125b805e5a51d715356e3019058dfff3b5f3bf42de932f82a1964b216e25aac1",
+                prev_vout: 0,
+                script_sig: "",
+                sequence_no: 4294967295
+              }
+            ],
+            outputs: [
+              %Bitcoinex.Transaction.Out{
+                value: 999999000,
+                script_pub_key: "0014b0a3af144208412693ca7d166852b52db0aef06e"
+              }
+            ],
+            lock_time: 0
+          },
+          witness_utxo: %Bitcoinex.Transaction.Out{
+            value: 999999000,
+            script_pub_key: "0014b0a3af144208412693ca7d166852b52db0aef06e"
+          },
+          previous_txid: <<11, 10, 217, 33, 65, 156, 28, 135, 25, 115, 93, 114, 220, 115, 159, 158, 169, 224,
+          99, 141, 31, 228, 193, 238, 240, 249, 148, 64, 132, 129, 95, 200>>,
+          output_index: 0,
+        }
+      ],
+      expected_out: [
+        %Bitcoinex.PSBT.Out{
+          bip32_derivation: [
+            %{
+              derivation: %Bitcoinex.ExtendedKey.DerivationPath{
+                child_nums: [2147483732, 2147483649, 2147483648, 0, 42]
+              },
+              pfp: <<246, 157, 135, 62>>,
+              public_key: "02d601f84846a6755f776be00e3d9de8fb10acc935fb83c45fb0162d4cad5ab792"
+            }
+          ],
+          amount: 800000000,
+          script: %Bitcoinex.Script{
+            items: [
+              0,
+              20,
+              <<196, 48, 246, 76, 71, 86, 218, 49, 13, 189, 26, 8, 85, 114, 239,
+                41, 153, 38, 39, 44>>
+            ]
+          },
+        },
+        %Bitcoinex.PSBT.Out{
+          bip32_derivation: [
+            %{
+              derivation: %Bitcoinex.ExtendedKey.DerivationPath{
+                child_nums: [2147483732, 2147483649, 2147483648, 1, 100]
+              },
+              pfp: <<246, 157, 135, 62>>,
+              public_key: "02e36fbff53dd534070cf8fd396614680f357a9b85db7340bf1cfa745d2ad7b340"
+            }
+          ],
+          amount: 199998859,
+          script: %Bitcoinex.Script{
+            items: [
+              0,
+              20,
+              <<77, 209, 147, 172, 150, 74, 86, 172, 27, 158, 28, 202, 132, 84,
+                254, 47, 71, 79, 133, 19>>
+            ]
+          },
+        }
+      ]
+    },
+    %{
+      psbt: "cHNidP8BAgQCAAAAAQQBAQEFAQIBBgEHAfsEAgAAAAABAFICAAAAAcGqJW4hS5ahgi+T3kK/87Xz/40FGTBuNRXXUVpegFsSAAAAAAD/////ARjGmjsAAAAAFgAUsKOvFEIIQSaTyn0WaFK1LbCu8G4AAAAAAQEfGMaaOwAAAAAWABSwo68UQghBJpPKfRZoUrUtsK7wbgEOIAsK2SFBnByHGXNdctxzn56p4GONH+TB7vD5lECEgV/IAQ8EAAAAAAAiAgLWAfhIRqZ1X3dr4A49nej7EKzJNfuDxF+wFi1MrVq3khj2nYc+VAAAgAEAAIAAAACAAAAAACoAAAABAwgACK8vAAAAAAEEFgAUxDD2TEdW2jENvRoIVXLvKZkmJywAIgIC42+/9T3VNAcM+P05ZhRoDzV6m4Xbc0C/HPp0XSrXs0AY9p2HPlQAAIABAACAAAAAgAEAAABkAAAAAQMIi73rCwAAAAABBBYAFE3Rk6yWSlasG54cyoRU/i9HT4UTAA==",
+      expected_global: %Global{
+        tx_version: 2,
+        input_count: 1,
+        output_count: 2,
+        tx_modifiable: 7,
+        version: 2,
+      },
+      expected_in: [
+        %Bitcoinex.PSBT.In{
+          non_witness_utxo: %Bitcoinex.Transaction{
+            version: 2,
+            inputs: [
+              %Bitcoinex.Transaction.In{
+                prev_txid: "125b805e5a51d715356e3019058dfff3b5f3bf42de932f82a1964b216e25aac1",
+                prev_vout: 0,
+                script_sig: "",
+                sequence_no: 4294967295
+              }
+            ],
+            outputs: [
+              %Bitcoinex.Transaction.Out{
+                value: 999999000,
+                script_pub_key: "0014b0a3af144208412693ca7d166852b52db0aef06e"
+              }
+            ],
+            lock_time: 0
+          },
+          witness_utxo: %Bitcoinex.Transaction.Out{
+            value: 999999000,
+            script_pub_key: "0014b0a3af144208412693ca7d166852b52db0aef06e"
+          },
+          previous_txid: <<11, 10, 217, 33, 65, 156, 28, 135, 25, 115, 93, 114, 220, 115, 159, 158, 169, 224,
+          99, 141, 31, 228, 193, 238, 240, 249, 148, 64, 132, 129, 95, 200>>,
+          output_index: 0,
+        }
+      ],
+
+      expected_out: [
+        %Bitcoinex.PSBT.Out{
+          bip32_derivation: [
+            %{
+              derivation: %Bitcoinex.ExtendedKey.DerivationPath{
+                child_nums: [2147483732, 2147483649, 2147483648, 0, 42]
+              },
+              pfp: <<246, 157, 135, 62>>,
+              public_key: "02d601f84846a6755f776be00e3d9de8fb10acc935fb83c45fb0162d4cad5ab792"
+            }
+          ],
+          amount: 800000000,
+          script: %Bitcoinex.Script{
+            items: [
+              0,
+              20,
+              <<196, 48, 246, 76, 71, 86, 218, 49, 13, 189, 26, 8, 85, 114, 239,
+                41, 153, 38, 39, 44>>
+            ]
+          },
+        },
+        %Bitcoinex.PSBT.Out{
+          bip32_derivation: [
+            %{
+              derivation: %Bitcoinex.ExtendedKey.DerivationPath{
+                child_nums: [2147483732, 2147483649, 2147483648, 1, 100]
+              },
+              pfp: <<246, 157, 135, 62>>,
+              public_key: "02e36fbff53dd534070cf8fd396614680f357a9b85db7340bf1cfa745d2ad7b340"
+            }
+          ],
+          amount: 199998859,
+          script: %Bitcoinex.Script{
+            items: [
+              0,
+              20,
+              <<77, 209, 147, 172, 150, 74, 86, 172, 27, 158, 28, 202, 132, 84,
+                254, 47, 71, 79, 133, 19>>
+            ]
+          },
+        }
+      ]
+    },
+    %{
+      psbt: "cHNidP8BAgQCAAAAAQQBAQEFAQIBBgH/AfsEAgAAAAABAFICAAAAAcGqJW4hS5ahgi+T3kK/87Xz/40FGTBuNRXXUVpegFsSAAAAAAD/////ARjGmjsAAAAAFgAUsKOvFEIIQSaTyn0WaFK1LbCu8G4AAAAAAQEfGMaaOwAAAAAWABSwo68UQghBJpPKfRZoUrUtsK7wbgEOIAsK2SFBnByHGXNdctxzn56p4GONH+TB7vD5lECEgV/IAQ8EAAAAAAAiAgLWAfhIRqZ1X3dr4A49nej7EKzJNfuDxF+wFi1MrVq3khj2nYc+VAAAgAEAAIAAAACAAAAAACoAAAABAwgACK8vAAAAAAEEFgAUxDD2TEdW2jENvRoIVXLvKZkmJywAIgIC42+/9T3VNAcM+P05ZhRoDzV6m4Xbc0C/HPp0XSrXs0AY9p2HPlQAAIABAACAAAAAgAEAAABkAAAAAQMIi73rCwAAAAABBBYAFE3Rk6yWSlasG54cyoRU/i9HT4UTAA==",
+      expected_global: %Global{
+        tx_version: 2,
+        input_count: 1,
+        output_count: 2,
+        tx_modifiable: 255,
+        version: 2,
+      },
+      expected_in: [
+        %Bitcoinex.PSBT.In{
+          non_witness_utxo: %Bitcoinex.Transaction{
+            version: 2,
+            inputs: [
+              %Bitcoinex.Transaction.In{
+                prev_txid: "125b805e5a51d715356e3019058dfff3b5f3bf42de932f82a1964b216e25aac1",
+                prev_vout: 0,
+                script_sig: "",
+                sequence_no: 4294967295
+              }
+            ],
+            outputs: [
+              %Bitcoinex.Transaction.Out{
+                value: 999999000,
+                script_pub_key: "0014b0a3af144208412693ca7d166852b52db0aef06e"
+              }
+            ],
+            lock_time: 0
+          },
+          witness_utxo: %Bitcoinex.Transaction.Out{
+            value: 999999000,
+            script_pub_key: "0014b0a3af144208412693ca7d166852b52db0aef06e"
+          },
+          previous_txid: <<11, 10, 217, 33, 65, 156, 28, 135, 25, 115, 93, 114, 220, 115, 159, 158, 169, 224,
+          99, 141, 31, 228, 193, 238, 240, 249, 148, 64, 132, 129, 95, 200>>,
+          output_index: 0,
+        }
+      ],
+      expected_out: [
+        %Bitcoinex.PSBT.Out{
+          bip32_derivation: [
+            %{
+              derivation: %Bitcoinex.ExtendedKey.DerivationPath{
+                child_nums: [2147483732, 2147483649, 2147483648, 0, 42]
+              },
+              pfp: <<246, 157, 135, 62>>,
+              public_key: "02d601f84846a6755f776be00e3d9de8fb10acc935fb83c45fb0162d4cad5ab792"
+            }
+          ],
+          amount: 800000000,
+          script: %Bitcoinex.Script{
+            items: [
+              0,
+              20,
+              <<196, 48, 246, 76, 71, 86, 218, 49, 13, 189, 26, 8, 85, 114, 239,
+                41, 153, 38, 39, 44>>
+            ]
+          },
+        },
+        %Bitcoinex.PSBT.Out{
+          bip32_derivation: [
+            %{
+              derivation: %Bitcoinex.ExtendedKey.DerivationPath{
+                child_nums: [2147483732, 2147483649, 2147483648, 1, 100]
+              },
+              pfp: <<246, 157, 135, 62>>,
+              public_key: "02e36fbff53dd534070cf8fd396614680f357a9b85db7340bf1cfa745d2ad7b340"
+            }
+          ],
+          amount: 199998859,
+          script: %Bitcoinex.Script{
+            items: [
+              0,
+              20,
+              <<77, 209, 147, 172, 150, 74, 86, 172, 27, 158, 28, 202, 132, 84,
+                254, 47, 71, 79, 133, 19>>
+            ]
+          },
+        }
+      ]
+    },
+    %{
+      psbt: "cHNidP8BAgQCAAAAAQMEAAAAAAEEAQEBBQECAQYBBwH7BAIAAAAAAQBSAgAAAAHBqiVuIUuWoYIvk95Cv/O18/+NBRkwbjUV11FaXoBbEgAAAAAA/////wEYxpo7AAAAABYAFLCjrxRCCEEmk8p9FmhStS2wrvBuAAAAAAEBHxjGmjsAAAAAFgAUsKOvFEIIQSaTyn0WaFK1LbCu8G4BDiALCtkhQZwchxlzXXLcc5+eqeBjjR/kwe7w+ZRAhIFfyAEPBAAAAAABEAT+////AREEjI3EYgESBBAnAAAAIgIC1gH4SEamdV93a+AOPZ3o+xCsyTX7g8RfsBYtTK1at5IY9p2HPlQAAIABAACAAAAAgAAAAAAqAAAAAQMIAAivLwAAAAABBBYAFMQw9kxHVtoxDb0aCFVy7ymZJicsACICAuNvv/U91TQHDPj9OWYUaA81epuF23NAvxz6dF0q17NAGPadhz5UAACAAQAAgAAAAIABAAAAZAAAAAEDCIu96wsAAAAAAQQWABRN0ZOslkpWrBueHMqEVP4vR0+FEwA=",
+      expected_global: %Global{
+        tx_version: 2,
+        fallback_locktime: 0,
+        input_count: 1,
+        output_count: 2,
+        tx_modifiable: 7,
+        version: 2,
+      },
+      expected_in: [
+        %Bitcoinex.PSBT.In{
+          non_witness_utxo: %Bitcoinex.Transaction{
+            version: 2,
+            inputs: [
+              %Bitcoinex.Transaction.In{
+                prev_txid: "125b805e5a51d715356e3019058dfff3b5f3bf42de932f82a1964b216e25aac1",
+                prev_vout: 0,
+                script_sig: "",
+                sequence_no: 4294967295
+              }
+            ],
+            outputs: [
+              %Bitcoinex.Transaction.Out{
+                value: 999999000,
+                script_pub_key: "0014b0a3af144208412693ca7d166852b52db0aef06e"
+              }
+            ],
+            lock_time: 0
+          },
+          witness_utxo: %Bitcoinex.Transaction.Out{
+            value: 999999000,
+            script_pub_key: "0014b0a3af144208412693ca7d166852b52db0aef06e"
+          },
+          previous_txid: <<11, 10, 217, 33, 65, 156, 28, 135, 25, 115, 93, 114, 220, 115, 159, 158, 169, 224,
+          99, 141, 31, 228, 193, 238, 240, 249, 148, 64, 132, 129, 95, 200>>,
+          output_index: 0,
+          sequence: 4294967294,
+          required_time_locktime: 1657048460,
+          required_height_locktime: 10000,
+        }
+      ],
+      expected_out: [
+        %Bitcoinex.PSBT.Out{
+          bip32_derivation: [
+            %{
+              derivation: %Bitcoinex.ExtendedKey.DerivationPath{
+                child_nums: [2147483732, 2147483649, 2147483648, 0, 42]
+              },
+              pfp: <<246, 157, 135, 62>>,
+              public_key: "02d601f84846a6755f776be00e3d9de8fb10acc935fb83c45fb0162d4cad5ab792"
+            }
+          ],
+          amount: 800000000,
+          script: %Bitcoinex.Script{
+            items: [
+              0,
+              20,
+              <<196, 48, 246, 76, 71, 86, 218, 49, 13, 189, 26, 8, 85, 114, 239,
+                41, 153, 38, 39, 44>>
+            ]
+          },
+        },
+        %Bitcoinex.PSBT.Out{
+          bip32_derivation: [
+            %{
+              derivation: %Bitcoinex.ExtendedKey.DerivationPath{
+                child_nums: [2147483732, 2147483649, 2147483648, 1, 100]
+              },
+              pfp: <<246, 157, 135, 62>>,
+              public_key: "02e36fbff53dd534070cf8fd396614680f357a9b85db7340bf1cfa745d2ad7b340"
+            }
+          ],
+          amount: 199998859,
+          script: %Bitcoinex.Script{
+            items: [
+              0,
+              20,
+              <<77, 209, 147, 172, 150, 74, 86, 172, 27, 158, 28, 202, 132, 84,
+                254, 47, 71, 79, 133, 19>>
+            ]
+          },
+        }
+      ]
+    },
+    # BIP 371 https://github.com/bitcoin/bips/blob/master/bip-0371.mediawiki#test-vectors
+    %{
+      psbt: "cHNidP8BAFICAAAAASd0Srq/MCf+DWzyOpbu4u+xiO9SMBlUWFiD5ptmJLJCAAAAAAD/////AUjmBSoBAAAAFgAUdo4e60z0IIZgM/gKzv8PlyB0SWkAAAAAAAEBKwDyBSoBAAAAIlEgWiws9bUs8x+DrS6Npj/wMYPs2PYJx1EK6KSOA5EKB1chFv40kGTJjW4qhT+jybEr2LMEoZwZXGDvp+4jkwRtP6IyGQB3Ky2nVgAAgAEAAIAAAACAAQAAAAAAAAABFyD+NJBkyY1uKoU/o8mxK9izBKGcGVxg76fuI5MEbT+iMgAiAgNrdyptt02HU8mKgnlY3mx4qzMSEJ830+AwRIQkLs5z2Bh3Ky2nVAAAgAEAAIAAAACAAAAAAAAAAAAA",
+      expected_global: %Global{
+        unsigned_tx: %Bitcoinex.Transaction{
+          version: 2,
+          inputs: [
+            %Bitcoinex.Transaction.In{
+              prev_txid: "42b224669be683585854193052ef88b1efe2ee963af26c0dfe2730bfba4a7427",
+              prev_vout: 0,
+              script_sig: "",
+              sequence_no: 4294967295
+            }
+          ],
+          outputs: [
+            %Bitcoinex.Transaction.Out{
+              value: 4999997000,
+              script_pub_key: "0014768e1eeb4cf420866033f80aceff0f9720744969"
+            }
+          ],
+          lock_time: 0
+        }
+      },
+      expected_in: [
+        %Bitcoinex.PSBT.In{
+          witness_utxo: %Bitcoinex.Transaction.Out{
+            value: 5000000000,
+            script_pub_key: "51205a2c2cf5b52cf31f83ad2e8da63ff03183ecd8f609c7510ae8a48e03910a0757"
+          },
+          tap_bip32_derivation: [
+            %{
+              derivation: %Bitcoinex.ExtendedKey.DerivationPath{
+                child_nums: [2147483734, 2147483649, 2147483648, 1, 0]
+              },
+              leaf_hashes: [],
+              pfp: <<119, 43, 45, 167>>,
+              pubkey: <<254, 52, 144, 100, 201, 141, 110, 42, 133, 63, 163, 201, 177, 43,
+              216, 179, 4, 161, 156, 25, 92, 96, 239, 167, 238, 35, 147, 4, 109, 63,
+              162, 50>>
+            }
+          ],
+          tap_internal_key: <<254, 52, 144, 100, 201, 141, 110, 42, 133, 63, 163, 201, 177, 43, 216, 179, 4,
+          161, 156, 25, 92, 96, 239, 167, 238, 35, 147, 4, 109, 63, 162, 50>>
+        }
+      ],
+      expected_out: [
+        %Bitcoinex.PSBT.Out{
+          bip32_derivation: [
+            %{
+              derivation: %Bitcoinex.ExtendedKey.DerivationPath{
+                child_nums: [2147483732, 2147483649, 2147483648, 0, 0]
+              },
+              pfp: <<119, 43, 45, 167>>,
+              public_key: "036b772a6db74d8753c98a827958de6c78ab3312109f37d3e0304484242ece73d8"
+            }
+          ]
+        }
+      ]
+    },
+    %{
+      psbt: "cHNidP8BAFICAAAAASd0Srq/MCf+DWzyOpbu4u+xiO9SMBlUWFiD5ptmJLJCAAAAAAD/////AUjmBSoBAAAAFgAUdo4e60z0IIZgM/gKzv8PlyB0SWkAAAAAAAEBKwDyBSoBAAAAIlEgWiws9bUs8x+DrS6Npj/wMYPs2PYJx1EK6KSOA5EKB1cBE0C7U+yRe62dkGrxuocYHEi4as5aritTYFpyXKdGJWMUdvxvW67a9PLuD0d/NvWPOXDVuCc7fkl7l68uPxJcl680IRb+NJBkyY1uKoU/o8mxK9izBKGcGVxg76fuI5MEbT+iMhkAdystp1YAAIABAACAAAAAgAEAAAAAAAAAARcg/jSQZMmNbiqFP6PJsSvYswShnBlcYO+n7iOTBG0/ojIAIgIDa3cqbbdNh1PJioJ5WN5seKszEhCfN9PgMESEJC7Oc9gYdystp1QAAIABAACAAAAAgAAAAAAAAAAAAA==",
+      expected_global: %Bitcoinex.PSBT.Global{
+        unsigned_tx: %Bitcoinex.Transaction{
+          version: 2,
+          inputs: [
+            %Bitcoinex.Transaction.In{
+              prev_txid: "42b224669be683585854193052ef88b1efe2ee963af26c0dfe2730bfba4a7427",
+              prev_vout: 0,
+              script_sig: "",
+              sequence_no: 4294967295
+            }
+          ],
+          outputs: [
+            %Bitcoinex.Transaction.Out{
+              value: 4999997000,
+              script_pub_key: "0014768e1eeb4cf420866033f80aceff0f9720744969"
+            }
+          ],
+          lock_time: 0
+        },
+      },
+
+      expected_in: [
+        %Bitcoinex.PSBT.In{
+          witness_utxo: %Bitcoinex.Transaction.Out{
+            value: 5000000000,
+            script_pub_key: "51205a2c2cf5b52cf31f83ad2e8da63ff03183ecd8f609c7510ae8a48e03910a0757"
+          },
+          tap_key_sig: <<187, 83, 236, 145, 123, 173, 157, 144, 106, 241, 186, 135, 24, 28, 72, 184,
+          106, 206, 90, 174, 43, 83, 96, 90, 114, 92, 167, 70, 37, 99, 20, 118, 252, 111, 91, 174, 218, 244, 242, 238, 15, 71, 127, 54, 245, 143, 57, 112,
+          213, 184, 39, 59, 126, 73, 123, 151, 175, 46, 63, 18, 92, 151, 175, 52>>,
+          tap_bip32_derivation: [
+            %{
+              derivation: %Bitcoinex.ExtendedKey.DerivationPath{
+                child_nums: [2147483734, 2147483649, 2147483648, 1, 0]
+              },
+              leaf_hashes: [],
+              pfp: <<119, 43, 45, 167>>,
+              pubkey: <<254, 52, 144, 100, 201, 141, 110, 42, 133, 63, 163, 201, 177, 43, 216, 179, 4,161, 156, 25, 92, 96, 239, 167, 238, 35, 147, 4, 109, 63, 162, 50>>
+            }
+          ],
+          tap_internal_key: <<254, 52, 144, 100, 201, 141, 110, 42, 133, 63, 163, 201, 177, 43, 216, 179, 4,161, 156, 25, 92, 96, 239, 167, 238, 35, 147, 4, 109, 63, 162, 50>> ,
+        }
+      ],
+      expected_out: [
+        %Bitcoinex.PSBT.Out{
+          bip32_derivation: [
+            %{
+              derivation: %Bitcoinex.ExtendedKey.DerivationPath{
+                child_nums: [2147483732, 2147483649, 2147483648, 0, 0]
+              },
+              pfp: <<119, 43, 45, 167>>,
+              public_key: "036b772a6db74d8753c98a827958de6c78ab3312109f37d3e0304484242ece73d8"
+            }
+          ],
+        }
+      ]
+    },
+    %{
+      psbt: "cHNidP8BAF4CAAAAASd0Srq/MCf+DWzyOpbu4u+xiO9SMBlUWFiD5ptmJLJCAAAAAAD/////AUjmBSoBAAAAIlEgg2mORYxmZOFZXXXaJZfeHiLul9eY5wbEwKS1qYI810MAAAAAAAEBKwDyBSoBAAAAIlEgWiws9bUs8x+DrS6Npj/wMYPs2PYJx1EK6KSOA5EKB1chFv40kGTJjW4qhT+jybEr2LMEoZwZXGDvp+4jkwRtP6IyGQB3Ky2nVgAAgAEAAIAAAACAAQAAAAAAAAABFyD+NJBkyY1uKoU/o8mxK9izBKGcGVxg76fuI5MEbT+iMgABBSARJNp67JLM0GyVRWJkf0N7E4uVchqEvivyJ2u92rPmcSEHESTaeuySzNBslUViZH9DexOLlXIahL4r8idrvdqz5nEZAHcrLadWAACAAQAAgAAAAIAAAAAABQAAAAA=",
+      expected_global: %Global{
+        unsigned_tx: %Bitcoinex.Transaction{
+          version: 2,
+          inputs: [
+            %Bitcoinex.Transaction.In{
+              prev_txid: "42b224669be683585854193052ef88b1efe2ee963af26c0dfe2730bfba4a7427",
+              prev_vout: 0,
+              script_sig: "",
+              sequence_no: 4294967295
+            }
+          ],
+          outputs: [
+            %Bitcoinex.Transaction.Out{
+              value: 4999997000,
+              script_pub_key: "512083698e458c6664e1595d75da2597de1e22ee97d798e706c4c0a4b5a9823cd743"
+            }
+          ],
+          lock_time: 0
+        },
+      },
+      expected_in: [
+        %Bitcoinex.PSBT.In{
+          witness_utxo: %Bitcoinex.Transaction.Out{
+            value: 5000000000,
+            script_pub_key: "51205a2c2cf5b52cf31f83ad2e8da63ff03183ecd8f609c7510ae8a48e03910a0757"
+          },
+          tap_bip32_derivation: [
+            %{
+              derivation: %Bitcoinex.ExtendedKey.DerivationPath{
+                child_nums: [2147483734, 2147483649, 2147483648, 1, 0]
+              },
+              leaf_hashes: [],
+              pfp: <<119, 43, 45, 167>>,
+              pubkey: <<254, 52, 144, 100, 201, 141, 110, 42, 133, 63, 163, 201, 177, 43, 216, 179, 4,
+              161, 156, 25, 92, 96, 239, 167, 238, 35, 147, 4, 109, 63, 162, 50>>
+            }
+          ],
+          tap_internal_key: <<254, 52, 144, 100, 201, 141, 110, 42, 133, 63, 163, 201, 177, 43, 216, 179, 4,
+          161, 156, 25, 92, 96, 239, 167, 238, 35, 147, 4, 109, 63, 162, 50>>,
+        }
+      ],
+      expected_out: [
+        %Bitcoinex.PSBT.Out{
+          tap_internal_key: <<17, 36, 218, 122, 236, 146, 204, 208, 108, 149, 69,
+            98, 100, 127, 67, 123, 19, 139, 149, 114, 26, 132, 190, 43, 242, 39,
+            107, 189, 218, 179, 230, 113>>,
+          tap_bip32_derivation: [
+            %{
+              derivation: %Bitcoinex.ExtendedKey.DerivationPath{
+                child_nums: [2147483734, 2147483649, 2147483648, 0, 5]
+              },
+              leaf_hashes: [],
+              pfp: <<119, 43, 45, 167>>,
+              pubkey:  <<17, 36, 218, 122, 236, 146, 204, 208, 108, 149, 69, 98, 100, 127,
+              67, 123, 19, 139, 149, 114, 26, 132, 190, 43, 242, 39, 107, 189, 218, 179,
+              230, 113>>
+            }
+          ],
+        }
+      ]
+    },
+    %{
+      psbt: "cHNidP8BAF4CAAAAAZvUh2UjC/mnLmYgAflyVW5U8Mb5f+tWvLVgDYF/aZUmAQAAAAD/////AUjmBSoBAAAAIlEgg2mORYxmZOFZXXXaJZfeHiLul9eY5wbEwKS1qYI810MAAAAAAAEBKwDyBSoBAAAAIlEgwiR++/2SrEf29AuNQtFpF1oZ+p+hDkol1/NetN2FtpJiFcFQkpt0waBJVLeLS2A16XpeB4paDyjsltVHv+6azoA6wG99YgWelJehpKJnVp2YdtpgEBr/OONSm5uTnOf5GulwEV8uSQr3zEXE94UR82BXzlxaXFYyWin7RN/CA/NW4fgjICyxOsaCSN6AaqajZZzzwD62gh0JyBFKToaP696GW7bSrMBCFcFQkpt0waBJVLeLS2A16XpeB4paDyjsltVHv+6azoA6wJfG5v6l/3FP9XJEmZkIEOQG6YqhD1v35fZ4S8HQqabOIyBDILC/FvARtT6nvmFZJKp/J+XSmtIOoRVdhIZ2w7rRsqzAYhXBUJKbdMGgSVS3i0tgNel6XgeKWg8o7JbVR7/ums6AOsDNlw4V9T/AyC+VD9Vg/6kZt2FyvgFzaKiZE68HT0ALCRFfLkkK98xFxPeFEfNgV85cWlxWMlop+0TfwgPzVuH4IyD6D3o87zsdDAps59JuF62gsuXJLRnvrUi0GFnLikUcqazAIRYssTrGgkjegGqmo2Wc88A+toIdCcgRSk6Gj+vehlu20jkBzZcOFfU/wMgvlQ/VYP+pGbdhcr4Bc2iomROvB09ACwl3Ky2nVgAAgAEAAIACAACAAAAAAAAAAAAhFkMgsL8W8BG1Pqe+YVkkqn8n5dKa0g6hFV2EhnbDutGyOQERXy5JCvfMRcT3hRHzYFfOXFpcVjJaKftE38ID81bh+HcrLadWAACAAQAAgAEAAIAAAAAAAAAAACEWUJKbdMGgSVS3i0tgNel6XgeKWg8o7JbVR7/ums6AOsAFAHxGHl0hFvoPejzvOx0MCmzn0m4XraCy5cktGe+tSLQYWcuKRRypOQFvfWIFnpSXoaSiZ1admHbaYBAa/zjjUpubk5zn+RrpcHcrLadWAACAAQAAgAMAAIAAAAAAAAAAAAEXIFCSm3TBoElUt4tLYDXpel4HiloPKOyW1Ue/7prOgDrAARgg8DYuL3Wm9CClvePrIh2WrmcgzyX4GJDJWx13WstRXmUAAQUgESTaeuySzNBslUViZH9DexOLlXIahL4r8idrvdqz5nEhBxEk2nrskszQbJVFYmR/Q3sTi5VyGoS+K/Ina73as+ZxGQB3Ky2nVgAAgAEAAIAAAACAAAAAAAUAAAAA",
+      expected_global: %Global{
+        unsigned_tx: %Bitcoinex.Transaction{
+          version: 2,
+          inputs: [
+            %Bitcoinex.Transaction.In{
+              prev_txid: "2695697f810d60b5bc56eb7ff9c6f0546e5572f90120662ea7f90b236587d49b",
+              prev_vout: 1,
+              script_sig: "",
+              sequence_no: 4294967295
+            }
+          ],
+          outputs: [
+            %Bitcoinex.Transaction.Out{
+              value: 4999997000,
+              script_pub_key: "512083698e458c6664e1595d75da2597de1e22ee97d798e706c4c0a4b5a9823cd743"
+            }
+          ],
+          lock_time: 0
+        },
+      },
+      expected_in: [
+        %Bitcoinex.PSBT.In{
+          witness_utxo: %Bitcoinex.Transaction.Out{
+            value: 5000000000,
+            script_pub_key: "5120c2247efbfd92ac47f6f40b8d42d169175a19fa9fa10e4a25d7f35eb4dd85b692"
+          },
+          tap_leaf_script: [
+            %{
+              control_block: <<193, 80, 146, 155, 116, 193, 160, 73, 84, 183, 139,
+                75, 96, 53, 233, 122, 94, 7, 138, 90, 15, 40, 236, 150, 213, 71,
+                191, 238, 154, 206, 128, 58, 192, 111, 125, 98, 5, 158, 148, 151,
+                161, 164, 162, 103, 86, 157, 152, 118, 218, 96, 16, 26, 255, 56,
+                227, 82, 155, 155, 147, 156, 231, 249, 26, 233, 112, 17, 95, 46,
+                73, 10, 247, 204, 69, 196, 247, 133, 17, 243, 96, 87, 206, 92, 90,
+                92, 86, 50, 90, 41, 251, 68, 223, 194, 3, 243, 86, 225, 248>>,
+              leaf_version: 192,
+              script: %Bitcoinex.Script{
+                items: [
+                  32,
+                  <<44, 177, 58, 198, 130, 72, 222, 128, 106, 166, 163, 101, 156,
+                    243, 192, 62, 182, 130, 29, 9, 200, 17, 74, 78, 134, 143, 235,
+                    222, 134, 91, 182, 210>>,
+                  172
+                ]
+              }
+            },
+            %{
+              control_block: <<193, 80, 146, 155, 116, 193, 160, 73, 84, 183, 139,
+                75, 96, 53, 233, 122, 94, 7, 138, 90, 15, 40, 236, 150, 213, 71,
+                191, 238, 154, 206, 128, 58, 192, 151, 198, 230, 254, 165, 255,
+                113, 79, 245, 114, 68, 153, 153, 8, 16, 228, 6, 233, 138, 161, 15,
+                91, 247, 229, 246, 120, 75, 193, 208, 169, 166, 206>>,
+              leaf_version: 192,
+              script: %Bitcoinex.Script{
+                items: [
+                  32,
+                  <<67, 32, 176, 191, 22, 240, 17, 181, 62, 167, 190, 97, 89, 36,
+                    170, 127, 39, 229, 210, 154, 210, 14, 161, 21, 93, 132, 134,
+                    118, 195, 186, 209, 178>>,
+                  172
+                ]
+              }
+            },
+            %{
+              control_block: <<193, 80, 146, 155, 116, 193, 160, 73, 84, 183, 139,
+                75, 96, 53, 233, 122, 94, 7, 138, 90, 15, 40, 236, 150, 213, 71,
+                191, 238, 154, 206, 128, 58, 192, 205, 151, 14, 21, 245, 63, 192,
+                200, 47, 149, 15, 213, 96, 255, 169, 25, 183, 97, 114, 190, 1, 115,
+                104, 168, 153, 19, 175, 7, 79, 64, 11, 9, 17, 95, 46, 73, 10, 247,
+                204, 69, 196, 247, 133, 17, 243, 96, 87, 206, 92, 90, 92, 86, 50,
+                90, 41, 251, 68, 223, 194, 3, 243, 86, 225, 248>>,
+              leaf_version: 192,
+              script: %Bitcoinex.Script{
+                items: [
+                  32,
+                  <<250, 15, 122, 60, 239, 59, 29, 12, 10, 108, 231, 210, 110, 23,
+                    173, 160, 178, 229, 201, 45, 25, 239, 173, 72, 180, 24, 89,
+                    203, 138, 69, 28, 169>>,
+                  172
+                ]
+              }
+            }
+          ],
+          tap_bip32_derivation: [
+            %{
+              derivation: %Bitcoinex.ExtendedKey.DerivationPath{
+                child_nums: [2147483734, 2147483649, 2147483650, 0, 0]
+              },
+              leaf_hashes: [
+                <<205, 151, 14, 21, 245, 63, 192, 200, 47, 149, 15, 213, 96, 255,
+                  169, 25, 183, 97, 114, 190, 1, 115, 104, 168, 153, 19, 175, 7,
+                  79, 64, 11, 9>>
+              ],
+              pfp: <<119, 43, 45, 167>>,
+              pubkey: <<44, 177, 58, 198, 130, 72, 222, 128, 106, 166, 163, 101,
+                156, 243, 192, 62, 182, 130, 29, 9, 200, 17, 74, 78, 134, 143, 235,
+                222, 134, 91, 182, 210>>
+            },
+            %{
+              derivation: %Bitcoinex.ExtendedKey.DerivationPath{
+                child_nums: [2147483734, 2147483649, 2147483649, 0, 0]
+              },
+              leaf_hashes: [
+                <<17, 95, 46, 73, 10, 247, 204, 69, 196, 247, 133, 17, 243, 96, 87,
+                  206, 92, 90, 92, 86, 50, 90, 41, 251, 68, 223, 194, 3, 243, 86,
+                  225, 248>>
+              ],
+              pfp: <<119, 43, 45, 167>>,
+              pubkey: <<67, 32, 176, 191, 22, 240, 17, 181, 62, 167, 190, 97, 89,
+                36, 170, 127, 39, 229, 210, 154, 210, 14, 161, 21, 93, 132, 134,
+                118, 195, 186, 209, 178>>
+            },
+            %{
+              derivation: %Bitcoinex.ExtendedKey.DerivationPath{child_nums: []},
+              leaf_hashes: [],
+              pfp: <<124, 70, 30, 93>>,
+              pubkey: <<80, 146, 155, 116, 193, 160, 73, 84, 183, 139, 75, 96, 53,
+                233, 122, 94, 7, 138, 90, 15, 40, 236, 150, 213, 71, 191, 238, 154,
+                206, 128, 58, 192>>
+            },
+            %{
+              derivation: %Bitcoinex.ExtendedKey.DerivationPath{
+                child_nums: [2147483734, 2147483649, 2147483651, 0, 0]
+              },
+              leaf_hashes: [
+                <<111, 125, 98, 5, 158, 148, 151, 161, 164, 162, 103, 86, 157, 152,
+                  118, 218, 96, 16, 26, 255, 56, 227, 82, 155, 155, 147, 156, 231,
+                  249, 26, 233, 112>>
+              ],
+              pfp: <<119, 43, 45, 167>>,
+              pubkey: <<250, 15, 122, 60, 239, 59, 29, 12, 10, 108, 231, 210, 110,
+                23, 173, 160, 178, 229, 201, 45, 25, 239, 173, 72, 180, 24, 89,
+                203, 138, 69, 28, 169>>
+            }
+          ],
+          tap_internal_key: <<80, 146, 155, 116, 193, 160, 73, 84, 183, 139, 75,
+            96, 53, 233, 122, 94, 7, 138, 90, 15, 40, 236, 150, 213, 71, 191, 238,
+            154, 206, 128, 58, 192>>,
+          tap_merkle_root: <<240, 54, 46, 47, 117, 166, 244, 32, 165, 189, 227,
+            235, 34, 29, 150, 174, 103, 32, 207, 37, 248, 24, 144, 201, 91, 29,
+            119, 90, 203, 81, 94, 101>>,
+        }
+      ],
+      expected_out: [
+        %Bitcoinex.PSBT.Out{
+          tap_internal_key: <<17, 36, 218, 122, 236, 146, 204, 208, 108, 149, 69,
+            98, 100, 127, 67, 123, 19, 139, 149, 114, 26, 132, 190, 43, 242, 39,
+            107, 189, 218, 179, 230, 113>>,
+          tap_bip32_derivation: [
+            %{
+              derivation: %Bitcoinex.ExtendedKey.DerivationPath{
+                child_nums: [2147483734, 2147483649, 2147483648, 0, 5]
+              },
+              leaf_hashes: [],
+              pfp: <<119, 43, 45, 167>>,
+              pubkey: <<17, 36, 218, 122, 236, 146, 204, 208, 108, 149, 69, 98,
+                100, 127, 67, 123, 19, 139, 149, 114, 26, 132, 190, 43, 242, 39,
+                107, 189, 218, 179, 230, 113>>
+            }
+          ],
+        }
+      ]
+    },
+    %{
+      psbt: "cHNidP8BAF4CAAAAASd0Srq/MCf+DWzyOpbu4u+xiO9SMBlUWFiD5ptmJLJCAAAAAAD/////AUjmBSoBAAAAIlEgCoy9yG3hzhwPnK6yLW33ztNoP+Qj4F0eQCqHk0HW9vUAAAAAAAEBKwDyBSoBAAAAIlEgWiws9bUs8x+DrS6Npj/wMYPs2PYJx1EK6KSOA5EKB1chFv40kGTJjW4qhT+jybEr2LMEoZwZXGDvp+4jkwRtP6IyGQB3Ky2nVgAAgAEAAIAAAACAAQAAAAAAAAABFyD+NJBkyY1uKoU/o8mxK9izBKGcGVxg76fuI5MEbT+iMgABBSBQkpt0waBJVLeLS2A16XpeB4paDyjsltVHv+6azoA6wAEGbwLAIiBzblcpAP4SUliaIUPI88efcaBBLSNTr3VelwHHgmlKAqwCwCIgYxxfO1gyuPvev7GXBM7rMjwh9A96JPQ9aO8MwmsSWWmsAcAiIET6pJoDON5IjI3//s37bzKfOAvVZu8gyN9tgT6rHEJzrCEHRPqkmgM43kiMjf/+zftvMp84C9Vm7yDI322BPqscQnM5AfBreYuSoQ7ZqdC7/Trxc6U7FhfaOkFZygCCFs2Fay4Odystp1YAAIABAACAAQAAgAAAAAADAAAAIQdQkpt0waBJVLeLS2A16XpeB4paDyjsltVHv+6azoA6wAUAfEYeXSEHYxxfO1gyuPvev7GXBM7rMjwh9A96JPQ9aO8MwmsSWWk5ARis5AmIl4Xg6nDO67jhyokqenjq7eDy4pbPQ1lhqPTKdystp1YAAIABAACAAgAAgAAAAAADAAAAIQdzblcpAP4SUliaIUPI88efcaBBLSNTr3VelwHHgmlKAjkBKaW0kVCQFi11mv0/4Pk/ozJgVtC0CIy5M8rngmy42Cx3Ky2nVgAAgAEAAIADAACAAAAAAAMAAAAA",
+      expected_global: %Global{
+        unsigned_tx: %Bitcoinex.Transaction{
+          version: 2,
+          inputs: [
+            %Bitcoinex.Transaction.In{
+              prev_txid: "42b224669be683585854193052ef88b1efe2ee963af26c0dfe2730bfba4a7427",
+              prev_vout: 0,
+              script_sig: "",
+              sequence_no: 4294967295
+            }
+          ],
+          outputs: [
+            %Bitcoinex.Transaction.Out{
+              value: 4999997000,
+              script_pub_key: "51200a8cbdc86de1ce1c0f9caeb22d6df7ced3683fe423e05d1e402a879341d6f6f5"
+            }
+          ],
+          lock_time: 0
+        },
+      },
+      expected_in: [
+        %Bitcoinex.PSBT.In{
+          witness_utxo: %Bitcoinex.Transaction.Out{
+            value: 5000000000,
+            script_pub_key: "51205a2c2cf5b52cf31f83ad2e8da63ff03183ecd8f609c7510ae8a48e03910a0757"
+          },
+          tap_bip32_derivation: [
+            %{
+              derivation: %Bitcoinex.ExtendedKey.DerivationPath{
+                child_nums: [2147483734, 2147483649, 2147483648, 1, 0]
+              },
+              leaf_hashes: [],
+              pfp: <<119, 43, 45, 167>>,
+              pubkey: <<254, 52, 144, 100, 201, 141, 110, 42, 133, 63, 163, 201,
+                177, 43, 216, 179, 4, 161, 156, 25, 92, 96, 239, 167, 238, 35, 147,
+                4, 109, 63, 162, 50>>
+            }
+          ],
+          tap_internal_key: <<254, 52, 144, 100, 201, 141, 110, 42, 133, 63, 163,
+            201, 177, 43, 216, 179, 4, 161, 156, 25, 92, 96, 239, 167, 238, 35,
+            147, 4, 109, 63, 162, 50>>,
+        }
+      ],
+      expected_out: [
+        %Bitcoinex.PSBT.Out{
+          tap_internal_key: <<80, 146, 155, 116, 193, 160, 73, 84, 183, 139, 75,
+            96, 53, 233, 122, 94, 7, 138, 90, 15, 40, 236, 150, 213, 71, 191, 238,
+            154, 206, 128, 58, 192>>,
+          tap_tree: %{
+            leaves: [
+            %{
+              depth: 2,
+              leaf_version: 192,
+              script: %Bitcoinex.Script{
+                items: [
+                  32,
+                  <<115, 110, 87, 41, 0, 254, 18, 82, 88, 154, 33, 67, 200, 243,
+                    199, 159, 113, 160, 65, 45, 35, 83, 175, 117, 94, 151, 1, 199,
+                    130, 105, 74, 2>>,
+                  172
+                ]
+              }
+            },
+            %{
+              depth: 2,
+              leaf_version: 192,
+              script: %Bitcoinex.Script{
+                items: [
+                  32,
+                  <<99, 28, 95, 59, 88, 50, 184, 251, 222, 191, 177, 151, 4, 206,
+                    235, 50, 60, 33, 244, 15, 122, 36, 244, 61, 104, 239, 12, 194,
+                    107, 18, 89, 105>>,
+                  172
+                ]
+              }
+            },
+            %{
+              depth: 1,
+              leaf_version: 192,
+              script: %Bitcoinex.Script{
+                items: [
+                  32,
+                  <<68, 250, 164, 154, 3, 56, 222, 72, 140, 141, 255, 254, 205,
+                    251, 111, 50, 159, 56, 11, 213, 102, 239, 32, 200, 223, 109,
+                    129, 62, 171, 28, 66, 115>>,
+                  172
+                ]
+              }
+            }
+          ]
+          },
+          tap_bip32_derivation: [
+            %{
+              derivation: %Bitcoinex.ExtendedKey.DerivationPath{
+                child_nums: [2147483734, 2147483649, 2147483649, 0, 3]
+              },
+              leaf_hashes: [
+                <<240, 107, 121, 139, 146, 161, 14, 217, 169, 208, 187, 253, 58,
+                  241, 115, 165, 59, 22, 23, 218, 58, 65, 89, 202, 0, 130, 22, 205,
+                  133, 107, 46, 14>>
+              ],
+              pfp: <<119, 43, 45, 167>>,
+              pubkey: <<68, 250, 164, 154, 3, 56, 222, 72, 140, 141, 255, 254, 205,
+                251, 111, 50, 159, 56, 11, 213, 102, 239, 32, 200, 223, 109, 129,
+                62, 171, 28, 66, 115>>
+            },
+            %{
+              derivation: %Bitcoinex.ExtendedKey.DerivationPath{child_nums: []},
+              leaf_hashes: [],
+              pfp: <<124, 70, 30, 93>>,
+              pubkey: <<80, 146, 155, 116, 193, 160, 73, 84, 183, 139, 75, 96, 53,
+                233, 122, 94, 7, 138, 90, 15, 40, 236, 150, 213, 71, 191, 238, 154,
+                206, 128, 58, 192>>
+            },
+            %{
+              derivation: %Bitcoinex.ExtendedKey.DerivationPath{
+                child_nums: [2147483734, 2147483649, 2147483650, 0, 3]
+              },
+              leaf_hashes: [
+                <<24, 172, 228, 9, 136, 151, 133, 224, 234, 112, 206, 235, 184,
+                  225, 202, 137, 42, 122, 120, 234, 237, 224, 242, 226, 150, 207,
+                  67, 89, 97, 168, 244, 202>>
+              ],
+              pfp: <<119, 43, 45, 167>>,
+              pubkey: <<99, 28, 95, 59, 88, 50, 184, 251, 222, 191, 177, 151, 4,
+                206, 235, 50, 60, 33, 244, 15, 122, 36, 244, 61, 104, 239, 12, 194,
+                107, 18, 89, 105>>
+            },
+            %{
+              derivation: %Bitcoinex.ExtendedKey.DerivationPath{
+                child_nums: [2147483734, 2147483649, 2147483651, 0, 3]
+              },
+              leaf_hashes: [
+                <<41, 165, 180, 145, 80, 144, 22, 45, 117, 154, 253, 63, 224, 249,
+                  63, 163, 50, 96, 86, 208, 180, 8, 140, 185, 51, 202, 231, 130,
+                  108, 184, 216, 44>>
+              ],
+              pfp: <<119, 43, 45, 167>>,
+              pubkey: <<115, 110, 87, 41, 0, 254, 18, 82, 88, 154, 33, 67, 200,
+                243, 199, 159, 113, 160, 65, 45, 35, 83, 175, 117, 94, 151, 1, 199,
+                130, 105, 74, 2>>
+            }
+          ],
+        }
+      ]
+    },
+    %{
+      psbt: "cHNidP8BAF4CAAAAAZvUh2UjC/mnLmYgAflyVW5U8Mb5f+tWvLVgDYF/aZUmAQAAAAD/////AUjmBSoBAAAAIlEgg2mORYxmZOFZXXXaJZfeHiLul9eY5wbEwKS1qYI810MAAAAAAAEBKwDyBSoBAAAAIlEgwiR++/2SrEf29AuNQtFpF1oZ+p+hDkol1/NetN2FtpJBFCyxOsaCSN6AaqajZZzzwD62gh0JyBFKToaP696GW7bSzZcOFfU/wMgvlQ/VYP+pGbdhcr4Bc2iomROvB09ACwlAv4GNl1fW/+tTi6BX+0wfxOD17xhudlvrVkeR4Cr1/T1eJVHU404z2G8na4LJnHmu0/A5Wgge/NLMLGXdfmk9eUEUQyCwvxbwEbU+p75hWSSqfyfl0prSDqEVXYSGdsO60bIRXy5JCvfMRcT3hRHzYFfOXFpcVjJaKftE38ID81bh+EDh8atvq/omsjbyGDNxncHUKKt2jYD5H5mI2KvvR7+4Y7sfKlKfdowV8AzjTsKDzcB+iPhCi+KPbvZAQ8MpEYEaQRT6D3o87zsdDAps59JuF62gsuXJLRnvrUi0GFnLikUcqW99YgWelJehpKJnVp2YdtpgEBr/OONSm5uTnOf5GulwQOwfA3kgZGHIM0IoVCMyZwirAx8NpKJT7kWq+luMkgNNi2BUkPjNE+APmJmJuX4hX6o28S3uNpPS2szzeBwXV/ZiFcFQkpt0waBJVLeLS2A16XpeB4paDyjsltVHv+6azoA6wG99YgWelJehpKJnVp2YdtpgEBr/OONSm5uTnOf5GulwEV8uSQr3zEXE94UR82BXzlxaXFYyWin7RN/CA/NW4fgjICyxOsaCSN6AaqajZZzzwD62gh0JyBFKToaP696GW7bSrMBCFcFQkpt0waBJVLeLS2A16XpeB4paDyjsltVHv+6azoA6wJfG5v6l/3FP9XJEmZkIEOQG6YqhD1v35fZ4S8HQqabOIyBDILC/FvARtT6nvmFZJKp/J+XSmtIOoRVdhIZ2w7rRsqzAYhXBUJKbdMGgSVS3i0tgNel6XgeKWg8o7JbVR7/ums6AOsDNlw4V9T/AyC+VD9Vg/6kZt2FyvgFzaKiZE68HT0ALCRFfLkkK98xFxPeFEfNgV85cWlxWMlop+0TfwgPzVuH4IyD6D3o87zsdDAps59JuF62gsuXJLRnvrUi0GFnLikUcqazAIRYssTrGgkjegGqmo2Wc88A+toIdCcgRSk6Gj+vehlu20jkBzZcOFfU/wMgvlQ/VYP+pGbdhcr4Bc2iomROvB09ACwl3Ky2nVgAAgAEAAIACAACAAAAAAAAAAAAhFkMgsL8W8BG1Pqe+YVkkqn8n5dKa0g6hFV2EhnbDutGyOQERXy5JCvfMRcT3hRHzYFfOXFpcVjJaKftE38ID81bh+HcrLadWAACAAQAAgAEAAIAAAAAAAAAAACEWUJKbdMGgSVS3i0tgNel6XgeKWg8o7JbVR7/ums6AOsAFAHxGHl0hFvoPejzvOx0MCmzn0m4XraCy5cktGe+tSLQYWcuKRRypOQFvfWIFnpSXoaSiZ1admHbaYBAa/zjjUpubk5zn+RrpcHcrLadWAACAAQAAgAMAAIAAAAAAAAAAAAEXIFCSm3TBoElUt4tLYDXpel4HiloPKOyW1Ue/7prOgDrAARgg8DYuL3Wm9CClvePrIh2WrmcgzyX4GJDJWx13WstRXmUAAQUgESTaeuySzNBslUViZH9DexOLlXIahL4r8idrvdqz5nEhBxEk2nrskszQbJVFYmR/Q3sTi5VyGoS+K/Ina73as+ZxGQB3Ky2nVgAAgAEAAIAAAACAAAAAAAUAAAAA",
+      expected_global: %Global{
+        unsigned_tx: %Bitcoinex.Transaction{
+          version: 2,
+          inputs: [
+            %Bitcoinex.Transaction.In{
+              prev_txid: "2695697f810d60b5bc56eb7ff9c6f0546e5572f90120662ea7f90b236587d49b",
+              prev_vout: 1,
+              script_sig: "",
+              sequence_no: 4294967295
+            }
+          ],
+          outputs: [
+            %Bitcoinex.Transaction.Out{
+              value: 4999997000,
+              script_pub_key: "512083698e458c6664e1595d75da2597de1e22ee97d798e706c4c0a4b5a9823cd743"
+            }
+          ],
+          lock_time: 0
+        },
+      },
+      expected_in: [
+        %Bitcoinex.PSBT.In{
+          witness_utxo: %Bitcoinex.Transaction.Out{
+            value: 5000000000,
+            script_pub_key: "5120c2247efbfd92ac47f6f40b8d42d169175a19fa9fa10e4a25d7f35eb4dd85b692"
+          },
+          tap_script_sig: [
+            %{
+              leaf_hash: <<205, 151, 14, 21, 245, 63, 192, 200, 47, 149, 15, 213,
+                96, 255, 169, 25, 183, 97, 114, 190, 1, 115, 104, 168, 153, 19,
+                175, 7, 79, 64, 11, 9>>,
+              pubkey: <<44, 177, 58, 198, 130, 72, 222, 128, 106, 166, 163, 101,
+                156, 243, 192, 62, 182, 130, 29, 9, 200, 17, 74, 78, 134, 143, 235,
+                222, 134, 91, 182, 210>>,
+              signature: <<191, 129, 141, 151, 87, 214, 255, 235, 83, 139, 160, 87,
+                251, 76, 31, 196, 224, 245, 239, 24, 110, 118, 91, 235, 86, 71,
+                145, 224, 42, 245, 253, 61, 94, 37, 81, 212, 227, 78, 51, 216, 111,
+                39, 107, 130, 201, 156, 121, 174, 211, 240, 57, 90, 8, 30, 252,
+                210, 204, 44, 101, 221, 126, 105, 61, 121>>
+            },
+            %{
+              leaf_hash: <<17, 95, 46, 73, 10, 247, 204, 69, 196, 247, 133, 17,
+                243, 96, 87, 206, 92, 90, 92, 86, 50, 90, 41, 251, 68, 223, 194, 3,
+                243, 86, 225, 248>>,
+              pubkey: <<67, 32, 176, 191, 22, 240, 17, 181, 62, 167, 190, 97, 89,
+                36, 170, 127, 39, 229, 210, 154, 210, 14, 161, 21, 93, 132, 134,
+                118, 195, 186, 209, 178>>,
+              signature: <<225, 241, 171, 111, 171, 250, 38, 178, 54, 242, 24, 51,
+                113, 157, 193, 212, 40, 171, 118, 141, 128, 249, 31, 153, 136, 216,
+                171, 239, 71, 191, 184, 99, 187, 31, 42, 82, 159, 118, 140, 21,
+                240, 12, 227, 78, 194, 131, 205, 192, 126, 136, 248, 66, 139, 226,
+                143, 110, 246, 64, 67, 195, 41, 17, 129, 26>>
+            },
+            %{
+              leaf_hash: <<111, 125, 98, 5, 158, 148, 151, 161, 164, 162, 103, 86,
+                157, 152, 118, 218, 96, 16, 26, 255, 56, 227, 82, 155, 155, 147,
+                156, 231, 249, 26, 233, 112>>,
+              pubkey: <<250, 15, 122, 60, 239, 59, 29, 12, 10, 108, 231, 210, 110,
+                23, 173, 160, 178, 229, 201, 45, 25, 239, 173, 72, 180, 24, 89,
+                203, 138, 69, 28, 169>>,
+              signature: <<236, 31, 3, 121, 32, 100, 97, 200, 51, 66, 40, 84, 35,
+                50, 103, 8, 171, 3, 31, 13, 164, 162, 83, 238, 69, 170, 250, 91,
+                140, 146, 3, 77, 139, 96, 84, 144, 248, 205, 19, 224, 15, 152, 153,
+                137, 185, 126, 33, 95, 170, 54, 241, 45, 238, 54, 147, 210, 218,
+                204, 243, 120, 28, 23, 87, 246>>
+            }
+          ],
+          tap_leaf_script: [
+            %{
+              control_block: <<193, 80, 146, 155, 116, 193, 160, 73, 84, 183, 139,
+                75, 96, 53, 233, 122, 94, 7, 138, 90, 15, 40, 236, 150, 213, 71,
+                191, 238, 154, 206, 128, 58, 192, 111, 125, 98, 5, 158, 148, 151,
+                161, 164, 162, 103, 86, 157, 152, 118, 218, 96, 16, 26, 255, 56,
+                227, 82, 155, 155, 147, 156, 231, 249, 26, 233, 112, 17, 95, 46,
+                73, 10, 247, 204, 69, 196, 247, 133, 17, 243, 96, 87, 206, 92, 90,
+                92, 86, 50, 90, 41, 251, 68, 223, 194, 3, 243, 86, 225, 248>>,
+              leaf_version: 192,
+              script: %Bitcoinex.Script{
+                items: [
+                  32,
+                  <<44, 177, 58, 198, 130, 72, 222, 128, 106, 166, 163, 101, 156,
+                    243, 192, 62, 182, 130, 29, 9, 200, 17, 74, 78, 134, 143, 235,
+                    222, 134, 91, 182, 210>>,
+                  172
+                ]
+              }
+            },
+            %{
+              control_block: <<193, 80, 146, 155, 116, 193, 160, 73, 84, 183, 139,
+                75, 96, 53, 233, 122, 94, 7, 138, 90, 15, 40, 236, 150, 213, 71,
+                191, 238, 154, 206, 128, 58, 192, 151, 198, 230, 254, 165, 255,
+                113, 79, 245, 114, 68, 153, 153, 8, 16, 228, 6, 233, 138, 161, 15,
+                91, 247, 229, 246, 120, 75, 193, 208, 169, 166, 206>>,
+              leaf_version: 192,
+              script: %Bitcoinex.Script{
+                items: [
+                  32,
+                  <<67, 32, 176, 191, 22, 240, 17, 181, 62, 167, 190, 97, 89, 36,
+                    170, 127, 39, 229, 210, 154, 210, 14, 161, 21, 93, 132, 134,
+                    118, 195, 186, 209, 178>>,
+                  172
+                ]
+              }
+            },
+            %{
+              control_block: <<193, 80, 146, 155, 116, 193, 160, 73, 84, 183, 139,
+                75, 96, 53, 233, 122, 94, 7, 138, 90, 15, 40, 236, 150, 213, 71,
+                191, 238, 154, 206, 128, 58, 192, 205, 151, 14, 21, 245, 63, 192,
+                200, 47, 149, 15, 213, 96, 255, 169, 25, 183, 97, 114, 190, 1, 115,
+                104, 168, 153, 19, 175, 7, 79, 64, 11, 9, 17, 95, 46, 73, 10, 247,
+                204, 69, 196, 247, 133, 17, 243, 96, 87, 206, 92, 90, 92, 86, 50,
+                90, 41, 251, 68, 223, 194, 3, 243, 86, 225, 248>>,
+              leaf_version: 192,
+              script: %Bitcoinex.Script{
+                items: [
+                  32,
+                  <<250, 15, 122, 60, 239, 59, 29, 12, 10, 108, 231, 210, 110, 23,
+                    173, 160, 178, 229, 201, 45, 25, 239, 173, 72, 180, 24, 89,
+                    203, 138, 69, 28, 169>>,
+                  172
+                ]
+              }
+            }
+          ],
+          tap_bip32_derivation: [
+            %{
+              derivation: %Bitcoinex.ExtendedKey.DerivationPath{
+                child_nums: [2147483734, 2147483649, 2147483650, 0, 0]
+              },
+              leaf_hashes: [
+                <<205, 151, 14, 21, 245, 63, 192, 200, 47, 149, 15, 213, 96, 255,
+                  169, 25, 183, 97, 114, 190, 1, 115, 104, 168, 153, 19, 175, 7,
+                  79, 64, 11, 9>>
+              ],
+              pfp: <<119, 43, 45, 167>>,
+              pubkey: <<44, 177, 58, 198, 130, 72, 222, 128, 106, 166, 163, 101,
+                156, 243, 192, 62, 182, 130, 29, 9, 200, 17, 74, 78, 134, 143, 235,
+                222, 134, 91, 182, 210>>
+            },
+            %{
+              derivation: %Bitcoinex.ExtendedKey.DerivationPath{
+                child_nums: [2147483734, 2147483649, 2147483649, 0, 0]
+              },
+              leaf_hashes: [
+                <<17, 95, 46, 73, 10, 247, 204, 69, 196, 247, 133, 17, 243, 96, 87,
+                  206, 92, 90, 92, 86, 50, 90, 41, 251, 68, 223, 194, 3, 243, 86,
+                  225, 248>>
+              ],
+              pfp: <<119, 43, 45, 167>>,
+              pubkey: <<67, 32, 176, 191, 22, 240, 17, 181, 62, 167, 190, 97, 89,
+                36, 170, 127, 39, 229, 210, 154, 210, 14, 161, 21, 93, 132, 134,
+                118, 195, 186, 209, 178>>
+            },
+            %{
+              derivation: %Bitcoinex.ExtendedKey.DerivationPath{child_nums: []},
+              leaf_hashes: [],
+              pfp: <<124, 70, 30, 93>>,
+              pubkey: <<80, 146, 155, 116, 193, 160, 73, 84, 183, 139, 75, 96, 53,
+                233, 122, 94, 7, 138, 90, 15, 40, 236, 150, 213, 71, 191, 238, 154,
+                206, 128, 58, 192>>
+            },
+            %{
+              derivation: %Bitcoinex.ExtendedKey.DerivationPath{
+                child_nums: [2147483734, 2147483649, 2147483651, 0, 0]
+              },
+              leaf_hashes: [
+                <<111, 125, 98, 5, 158, 148, 151, 161, 164, 162, 103, 86, 157, 152,
+                  118, 218, 96, 16, 26, 255, 56, 227, 82, 155, 155, 147, 156, 231,
+                  249, 26, 233, 112>>
+              ],
+              pfp: <<119, 43, 45, 167>>,
+              pubkey: <<250, 15, 122, 60, 239, 59, 29, 12, 10, 108, 231, 210, 110,
+                23, 173, 160, 178, 229, 201, 45, 25, 239, 173, 72, 180, 24, 89,
+                203, 138, 69, 28, 169>>
+            }
+          ],
+          tap_internal_key: <<80, 146, 155, 116, 193, 160, 73, 84, 183, 139, 75,
+            96, 53, 233, 122, 94, 7, 138, 90, 15, 40, 236, 150, 213, 71, 191, 238,
+            154, 206, 128, 58, 192>>,
+          tap_merkle_root: <<240, 54, 46, 47, 117, 166, 244, 32, 165, 189, 227,
+            235, 34, 29, 150, 174, 103, 32, 207, 37, 248, 24, 144, 201, 91, 29,
+            119, 90, 203, 81, 94, 101>>,
+        }
+      ],
+      expected_out: [
+        %Bitcoinex.PSBT.Out{
+          tap_internal_key: <<17, 36, 218, 122, 236, 146, 204, 208, 108, 149, 69,
+            98, 100, 127, 67, 123, 19, 139, 149, 114, 26, 132, 190, 43, 242, 39,
+            107, 189, 218, 179, 230, 113>>,
+          tap_bip32_derivation: [
+            %{
+              derivation: %Bitcoinex.ExtendedKey.DerivationPath{
+                child_nums: [2147483734, 2147483649, 2147483648, 0, 5]
+              },
+              leaf_hashes: [],
+              pfp: <<119, 43, 45, 167>>,
+              pubkey: <<17, 36, 218, 122, 236, 146, 204, 208, 108, 149, 69, 98,
+                100, 127, 67, 123, 19, 139, 149, 114, 26, 132, 190, 43, 242, 39,
+                107, 189, 218, 179, 230, 113>>
+            }
+          ],
+        }
       ]
     }
   ]
