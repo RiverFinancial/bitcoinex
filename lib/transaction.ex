@@ -19,6 +19,7 @@ defmodule Bitcoinex.Transaction do
           lock_time: non_neg_integer()
         }
 
+  # TODO refactor witnesses into input fields
   defstruct [
     :version,
     :inputs,
@@ -340,19 +341,23 @@ defmodule Bitcoinex.Transaction do
   @doc """
     Decodes a transaction in a hex encoded string into binary.
   """
-  def decode(tx_hex) when is_binary(tx_hex) do
-    case Base.decode16(tx_hex, case: :lower) do
-      {:ok, tx_bytes} ->
-        case parse(tx_bytes) do
-          {:ok, txn} ->
-            {:ok, txn}
+  def decode(serialized_tx) when is_binary(serialized_tx) do
+    tx_bytes =
+      case Base.decode16(serialized_tx, case: :lower) do
+        {:ok, tx_bytes} ->
+          tx_bytes
 
-          :error ->
-            {:error, :parse_error}
-        end
+        # if decoding fails, attempt to parse as if serialized_tx is already binary.
+        :error ->
+          serialized_tx
+      end
+
+    case parse(tx_bytes) do
+      {:ok, txn} ->
+        {:ok, txn}
 
       :error ->
-        {:error, :decode_error}
+        {:error, :parse_error}
     end
   end
 
@@ -511,7 +516,7 @@ defmodule Bitcoinex.Transaction.Witness do
     [witness | witnesses] = witnesses
 
     serialized_witness =
-      if Enum.empty?(witness.txinwitness) do
+      if witness == nil || Enum.empty?(witness.txinwitness) do
         <<0x0::big-size(8)>>
       else
         stack_len = Utils.serialize_compact_size_unsigned_int(length(witness.txinwitness))
