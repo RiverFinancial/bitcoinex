@@ -182,7 +182,8 @@ defmodule Bitcoinex.PSBT.Utils do
   end
 
   def parse_leaf_hashes(value, leaf_hash_ct) do
-    <<leaf_hashes::binary-size(32 * leaf_hash_ct), value::binary>> = value
+    leaf_hashes_byte_size = 32 * leaf_hash_ct
+    <<leaf_hashes::binary-size(leaf_hashes_byte_size), value::binary>> = value
     leaf_hashes =
       leaf_hashes
       |> :erlang.binary_to_list()
