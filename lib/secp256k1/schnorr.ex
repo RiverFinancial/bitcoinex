@@ -76,18 +76,15 @@ defmodule Bitcoinex.Secp256k1.Schnorr do
             tagged_aux_hash = tagged_hash_aux(aux_bytes)
             t = Utils.xor_bytes(d_bytes, tagged_aux_hash)
 
-            {:ok, k0} = calculate_k(t, d_point, z_bytes)
+            case calculate_k(t, d_point, z_bytes) do
+              {:ok, k0} ->
+                case Secp256k1.force_even_y(k0) do
+                  {:error, msg} ->
+                    {:error, msg}
 
-            if k0.d == 0 do
-              {:error, "invalid aux randomness"}
-            else
-              case Secp256k1.force_even_y(k0) do
-                {:error, msg} ->
-                  {:error, msg}
-
-                k ->
-                  {:ok, k, d}
-              end
+                  k ->
+                    {:ok, k, d}
+                end
             end
         end
     end
