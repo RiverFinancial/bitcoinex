@@ -13,6 +13,7 @@ defmodule Bitcoinex.PSBT do
   alias Bitcoinex.PSBT.Out
   alias Bitcoinex.Transaction
   alias Bitcoinex.Transaction.Utils, as: TxUtils
+  alias Bitcoinex.Utils
 
   @type t() :: %__MODULE__{}
 
@@ -132,6 +133,7 @@ defmodule Bitcoinex.PSBT.Utils do
   Contains utility functions used throughout PSBT serialization.
   """
   alias Bitcoinex.Transaction.Utils, as: TxUtils
+  alias Bitcoinex.Utils
   alias Bitcoinex.ExtendedKey.DerivationPath
 
   def parse_compact_size_value(key_value) do
@@ -157,8 +159,8 @@ defmodule Bitcoinex.PSBT.Utils do
   end
 
   def serialize_kv(key, val) do
-    key_len = TxUtils.serialize_compact_size_unsigned_int(byte_size(key))
-    val_len = TxUtils.serialize_compact_size_unsigned_int(byte_size(val))
+    key_len = Utils.serialize_compact_size_unsigned_int(byte_size(key))
+    val_len = Utils.serialize_compact_size_unsigned_int(byte_size(val))
     key_len <> key <> val_len <> val
   end
 
@@ -198,7 +200,7 @@ defmodule Bitcoinex.PSBT.Utils do
   @spec serialize_leaf_hashes(list(binary)) :: binary
   def serialize_leaf_hashes(leaf_hashes) do
     leaf_hashes_bin = Enum.reduce(leaf_hashes, <<>>, fn leaf_hash, acc -> acc <> leaf_hash end)
-    TxUtils.serialize_compact_size_unsigned_int(length(leaf_hashes)) <> leaf_hashes_bin
+    Utils.serialize_compact_size_unsigned_int(length(leaf_hashes)) <> leaf_hashes_bin
   end
 
   def append(nil, item), do: [item]
@@ -211,6 +213,7 @@ defmodule Bitcoinex.PSBT.Global do
   """
   alias Bitcoinex.PSBT.Global
   alias Bitcoinex.Transaction
+  alias Bitcoinex.Utils
   alias Bitcoinex.Transaction.Utils, as: TxUtils
   alias Bitcoinex.PSBT.Utils, as: PsbtUtils
   alias Bitcoinex.ExtendedKey
@@ -356,14 +359,14 @@ defmodule Bitcoinex.PSBT.Global do
   defp serialize_kv(:input_count, value) when value != nil do
     PsbtUtils.serialize_kv(
       <<@psbt_global_input_count::big-size(8)>>,
-      TxUtils.serialize_compact_size_unsigned_int(value)
+      Utils.serialize_compact_size_unsigned_int(value)
     )
   end
 
   defp serialize_kv(:output_count, value) when value != nil do
     PsbtUtils.serialize_kv(
       <<@psbt_global_output_count::big-size(8)>>,
-      TxUtils.serialize_compact_size_unsigned_int(value)
+      Utils.serialize_compact_size_unsigned_int(value)
     )
   end
 
@@ -429,6 +432,7 @@ defmodule Bitcoinex.PSBT.In do
   alias Bitcoinex.PSBT.In
   alias Bitcoinex.PSBT.Utils, as: PsbtUtils
   alias Bitcoinex.Transaction.Utils, as: TxUtils
+  alias Bitcoinex.Utils
   alias Bitcoinex.Script
 
   defstruct [
@@ -535,7 +539,7 @@ defmodule Bitcoinex.PSBT.In do
 
     val =
       <<value.value::little-size(64)>> <>
-        TxUtils.serialize_compact_size_unsigned_int(byte_size(script)) <> script
+        Utils.serialize_compact_size_unsigned_int(byte_size(script)) <> script
 
     PsbtUtils.serialize_kv(<<@psbt_in_witness_utxo::big-size(8)>>, val)
   end
@@ -1060,6 +1064,7 @@ defmodule Bitcoinex.PSBT.Out do
   Output properties of a partially signed bitcoin transaction.
   """
   alias Bitcoinex.PSBT.Out
+  alias Bitcoinex.Utils
   alias Bitcoinex.PSBT.Utils, as: PsbtUtils
   alias Bitcoinex.Transaction.Utils, as: TxUtils
   alias Bitcoinex.Script
@@ -1320,7 +1325,7 @@ defmodule Bitcoinex.PSBT.Out do
 
       acc <>
         <<leaf.depth, leaf.leaf_version>> <>
-        TxUtils.serialize_compact_size_unsigned_int(byte_size(script_bytes)) <>
+        Utils.serialize_compact_size_unsigned_int(byte_size(script_bytes)) <>
         script_bytes
     end)
   end
