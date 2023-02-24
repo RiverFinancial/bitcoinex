@@ -979,6 +979,7 @@ defmodule Bitcoinex.PSBT.In do
     end
   end
 
+  @spec parse(any, nonempty_binary, %In{}) :: {%In{}, binary}
   defp parse(<<@psbt_in_non_witness_utxo::big-size(8)>>, psbt, input) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
     {:ok, txn} = Transaction.decode(value)
@@ -1122,29 +1123,49 @@ defmodule Bitcoinex.PSBT.In do
   end
 
   defp parse(<<@psbt_in_required_time_locktime::big-size(8)>>, psbt, input) do
+<<<<<<< HEAD
+=======
+    # TODO:validation must be > 500_000_000
+>>>>>>> sachin--psbt-use-deriv-and-xpub
     {<<value::little-size(32)>>, psbt} = PsbtUtils.parse_compact_size_value(psbt)
     input = add_field(input, :required_time_locktime, value)
     {input, psbt}
   end
 
   defp parse(<<@psbt_in_required_height_locktime::big-size(8)>>, psbt, input) do
+<<<<<<< HEAD
+=======
+    # TODO:validation must be < 500_000_000
+>>>>>>> sachin--psbt-use-deriv-and-xpub
     {<<value::little-size(32)>>, psbt} = PsbtUtils.parse_compact_size_value(psbt)
     input = add_field(input, :required_height_locktime, value)
     {input, psbt}
   end
 
   defp parse(<<@psbt_in_tap_key_sig::big-size(8)>>, psbt, input) do
+<<<<<<< HEAD
+=======
+    # TODO:validation validate script len (64|65)
+>>>>>>> sachin--psbt-use-deriv-and-xpub
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
     input = add_field(input, :tap_key_sig, value)
     {input, psbt}
   end
 
   defp parse(
+<<<<<<< HEAD
          <<@psbt_in_tap_script_sig::big-size(8), pubkey::binary-size(32),
            leaf_hash::binary-size(32)>>,
          psbt,
          input
        ) do
+=======
+        <<@psbt_in_tap_script_sig::big-size(8), pubkey::binary-size(32),
+          leaf_hash::binary-size(32)>>,
+        psbt,
+        input
+      ) do
+>>>>>>> sachin--psbt-use-deriv-and-xpub
     # TODO:validation validate sig len (64|65)
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
 
