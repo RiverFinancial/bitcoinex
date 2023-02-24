@@ -35,23 +35,20 @@ defmodule Bitcoinex.Secp256k1.Schnorr do
             tagged_aux_hash = tagged_hash_aux(aux_bytes)
             t = Utils.xor_bytes(d_bytes, tagged_aux_hash)
 
-            {:ok, k0} = calculate_k(t, d_point, z_bytes)
+            case calculate_k(t, d_point, z_bytes) do
+              {:ok, k0} ->
+                r_point = PrivateKey.to_point(k0)
 
-            if k0.d == 0 do
-              {:error, "invalid aux randomness"}
-            else
-              r_point = PrivateKey.to_point(k0)
+                case Secp256k1.force_even_y(k0) do
+                  {:error, msg} ->
+                    {:error, msg}
 
-              case Secp256k1.force_even_y(k0) do
-                {:error, msg} ->
-                  {:error, msg}
+                  k ->
+                    e = calculate_e(Point.x_bytes(r_point), Point.x_bytes(d_point), z_bytes)
+                    sig_s = calculate_s(k, d, e)
 
-                k ->
-                  e = calculate_e(Point.x_bytes(r_point), Point.x_bytes(d_point), z_bytes)
-                  sig_s = calculate_s(k, d, e)
-
-                  {:ok, %Signature{r: r_point.x, s: sig_s}}
-              end
+                    {:ok, %Signature{r: r_point.x, s: sig_s}}
+                end
             end
         end
     end
@@ -171,19 +168,20 @@ defmodule Bitcoinex.Secp256k1.Schnorr do
     tagged_aux_hash = tagged_hash_aux(aux_bytes)
     t = Utils.xor_bytes(d_bytes, tagged_aux_hash)
     # TODO always add tweak_point to the nonce to commit to it as well
-    {:ok, k0} = calculate_k(t, d_point, z_bytes)
+    case calculate_k(t, d_point, z_bytes) do
+      {:ok, k0} ->
+        r_point = PrivateKey.to_point(k0)
+        # ensure that tweak_point has even Y
+        tweaked_r_point = Math.add(r_point, tweak_point)
+        # ensure (R+T).y is even, if not, negate it, negate k, and set was_negated = true
+        {tweaked_r_point, was_negated} = make_point_even(tweaked_r_point)
+        k = conditional_negate(k0.d, was_negated)
 
-    r_point = PrivateKey.to_point(k0)
-    # ensure that tweak_point has even Y
-    tweaked_r_point = Math.add(r_point, tweak_point)
-    # ensure (R+T).y is even, if not, negate it, negate k, and set was_negated = true
-    {tweaked_r_point, was_negated} = make_point_even(tweaked_r_point)
-    k = conditional_negate(k0.d, was_negated)
-
-    e = calculate_e(Point.x_bytes(tweaked_r_point), Point.x_bytes(d_point), z_bytes)
-    s = calculate_s(k, d, e)
-    # we return Signature{R+T,s}, not a valid signature since s is untweaked.
-    {:ok, %Signature{r: tweaked_r_point.x, s: s}, was_negated}
+        e = calculate_e(Point.x_bytes(tweaked_r_point), Point.x_bytes(d_point), z_bytes)
+        s = calculate_s(k, d, e)
+        # we return Signature{R+T,s}, not a valid signature since s is untweaked.
+        {:ok, %Signature{r: tweaked_r_point.x, s: s}, was_negated}
+    end
   end
 
   @doc """
