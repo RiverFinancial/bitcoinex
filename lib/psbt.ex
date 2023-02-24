@@ -280,7 +280,7 @@ defmodule Bitcoinex.PSBT.Global do
   def add_field(
         global,
         :xpub,
-        global_xpub = %{xpub: %ExtendedKey{}, pfp: <<_::64>>, derivation: %DerivationPath{}}
+        global_xpub = %{xpub: %ExtendedKey{}, pfp: <<_::binary-size(4)>>, derivation: %DerivationPath{}}
       ) do
     global_xpubs = PsbtUtils.append(global.xpub, global_xpub)
     %Global{global | xpub: global_xpubs}
@@ -310,9 +310,15 @@ defmodule Bitcoinex.PSBT.Global do
     %Global{global | version: value}
   end
 
+  # TODO: fix
   def add_field(global, :proprietary, value) do
     proprietaries = PsbtUtils.append(global.proprietary, value)
     %Global{global | proprietary: proprietaries}
+  end
+
+  def add_field(global, :unknown, value) do
+    unknown = PsbtUtils.append(global.unknown, value)
+    %Global{global | unknown: unknown}
   end
 
   @spec parse_global(nonempty_binary) :: {%Global{}, binary}
@@ -406,9 +412,16 @@ defmodule Bitcoinex.PSBT.Global do
     {global, psbt}
   end
 
+  # TODO: fix
   defp parse(<<@psbt_global_proprietary::big-size(8)>>, psbt, global) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
     global = add_field(global, :proprietary, value)
+    {global, psbt}
+  end
+
+  defp parse(key, psbt, global) do
+    {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
+    global = add_field(global, :unknown, %{key: key, value: value})
     {global, psbt}
   end
 
@@ -711,7 +724,13 @@ defmodule Bitcoinex.PSBT.In do
   end
 
   def add_field(input, :proprietary, proprietary) when is_binary(proprietary) do
-    %In{input | proprietary: proprietary}
+    proprietaries = PsbtUtils.append(input.proprietary, proprietary)
+    %In{input | proprietary: proprietaries}
+  end
+
+  def add_field(input, :unknown, value) do
+    unknown = PsbtUtils.append(input.unknown, value)
+    %In{input | unknown: unknown}
   end
 
   def parse_inputs(psbt, num_inputs) do
@@ -910,6 +929,7 @@ defmodule Bitcoinex.PSBT.In do
     PsbtUtils.serialize_kv(<<@psbt_in_tap_merkle_root::big-size(8)>>, value)
   end
 
+  # TODO: fix
   defp serialize_kv(:proprietary, value) when value != nil do
     PsbtUtils.serialize_kv(<<@psbt_in_proprietary::big-size(8)>>, value)
   end
@@ -1234,6 +1254,7 @@ defmodule Bitcoinex.PSBT.In do
     {input, psbt}
   end
 
+  # TODO: fix
   defp parse(<<@psbt_in_proprietary::big-size(8)>>, psbt, input) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
     input = add_field(input, :proprietary, value)
@@ -1331,6 +1352,7 @@ defmodule Bitcoinex.PSBT.Out do
     %Out{output | tap_bip32_derivation: derivations}
   end
 
+  # TODO: fix
   def add_field(output, :proprietary, kv) when is_binary(kv) do
     kvs = PsbtUtils.append(output.proprietary, kv)
     %Out{output | proprietary: kvs}
@@ -1396,6 +1418,7 @@ defmodule Bitcoinex.PSBT.Out do
     PsbtUtils.serialize_kv(key, leaf_hashes <> fingerprint_path)
   end
 
+  # TODO: fix
   defp serialize_kv(:proprietary, value) when value != nil do
     PsbtUtils.serialize_kv(<<@psbt_out_proprietary::big-size(8)>>, value)
   end
@@ -1500,8 +1523,8 @@ defmodule Bitcoinex.PSBT.Out do
 
   defp parse(<<@psbt_out_script::big-size(8)>>, psbt, output) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    {:ok, _} = Script.parse_script(value)
-    output = add_field(output, :script, value)
+    {:ok, script} = Script.parse_script(value)
+    output = add_field(output, :script, script)
     {output, psbt}
   end
 
@@ -1541,6 +1564,7 @@ defmodule Bitcoinex.PSBT.Out do
     {output, psbt}
   end
 
+  # TODO: fix
   defp parse(<<@psbt_out_proprietary::big-size(8)>>, psbt, output) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
     output = add_field(output, :proprietary, value)
