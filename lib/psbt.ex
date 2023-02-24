@@ -1303,7 +1303,8 @@ defmodule Bitcoinex.PSBT.Out do
       script: script
     }
 
-    # TODO: ideally we can build an actual binary tree not just a list. But arbitrary depths make this hard
+    # TODO:taproot ideally we can build an actual binary tree not just a list.
+    # But this is only useful once taproot is merged in
     parse_tap_tree(tree, [data | scripts])
   end
 
