@@ -1,6 +1,7 @@
 defmodule Bitcoinex.Taproot do
   alias Bitcoinex.Utils
 
+  alias Bitcoinex.Taproot
   alias Bitcoinex.{Secp256k1, Script}
   alias Bitcoinex.Secp256k1.{Math, Params, Point, PrivateKey}
 
@@ -10,8 +11,6 @@ defmodule Bitcoinex.Taproot do
 
   @spec bip342_leaf_version :: 192
   def bip342_leaf_version(), do: @bip342_leaf_version
-
-  @type tapnode :: {tapnode, tapnode} | TapLeaf.t() | nil
 
   @spec tweak_privkey(PrivateKey.t(), binary) :: PrivateKey.t() | {:error, String.t()}
   def tweak_privkey(sk0 = %PrivateKey{}, h) do
@@ -121,7 +120,7 @@ defmodule Bitcoinex.Taproot do
     while branches are {script_tree, script_tree}. Since we sort based on hash at each level,
     left vs right branches are irrelevant. An empty tree is represented by nil.
   """
-  @type script_tree :: TapLeaf.t() | {script_tree(), script_tree()} | nil
+  @type script_tree :: Taproot.TapLeaf.t() | {script_tree(), script_tree()} | nil
 
   @doc """
     merkelize_script_tree takes a script_tree (either nil, a TapLeaf, or a tuple of two script_trees)
