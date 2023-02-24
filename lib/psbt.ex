@@ -949,11 +949,11 @@ defmodule Bitcoinex.PSBT.In do
   end
 
   defp parse(
-        <<@psbt_in_tap_script_sig::big-size(8), pubkey::binary-size(32),
-          leaf_hash::binary-size(32)>>,
-        psbt,
-        input
-      ) do
+         <<@psbt_in_tap_script_sig::big-size(8), pubkey::binary-size(32),
+           leaf_hash::binary-size(32)>>,
+         psbt,
+         input
+       ) do
     # TODO:validation validate sig len (64|65)
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
 
