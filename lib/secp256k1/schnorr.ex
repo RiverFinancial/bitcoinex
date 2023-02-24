@@ -36,9 +36,11 @@ defmodule Bitcoinex.Secp256k1.Schnorr do
   def sign_with_nonce(sk, k, z) do
     d = Secp256k1.force_even_y(sk)
     k = Secp256k1.force_even_y(k)
+
     case {d, k} do
       {{:error, _}, _} ->
         {:error, "failed to force signing key even"}
+
       {_, {:error, _}} ->
         {:error, "failed to force nonce secret even"}
 
@@ -85,9 +87,9 @@ defmodule Bitcoinex.Secp256k1.Schnorr do
 
                 k ->
                   {:ok, k, d}
-                end
+              end
             end
-      end
+        end
     end
   end
 
@@ -296,12 +298,12 @@ defmodule Bitcoinex.Secp256k1.Schnorr do
       |> PrivateKey.new()
 
     case e do
-      {:error, msg} -> {:error, msg}
+      {:error, msg} ->
+        {:error, msg}
 
       {:ok, e} ->
         Math.multiply(pk, e.d)
         |> Math.add(r_point)
     end
   end
-
 end
