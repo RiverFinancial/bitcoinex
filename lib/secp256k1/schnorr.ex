@@ -161,7 +161,7 @@ defmodule Bitcoinex.Secp256k1.Schnorr do
   """
   @spec encrypted_sign(PrivateKey.t(), non_neg_integer(), non_neg_integer(), Point.t()) ::
           {:ok, Signature.t(), boolean}
-  def encrypted_sign(sk = %PrivateKey{}, z, aux,tweak_point = %Point{}) do
+  def encrypted_sign(sk = %PrivateKey{}, z, aux, tweak_point = %Point{}) do
     z_bytes = Utils.int_to_big(z, 32)
     aux_bytes = Utils.int_to_big(aux, 32)
     d_point = PrivateKey.to_point(sk)
