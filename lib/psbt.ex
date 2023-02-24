@@ -184,11 +184,13 @@ defmodule Bitcoinex.PSBT.Utils do
   def parse_leaf_hashes(value, leaf_hash_ct) do
     leaf_hashes_byte_size = 32 * leaf_hash_ct
     <<leaf_hashes::binary-size(leaf_hashes_byte_size), value::binary>> = value
+
     leaf_hashes =
       leaf_hashes
       |> :erlang.binary_to_list()
       |> Enum.chunk_every(32)
       |> Enum.map(&:erlang.list_to_binary/1)
+
     {leaf_hashes, value}
   end
 
@@ -945,11 +947,11 @@ defmodule Bitcoinex.PSBT.In do
   end
 
   def parse(
-         <<@psbt_in_tap_script_sig::big-size(8), pubkey::binary-size(32),
-           leaf_hash::binary-size(32)>>,
-         psbt,
-         input
-       ) do
+        <<@psbt_in_tap_script_sig::big-size(8), pubkey::binary-size(32),
+          leaf_hash::binary-size(32)>>,
+        psbt,
+        input
+      ) do
     # TODO:validation validate sig len (64|65)
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
 
@@ -972,6 +974,7 @@ defmodule Bitcoinex.PSBT.In do
       tapleaf
       |> :erlang.binary_to_list()
       |> List.pop_at(-1)
+
     script_bytes = :erlang.list_to_binary(script_bytes)
 
     {:ok, script} = Script.parse_script(script_bytes)
