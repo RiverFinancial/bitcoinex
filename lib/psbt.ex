@@ -11,6 +11,7 @@ defmodule Bitcoinex.PSBT do
   alias Bitcoinex.PSBT.Global
   alias Bitcoinex.PSBT.In
   alias Bitcoinex.PSBT.Out
+  alias Bitcoinex.Transaction
   alias Bitcoinex.Transaction.Utils, as: TxUtils
 
   @type t() :: %__MODULE__{}
@@ -492,7 +493,7 @@ defmodule Bitcoinex.PSBT.In do
     |> parse_input([], num_inputs)
   end
 
-  @spec from_tx_inputs(list(Transaction.In.t()), list(Transaction.Witness.t())) :: list(%In{})
+  @spec from_tx_inputs(list(Transaction.In.t()), list(Transaction.Witness.t())) :: list()
   def from_tx_inputs(tx_inputs, tx_witnesses) do
     inputs_witnesses = Enum.zip(tx_inputs, tx_witnesses)
 
@@ -775,8 +776,6 @@ defmodule Bitcoinex.PSBT.In do
     end
   end
 
-  @spec parse(any, nonempty_binary, %In{}) ::
-          {%In{}, binary}
   defp parse(<<@psbt_in_non_witness_utxo::big-size(8)>>, psbt, input) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
     {:ok, txn} = Transaction.decode(value)
