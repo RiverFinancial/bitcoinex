@@ -27,6 +27,11 @@ defmodule Bitcoinex.Transaction do
     :lock_time
   ]
 
+  # https://github.com/bitcoin/bips/blob/master/bip-0341.mediawiki#common-signature-message
+  @valid_sighash_flags [0x00, 0x01, 0x02, 0x03, 0x81, 0x82, 0x83]
+
+  def valid_sighash_flags(), do: @valid_sighash_flags
+
   @minimum_time_locktime 500_000_000
 
   def minimum_time_locktime(), do: @minimum_time_locktime
