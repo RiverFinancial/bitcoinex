@@ -118,7 +118,7 @@ defmodule Bitcoinex.PSBT do
      }}
   end
 
-  @spec to_tx(PSBT.t()) :: %Bitcoinex.Transaction{}
+  @spec to_tx(PSBT.t()) :: Bitcoinex.Transaction
   def to_tx(psbt) do
     tx = psbt.global.unsigned_tx
 
@@ -327,12 +327,12 @@ defmodule Bitcoinex.PSBT.Global do
     %Global{global | unknown: unknown}
   end
 
-  @spec parse_global(nonempty_binary) :: {%Global{}, binary}
+  @spec parse_global(nonempty_binary) :: {Global, binary}
   def parse_global(psbt) do
     PsbtUtils.parse_key_value(psbt, %Global{}, &parse/3)
   end
 
-  @spec from_tx(%Transaction{}) :: %Global{}
+  @spec from_tx(Transaction) :: Global
   def from_tx(tx) do
     %Global{
       unsigned_tx: tx,
@@ -487,7 +487,7 @@ defmodule Bitcoinex.PSBT.Global do
     PsbtUtils.serialize_kv(k, v)
   end
 
-  @spec serialize_global(%Global{}) :: nonempty_binary
+  @spec serialize_global(Global) :: nonempty_binary
   def serialize_global(global) do
     serialized_global =
       Enum.reduce(
@@ -1408,7 +1408,7 @@ defmodule Bitcoinex.PSBT.Out do
     <<>>
   end
 
-  @spec from_tx_outputs(list(%TxOut{})) :: list(%Out{})
+  @spec from_tx_outputs(list(TxOut)) :: list(Out)
   def from_tx_outputs(tx_outputs) do
     Enum.reduce(tx_outputs, [], fn _, acc -> [%Out{} | acc] end)
     |> Enum.reverse()
