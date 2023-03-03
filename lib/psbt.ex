@@ -14,7 +14,6 @@ defmodule Bitcoinex.PSBT do
   alias Bitcoinex.PSBT.Utils
   alias Bitcoinex.Transaction
   alias Bitcoinex.Transaction.Utils, as: TxUtils
-  alias Bitcoinex.Utils
 
   @type t() :: %__MODULE__{}
 
