@@ -118,7 +118,6 @@ defmodule Bitcoinex.PSBT do
      }}
   end
 
-  @spec to_tx(PSBT.t()) :: Bitcoinex.Transaction
   def to_tx(psbt) do
     tx = psbt.global.unsigned_tx
 
@@ -332,7 +331,6 @@ defmodule Bitcoinex.PSBT.Global do
     PsbtUtils.parse_key_value(psbt, %Global{}, &parse/3)
   end
 
-  @spec from_tx(Transaction) :: Global
   def from_tx(tx) do
     %Global{
       unsigned_tx: tx,
