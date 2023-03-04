@@ -28,6 +28,10 @@ defmodule Bitcoinex.Transaction do
     :lock_time
   ]
 
+  @minimum_time_locktime 500_000_000
+
+  def minimum_time_locktime(), do: @minimum_time_locktime
+
   @sighash_default 0x00
   @sighash_all 0x01
   @sighash_none 0x02
@@ -46,6 +50,8 @@ defmodule Bitcoinex.Transaction do
     @sighash_anyonecanpay_none,
     @sighash_anyonecanpay_single
   ]
+
+  def valid_sighash_flags(), do: @valid_sighash_flags
 
   @doc """
     Returns the TxID of the given tranasction.
