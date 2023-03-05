@@ -679,6 +679,7 @@ defmodule Bitcoinex.Transaction.In do
       remaining
 
     input = %In{
+      # TODO fix this
       prev_txid:
         Base.encode16(<<:binary.decode_unsigned(prev_txid, :big)::little-size(256)>>, case: :lower),
       prev_vout: prev_vout,
@@ -688,6 +689,26 @@ defmodule Bitcoinex.Transaction.In do
 
     parse(remaining, [input | inputs], count - 1)
   end
+
+  def lexicographical_sort_inputs(inputs) do
+    Enum.sort(inputs, &lexicographical_cmp_inputs/2)
+  end
+
+  def lexicographical_cmp_inputs(input1, input2) do
+    # compare txids then vouts
+    input1little_txid = Base.decode16!(input1.prev_txid, case: :lower) # |> Utils.flip_endianness()
+    input1bin =
+      input1little_txid <> <<input1.prev_vout::big-size(32)>>
+      |> :erlang.binary_to_list()
+
+    input2little_txid = Base.decode16!(input2.prev_txid, case: :lower) # |> Utils.flip_endianness()
+    input2bin =
+      input2little_txid <> <<input2.prev_vout::big-size(32)>>
+      |> :erlang.binary_to_list()
+
+    Utils.lexicographical_cmp(input1bin, input2bin)
+  end
+
 end
 
 defmodule Bitcoinex.Transaction.Out do
@@ -752,5 +773,23 @@ defmodule Bitcoinex.Transaction.Out do
     }
 
     parse(remaining, [output | outputs], count - 1)
+  end
+
+  def lexicographical_sort_outputs(outputs) do
+    Enum.sort(outputs, &lexicographical_cmp_output/2)
+  end
+
+  def lexicographical_cmp_output(o1, o2) do
+    # first compare amounts, then scriptpubkeys
+    cond do
+      o1.value < o2.value ->
+        true
+      o1.value > o2.value ->
+        false
+      o1.value == o2.value ->
+        o1spk = Base.decode16!(o1.script_pub_key) |> :erlang.binary_to_list()
+        o2spk = Base.decode16!(o2.script_pub_key) |> :erlang.binary_to_list()
+        Utils.lexicographical_cmp(o1spk, o2spk)
+    end
   end
 end
