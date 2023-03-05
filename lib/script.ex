@@ -538,24 +538,24 @@ defmodule Bitcoinex.Script do
 
   defp fill_multi_keys(_, _), do: raise(ArgumentError)
 
-  @spec create_taproot_multisig(non_neg_integer(), list(Point.t())) :: Script.t()
-  def create_taproot_multisig(m, pubkeys) when is_valid_multi(m, pubkeys) do
+  @spec create_tapscript_multisig(non_neg_integer(), list(Point.t())) :: Script.t()
+  def create_tapscript_multisig(m, pubkeys) when is_valid_multi(m, pubkeys) do
     {:ok, s} = push_op(new(), :op_equal)
     {:ok, s} = push_num(s, m)
-    fill_taproot_multi_keys(s, Enum.reverse(pubkeys))
+    fill_tapscript_multi_keys(s, Enum.reverse(pubkeys))
   end
 
   # creates a script using the pubkeys *in reverse order*.
-  defp fill_taproot_multi_keys(s, []), do: s
-  defp fill_taproot_multi_keys(s, [last_key]) do
+  defp fill_tapscript_multi_keys(s, []), do: s
+  defp fill_tapscript_multi_keys(s, [last_key]) do
     {:ok, s} = push_op(s, :op_checksig)
     {:ok, s} = push_data(s, Point.x_bytes(last_key))
     s
   end
-  defp fill_taproot_multi_keys(s, [key | rest]) do
+  defp fill_tapscript_multi_keys(s, [key | rest]) do
     {:ok, s} = push_op(s, :op_checksigadd)
     {:ok, s} = push_data(s, Point.x_bytes(key))
-    fill_taproot_multi_keys(s, rest)
+    fill_tapscript_multi_keys(s, rest)
   end
 
   @doc """
