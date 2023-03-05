@@ -36,7 +36,8 @@ defmodule Bitcoinex.ScriptTest do
     },
     # from tx: a6e48d3b1c63598598c0f79886bdd059a9a472b071d34c706bedc2288d2cfdcf
     %{
-      script_hex: "52210375e00eb72e29da82b89367947f29ef34afb75e8654f6ea368e0acdfd92976b7c2103a1b26313f430c4b15bb1fdce663207659d8cac749a0e53d70eff01874496feff2103c96d495bfdd5ba4145e3e046fee45e84a8a48ad05bd8dbb395c011a32cf9f88053ae",
+      script_hex:
+        "52210375e00eb72e29da82b89367947f29ef34afb75e8654f6ea368e0acdfd92976b7c2103a1b26313f430c4b15bb1fdce663207659d8cac749a0e53d70eff01874496feff2103c96d495bfdd5ba4145e3e046fee45e84a8a48ad05bd8dbb395c011a32cf9f88053ae",
       network: :mainnet,
       wsh_addr: "bc1qwqdg6squsna38e46795at95yu9atm8azzmyvckulcc7kytlcckxswvvzej",
       sh_addr: ""
@@ -62,11 +63,12 @@ defmodule Bitcoinex.ScriptTest do
   @raw_sorted_multisig_with_data [
     # from tx: a6e48d3b1c63598598c0f79886bdd059a9a472b071d34c706bedc2288d2cfdcf
     %{
-      script_hex: "52210375e00eb72e29da82b89367947f29ef34afb75e8654f6ea368e0acdfd92976b7c2103a1b26313f430c4b15bb1fdce663207659d8cac749a0e53d70eff01874496feff2103c96d495bfdd5ba4145e3e046fee45e84a8a48ad05bd8dbb395c011a32cf9f88053ae",
+      script_hex:
+        "52210375e00eb72e29da82b89367947f29ef34afb75e8654f6ea368e0acdfd92976b7c2103a1b26313f430c4b15bb1fdce663207659d8cac749a0e53d70eff01874496feff2103c96d495bfdd5ba4145e3e046fee45e84a8a48ad05bd8dbb395c011a32cf9f88053ae",
       network: :mainnet,
       wsh_addr: "bc1qwqdg6squsna38e46795at95yu9atm8azzmyvckulcc7kytlcckxswvvzej",
       sh_addr: ""
-    },
+    }
   ]
 
   @p2pk_scripts [

@@ -696,19 +696,22 @@ defmodule Bitcoinex.Transaction.In do
 
   def lexicographical_cmp_inputs(input1, input2) do
     # compare txids then vouts
-    input1little_txid = Base.decode16!(input1.prev_txid, case: :lower) # |> Utils.flip_endianness()
+    # |> Utils.flip_endianness()
+    input1little_txid = Base.decode16!(input1.prev_txid, case: :lower)
+
     input1bin =
-      input1little_txid <> <<input1.prev_vout::big-size(32)>>
+      (input1little_txid <> <<input1.prev_vout::big-size(32)>>)
       |> :erlang.binary_to_list()
 
-    input2little_txid = Base.decode16!(input2.prev_txid, case: :lower) # |> Utils.flip_endianness()
+    # |> Utils.flip_endianness()
+    input2little_txid = Base.decode16!(input2.prev_txid, case: :lower)
+
     input2bin =
-      input2little_txid <> <<input2.prev_vout::big-size(32)>>
+      (input2little_txid <> <<input2.prev_vout::big-size(32)>>)
       |> :erlang.binary_to_list()
 
     Utils.lexicographical_cmp(input1bin, input2bin)
   end
-
 end
 
 defmodule Bitcoinex.Transaction.Out do
@@ -784,8 +787,10 @@ defmodule Bitcoinex.Transaction.Out do
     cond do
       o1.value < o2.value ->
         true
+
       o1.value > o2.value ->
         false
+
       o1.value == o2.value ->
         o1spk = Base.decode16!(o1.script_pub_key) |> :erlang.binary_to_list()
         o2spk = Base.decode16!(o2.script_pub_key) |> :erlang.binary_to_list()

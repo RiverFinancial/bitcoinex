@@ -526,8 +526,10 @@ defmodule Bitcoinex.Script do
     this function sorts the pubkeys lexicographically, complying with BIP 67. For a non-compliant
     version of this function, use create_unsorted_multisig
   """
-  @spec create_multisig(non_neg_integer(), list(Point.t()), list({:bip67_sort, boolean})) :: {:ok, t()} | {:error, String.t()}
+  @spec create_multisig(non_neg_integer(), list(Point.t()), list({:bip67_sort, boolean})) ::
+          {:ok, t()} | {:error, String.t()}
   def create_multisig(m, pubkeys, opts \\ [])
+
   def create_multisig(m, pubkeys, opts) when is_valid_multisig(m, pubkeys) do
     pubkeys =
       if Keyword.get(opts, :bip67_sort, true) do
@@ -547,7 +549,8 @@ defmodule Bitcoinex.Script do
     end
   end
 
-  def create_multisig(_, _, _), do: {:error, "invalid multisig: must be of form: (int, list(%Point)"}
+  def create_multisig(_, _, _),
+    do: {:error, "invalid multisig: must be of form: (int, list(%Point)"}
 
   defp fill_multisig_keys(s, []), do: s
 
