@@ -162,12 +162,13 @@ defmodule Bitcoinex.Script do
   end
 
   @spec push_num(t(), non_neg_integer()) :: t()
-  def push_num(%__MODULE__{items: stack}, num) when num >= 0 and num <= 16  do
+  def push_num(%__MODULE__{items: stack}, num) when num >= 0 and num <= 16 do
     op_num = num_to_op_num(num)
-    %__MODULE__{items: [op_num | stack]}
+    {:ok, %__MODULE__{items: [op_num | stack]}}
   end
 
   def num_to_op_num(0), do: 0
+
   def num_to_op_num(num) when num > 0 and num <= 16 do
     0x50 + num
   end
@@ -522,9 +523,19 @@ defmodule Bitcoinex.Script do
 
   @doc """
     create_multisig creates a raw multisig script using m and the list of public keys.
+    this function sorts the pubkeys lexicographically, complying with BIP 67. For a non-compliant
+    version of this function, use create_unsorted_multisig
   """
-  @spec create_multisig(non_neg_integer(), list(Point.t())) :: {:ok, t()} | {:error, String.t()}
-  def create_multisig(m, pubkeys) when is_valid_multisig(m, pubkeys) do
+  @spec create_multisig(non_neg_integer(), list(Point.t()), list({:bip67_sort, boolean})) :: {:ok, t()} | {:error, String.t()}
+  def create_multisig(m, pubkeys, opts \\ [])
+  def create_multisig(m, pubkeys, opts) when is_valid_multisig(m, pubkeys) do
+    pubkeys =
+      if Keyword.get(opts, :bip67_sort, true) do
+        lexicographical_sort_pubkeys(pubkeys)
+      else
+        pubkeys
+      end
+
     try do
       # checkmultisig
       {:ok, s} = push_op(new(), 0xAE)
@@ -536,7 +547,7 @@ defmodule Bitcoinex.Script do
     end
   end
 
-  def create_multisig(_, _), do: {:error, "invalid multisig: must be of form: (int, list(%Point)"}
+  def create_multisig(_, _, _), do: {:error, "invalid multisig: must be of form: (int, list(%Point)"}
 
   defp fill_multisig_keys(s, []), do: s
 
@@ -548,33 +559,50 @@ defmodule Bitcoinex.Script do
   defp fill_multisig_keys(_, _), do: raise(ArgumentError)
 
   @spec create_tapscript_multisig(non_neg_integer(), list(Point.t())) :: Script.t()
-  def create_tapscript_multisig(m, pubkeys) when is_valid_multi(m, pubkeys) do
-    {:ok, s} = push_op(new(), :op_equal)
+  def create_tapscript_multisig(m, pubkeys) when is_valid_multisig(m, pubkeys) do
+    {:ok, s} = push_op(new(), :op_numequal)
     {:ok, s} = push_num(s, m)
-    fill_tapscript_multi_keys(s, Enum.reverse(pubkeys))
+    pubkeys = lexicographical_sort_pubkeys(pubkeys)
+    fill_tapscript_multisig_keys(s, Enum.reverse(pubkeys))
   end
 
   # creates a script using the pubkeys *in reverse order*.
-  defp fill_tapscript_multi_keys(s, []), do: s
-  defp fill_tapscript_multi_keys(s, [last_key]) do
+  defp fill_tapscript_multisig_keys(s, []), do: s
+
+  defp fill_tapscript_multisig_keys(s, [last_key]) do
     {:ok, s} = push_op(s, :op_checksig)
     {:ok, s} = push_data(s, Point.x_bytes(last_key))
     s
   end
-  defp fill_tapscript_multi_keys(s, [key | rest]) do
+
+  defp fill_tapscript_multisig_keys(s, [key | rest]) do
     {:ok, s} = push_op(s, :op_checksigadd)
     {:ok, s} = push_data(s, Point.x_bytes(key))
-    fill_tapscript_multi_keys(s, rest)
+    fill_tapscript_multisig_keys(s, rest)
+  end
+
+  # BIP67
+  def lexicographical_sort_pubkeys(pubkeys) do
+    pubkeys
+    |> Enum.map(fn pubkey -> Point.sec(pubkey) |> :erlang.binary_to_list() end)
+    |> Enum.sort(&Utils.lexicographical_cmp/2)
+    |> Enum.map(fn bin_list ->
+      {:ok, pk} =
+        :erlang.list_to_binary(bin_list)
+        |> Point.parse_public_key()
+
+      pk
+    end)
   end
 
   @doc """
     create_p2sh_multisig returns both a P2SH-wrapped multisig script
     and the underlying raw multisig script using m and the list of public keys.
   """
-  @spec create_p2sh_multisig(non_neg_integer(), list(Point.t())) ::
+  @spec create_p2sh_multisig(non_neg_integer(), list(Point.t()), list({:bip67_sort, boolean})) ::
           {:ok, t(), t()} | {:error, String.t()}
-  def create_p2sh_multisig(m, pubkeys) do
-    case create_multisig(m, pubkeys) do
+  def create_p2sh_multisig(m, pubkeys, opts \\ []) do
+    case create_multisig(m, pubkeys, opts) do
       {:ok, multisig} ->
         h160 = hash160(multisig)
         {:ok, p2sh} = create_p2sh(h160)
@@ -589,10 +617,10 @@ defmodule Bitcoinex.Script do
     create_p2wsh_multisig returns both a P2WSH-wrapped multisig script
     and the underlying raw multisig script using m and the list of public keys.
   """
-  @spec create_p2wsh_multisig(non_neg_integer(), list(Point.t())) ::
+  @spec create_p2wsh_multisig(non_neg_integer(), list(Point.t()), list({:bip67_sort, boolean})) ::
           {:ok, t(), t()} | {:error, String.t()}
-  def create_p2wsh_multisig(m, pubkeys) do
-    case create_multisig(m, pubkeys) do
+  def create_p2wsh_multisig(m, pubkeys, opts \\ []) do
+    case create_multisig(m, pubkeys, opts) do
       {:ok, multisig} ->
         h256 = sha256(multisig)
         {:ok, p2wsh} = create_p2wsh(h256)
