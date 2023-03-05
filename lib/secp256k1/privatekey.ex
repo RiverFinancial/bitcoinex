@@ -60,6 +60,11 @@ defmodule Bitcoinex.Secp256k1.PrivateKey do
     end
   end
 
+  @spec negate(t()) :: t()
+  def negate(%__MODULE__{d: d}) do
+    %__MODULE__{d: @n - d}
+  end
+
   @doc """
    serialize_private_key serializes a private key into hex
   """
