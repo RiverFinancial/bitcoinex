@@ -161,7 +161,7 @@ defmodule Bitcoinex.Script do
     end
   end
 
-  @spec push_num(t(), non_neg_integer()) :: t()
+  @spec push_num(t(), non_neg_integer()) :: {:ok, t()}
   def push_num(%__MODULE__{items: stack}, num) when num >= 0 and num <= 16 do
     op_num = num_to_op_num(num)
     {:ok, %__MODULE__{items: [op_num | stack]}}
