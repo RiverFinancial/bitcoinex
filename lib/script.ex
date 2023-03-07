@@ -531,12 +531,7 @@ defmodule Bitcoinex.Script do
   def create_multisig(m, pubkeys, opts \\ [])
 
   def create_multisig(m, pubkeys, opts) when is_valid_multisig(m, pubkeys) do
-    pubkeys =
-      if Keyword.get(opts, :bip67_sort, true) do
-        lexicographical_sort_pubkeys(pubkeys)
-      else
-        pubkeys
-      end
+    pubkeys = sort_pubkeys(pubkeys, opts)
 
     try do
       # checkmultisig
@@ -561,11 +556,11 @@ defmodule Bitcoinex.Script do
 
   defp fill_multisig_keys(_, _), do: raise(ArgumentError)
 
-  @spec create_tapscript_multisig(non_neg_integer(), list(Point.t())) :: Script.t()
-  def create_tapscript_multisig(m, pubkeys) when is_valid_multisig(m, pubkeys) do
+  @spec create_tapscript_multisig(non_neg_integer(), list(Point.t()), list({:bip67_sort, boolean})) :: t()
+  def create_tapscript_multisig(m, pubkeys, opts \\ []) when is_valid_multisig(m, pubkeys) do
+    pubkeys = sort_pubkeys(pubkeys, opts)
     {:ok, s} = push_op(new(), :op_numequal)
     {:ok, s} = push_num(s, m)
-    pubkeys = lexicographical_sort_pubkeys(pubkeys)
     fill_tapscript_multisig_keys(s, Enum.reverse(pubkeys))
   end
 
@@ -582,6 +577,14 @@ defmodule Bitcoinex.Script do
     {:ok, s} = push_op(s, :op_checksigadd)
     {:ok, s} = push_data(s, Point.x_bytes(key))
     fill_tapscript_multisig_keys(s, rest)
+  end
+
+  def sort_pubkeys(pubkeys, opts) do
+    if Keyword.get(opts, :bip67_sort, true) do
+      lexicographical_sort_pubkeys(pubkeys)
+    else
+      pubkeys
+    end
   end
 
   # BIP67
