@@ -697,11 +697,13 @@ defmodule Bitcoinex.Transaction.In do
   def lexicographical_cmp_inputs(input1, input2) do
     # compare txids then vouts
     input1little_txid = Base.decode16!(input1.prev_txid, case: :lower)
+
     input1bin =
       (input1little_txid <> <<input1.prev_vout::big-size(32)>>)
       |> :erlang.binary_to_list()
 
     input2little_txid = Base.decode16!(input2.prev_txid, case: :lower)
+
     input2bin =
       (input2little_txid <> <<input2.prev_vout::big-size(32)>>)
       |> :erlang.binary_to_list()

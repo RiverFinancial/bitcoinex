@@ -556,7 +556,11 @@ defmodule Bitcoinex.Script do
 
   defp fill_multisig_keys(_, _), do: raise(ArgumentError)
 
-  @spec create_tapscript_multisig(non_neg_integer(), list(Point.t()), list({:bip67_sort, boolean})) :: t()
+  @spec create_tapscript_multisig(
+          non_neg_integer(),
+          list(Point.t()),
+          list({:bip67_sort, boolean})
+        ) :: t()
   def create_tapscript_multisig(m, pubkeys, opts \\ []) when is_valid_multisig(m, pubkeys) do
     pubkeys = sort_pubkeys(pubkeys, opts)
     {:ok, s} = push_op(new(), :op_numequal)
