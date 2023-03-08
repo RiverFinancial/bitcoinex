@@ -137,7 +137,7 @@ defmodule Bitcoinex.Utils do
   def lexicographical_cmp([b0 | r0], [b1 | r1]) do
     cond do
       b0 == b1 ->
-        lexicographical_sort(r0, r1)
+        lexicographical_cmp(r0, r1)
 
       b1 < b0 ->
         # initial order was incorrect, must be swapped

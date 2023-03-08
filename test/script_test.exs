@@ -34,6 +34,14 @@ defmodule Bitcoinex.ScriptTest do
       wsh_addr: "bc1qwqdg6squsna38e46795at95yu9atm8azzmyvckulcc7kytlcckxswvvzej",
       sh_addr: ""
     },
+    # from tx: a6e48d3b1c63598598c0f79886bdd059a9a472b071d34c706bedc2288d2cfdcf
+    %{
+      script_hex:
+        "52210375e00eb72e29da82b89367947f29ef34afb75e8654f6ea368e0acdfd92976b7c2103a1b26313f430c4b15bb1fdce663207659d8cac749a0e53d70eff01874496feff2103c96d495bfdd5ba4145e3e046fee45e84a8a48ad05bd8dbb395c011a32cf9f88053ae",
+      network: :mainnet,
+      wsh_addr: "bc1qwqdg6squsna38e46795at95yu9atm8azzmyvckulcc7kytlcckxswvvzej",
+      sh_addr: ""
+    },
     # from tx: 578e8ab81e6eff430fd37eaa460377387d75f0221881fe13cf9e5b400d98b0e3
     %{
       script_hex:
@@ -48,6 +56,17 @@ defmodule Bitcoinex.ScriptTest do
         "522103af40079dabd57915a41fc676c9a1e8e9278b9aa7e3b2cf7db63435e357bd589521024a84c829eb98eb69b37be6adcdc206b462b4c9549a0db2dbc91279a2f031a50a2102a5264fbc1be9b9a7d03d9637a5534ce8d59a06c4c1f30802fe52e7bf6c1dd97153ae",
       network: :mainnet,
       wsh_addr: "bc1qamfphjerjc4jdmmnwku26x8e49m2455x65kldefw79j6j24fya9sy5r9jg",
+      sh_addr: ""
+    }
+  ]
+
+  @raw_sorted_multisig_with_data [
+    # from tx: a6e48d3b1c63598598c0f79886bdd059a9a472b071d34c706bedc2288d2cfdcf
+    %{
+      script_hex:
+        "52210375e00eb72e29da82b89367947f29ef34afb75e8654f6ea368e0acdfd92976b7c2103a1b26313f430c4b15bb1fdce663207659d8cac749a0e53d70eff01874496feff2103c96d495bfdd5ba4145e3e046fee45e84a8a48ad05bd8dbb395c011a32cf9f88053ae",
+      network: :mainnet,
+      wsh_addr: "bc1qwqdg6squsna38e46795at95yu9atm8azzmyvckulcc7kytlcckxswvvzej",
       sh_addr: ""
     }
   ]
@@ -406,6 +425,72 @@ defmodule Bitcoinex.ScriptTest do
           "c155adf4e8967fbd2e29f20ac896e60c3b0f1d5b0efa9d34941b5958c7b0a0312d737ed1fe30bc42b8022d717b44f0d93516617af64a64753b7a06bf16b26cd711f154e8e8e17c31d3462d7132589ed29353c6fafdb884c5a6e04ea938834f0d9d"
         ]
       }
+    }
+  ]
+
+  # https://github.com/bitcoin/bips/blob/master/bip-0067.mediawiki#test-vectors
+  @bip67_test_vectors_m 2
+  @bip67_tests [
+    %{
+      pubkeys: [
+        "02ff12471208c14bd580709cb2358d98975247d8765f92bc25eab3b2763ed605f8",
+        "02fe6f0a5a297eb38c391581c4413e084773ea23954d93f7753db7dc0adc188b2f"
+      ],
+      sorted: [
+        "02fe6f0a5a297eb38c391581c4413e084773ea23954d93f7753db7dc0adc188b2f",
+        "02ff12471208c14bd580709cb2358d98975247d8765f92bc25eab3b2763ed605f8"
+      ],
+      script:
+        "522102fe6f0a5a297eb38c391581c4413e084773ea23954d93f7753db7dc0adc188b2f2102ff12471208c14bd580709cb2358d98975247d8765f92bc25eab3b2763ed605f852ae",
+      address: "39bgKC7RFbpoCRbtD5KEdkYKtNyhpsNa3Z"
+    },
+    # (Already sorted, no action required)
+    %{
+      pubkeys: [
+        "02632b12f4ac5b1d1b72b2a3b508c19172de44f6f46bcee50ba33f3f9291e47ed0",
+        "027735a29bae7780a9755fae7a1c4374c656ac6a69ea9f3697fda61bb99a4f3e77",
+        "02e2cc6bd5f45edd43bebe7cb9b675f0ce9ed3efe613b177588290ad188d11b404"
+      ],
+      sorted: [
+        "02632b12f4ac5b1d1b72b2a3b508c19172de44f6f46bcee50ba33f3f9291e47ed0",
+        "027735a29bae7780a9755fae7a1c4374c656ac6a69ea9f3697fda61bb99a4f3e77",
+        "02e2cc6bd5f45edd43bebe7cb9b675f0ce9ed3efe613b177588290ad188d11b404"
+      ],
+      script:
+        "522102632b12f4ac5b1d1b72b2a3b508c19172de44f6f46bcee50ba33f3f9291e47ed021027735a29bae7780a9755fae7a1c4374c656ac6a69ea9f3697fda61bb99a4f3e772102e2cc6bd5f45edd43bebe7cb9b675f0ce9ed3efe613b177588290ad188d11b40453ae",
+      address: "3CKHTjBKxCARLzwABMu9yD85kvtm7WnMfH"
+    },
+    %{
+      pubkeys: [
+        "030000000000000000000000000000000000004141414141414141414141414141",
+        "020000000000000000000000000000000000004141414141414141414141414141",
+        "020000000000000000000000000000000000004141414141414141414141414140",
+        "030000000000000000000000000000000000004141414141414141414141414140"
+      ],
+      sorted: [
+        "020000000000000000000000000000000000004141414141414141414141414140",
+        "020000000000000000000000000000000000004141414141414141414141414141",
+        "030000000000000000000000000000000000004141414141414141414141414140",
+        "030000000000000000000000000000000000004141414141414141414141414141"
+      ],
+      script:
+        "522102000000000000000000000000000000000000414141414141414141414141414021020000000000000000000000000000000000004141414141414141414141414141210300000000000000000000000000000000000041414141414141414141414141402103000000000000000000000000000000000000414141414141414141414141414154ae",
+      address: "32V85igBri9zcfBRVupVvwK18NFtS37FuD"
+    },
+    %{
+      pubkeys: [
+        "022df8750480ad5b26950b25c7ba79d3e37d75f640f8e5d9bcd5b150a0f85014da",
+        "03e3818b65bcc73a7d64064106a859cc1a5a728c4345ff0b641209fba0d90de6e9",
+        "021f2f6e1e50cb6a953935c3601284925decd3fd21bc445712576873fb8c6ebc18"
+      ],
+      sorted: [
+        "021f2f6e1e50cb6a953935c3601284925decd3fd21bc445712576873fb8c6ebc18",
+        "022df8750480ad5b26950b25c7ba79d3e37d75f640f8e5d9bcd5b150a0f85014da",
+        "03e3818b65bcc73a7d64064106a859cc1a5a728c4345ff0b641209fba0d90de6e9"
+      ],
+      script:
+        "5221021f2f6e1e50cb6a953935c3601284925decd3fd21bc445712576873fb8c6ebc1821022df8750480ad5b26950b25c7ba79d3e37d75f640f8e5d9bcd5b150a0f85014da2103e3818b65bcc73a7d64064106a859cc1a5a728c4345ff0b641209fba0d90de6e953ae",
+      address: "3Q4sF6tv9wsdqu2NtARzNCpQgwifm2rAba"
     }
   ]
 
@@ -1380,8 +1465,33 @@ defmodule Bitcoinex.ScriptTest do
       assert Script.to_address(s, :mainnet) == {:ok, addr}
     end
 
-    test "test raw multisig to address" do
+    test "test raw unsorted multisig to address" do
       for multi <- @raw_multisigs_with_data do
+        {:ok, ms} = Script.parse_script(multi.script_hex)
+        {:ok, m, pks} = Script.extract_multisig_policy(ms)
+
+        if multi.sh_addr != "" do
+          {:ok, p2sh, multi_script} = Script.create_p2sh_multisig(m, pks, bip67_sort: false)
+
+          {:ok, addr} = Script.to_address(p2sh, multi.network)
+
+          assert multi_script == ms
+          assert addr == multi.sh_addr
+        end
+
+        if multi.wsh_addr != "" do
+          {:ok, p2wsh, multi_script} = Script.create_p2wsh_multisig(m, pks, bip67_sort: false)
+
+          {:ok, addr} = Script.to_address(p2wsh, multi.network)
+
+          assert multi_script == ms
+          assert addr == multi.wsh_addr
+        end
+      end
+    end
+
+    test "raw sorted multisig to address" do
+      for multi <- @raw_sorted_multisig_with_data do
         {:ok, ms} = Script.parse_script(multi.script_hex)
         {:ok, m, pks} = Script.extract_multisig_policy(ms)
 
@@ -1534,7 +1644,7 @@ defmodule Bitcoinex.ScriptTest do
       for multi <- @raw_multisigs_with_data do
         {:ok, ms} = Script.parse_script(multi.script_hex)
         {:ok, m, pks} = Script.extract_multisig_policy(ms)
-        {:ok, ms2} = Script.create_multisig(m, pks)
+        {:ok, ms2} = Script.create_multisig(m, pks, bip67_sort: false)
 
         assert ms == ms2
       end
@@ -1542,7 +1652,7 @@ defmodule Bitcoinex.ScriptTest do
       for m <- @raw_multisig_scripts do
         {:ok, ms} = Script.parse_script(m)
         {:ok, m, pks} = Script.extract_multisig_policy(ms)
-        {:ok, ms2} = Script.create_multisig(m, pks)
+        {:ok, ms2} = Script.create_multisig(m, pks, bip67_sort: false)
 
         assert ms == ms2
       end
@@ -1599,6 +1709,34 @@ defmodule Bitcoinex.ScriptTest do
         {:ok, script} = Script.create_p2tr(p, t.given.script_tree)
         assert Script.to_hex(script) == t.expected.script_pubkey
         assert Script.to_address(script, :mainnet) == {:ok, t.expected.bip350_address}
+      end
+    end
+  end
+
+  describe "bip 67" do
+    def parse_pk(pk) do
+      {:ok, pk} = Point.parse_public_key(pk)
+      pk
+    end
+
+    test "sorting pubkeys" do
+      for t <- @bip67_tests do
+        pubkeys = Enum.map(t.pubkeys, &parse_pk/1)
+        sorted_pubkeys = Enum.map(t.sorted, &parse_pk/1)
+
+        pubkeys = Script.lexicographical_sort_pubkeys(pubkeys)
+
+        zip_list = Enum.zip(pubkeys, sorted_pubkeys)
+        Enum.each(zip_list, fn {pubkey, sorted_pubkey} -> assert pubkey == sorted_pubkey end)
+      end
+    end
+
+    test "script creation" do
+      for t <- @bip67_tests do
+        pubkeys = Enum.map(t.pubkeys, &parse_pk/1)
+        {:ok, script, redeem_script} = Script.create_p2sh_multisig(@bip67_test_vectors_m, pubkeys)
+        assert Script.to_hex(redeem_script) == t.script
+        assert Script.to_address(script, :mainnet) == {:ok, t.address}
       end
     end
   end
