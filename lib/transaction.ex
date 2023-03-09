@@ -808,8 +808,8 @@ defmodule Bitcoinex.Transaction.Out do
         false
 
       o1.value == o2.value ->
-        o1spk = Base.decode16!(o1.script_pub_key) |> :erlang.binary_to_list()
-        o2spk = Base.decode16!(o2.script_pub_key) |> :erlang.binary_to_list()
+        o1spk = Base.decode16!(o1.script_pub_key, case: :lower) |> :erlang.binary_to_list()
+        o2spk = Base.decode16!(o2.script_pub_key, case: :lower) |> :erlang.binary_to_list()
         Utils.lexicographical_cmp(o1spk, o2spk)
     end
   end
