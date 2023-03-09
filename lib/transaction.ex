@@ -70,6 +70,22 @@ defmodule Bitcoinex.Transaction do
     )
   end
 
+  def serialize(tx = %__MODULE__{}), do: TxUtils.serialize(tx)
+
+  def vbyte_size(tx = %__MODULE__{}) do
+    legacy_bytes = byte_size(TxUtils.serialize(%{tx | witnesses: []}))
+    witness_bytes = byte_size(Witness.serialize_witness(tx.witnesses))
+    # add segwit marker + flag for segwit txs
+    witness_bytes =
+      if witness_bytes > 0 do
+        witness_bytes + 2
+      else
+        witness_bytes
+      end
+
+    legacy_bytes + ceil(witness_bytes / 4)
+  end
+
   @spec bip341_sighash(
           t(),
           non_neg_integer(),
@@ -512,6 +528,8 @@ defmodule Bitcoinex.Transaction.Witness do
   end
 
   @spec serialize_witness(list(Witness.t())) :: binary
+  def serialize_witness(nil), do: serialize_witness([])
+
   def serialize_witness(witnesses) do
     serialize_witness(witnesses, <<>>)
   end
@@ -523,7 +541,7 @@ defmodule Bitcoinex.Transaction.Witness do
 
     serialized_witness =
       if witness == nil || Enum.empty?(witness.txinwitness) do
-        <<0x0::big-size(8)>>
+        <<0x00::big-size(8)>>
       else
         stack_len = Utils.serialize_compact_size_unsigned_int(length(witness.txinwitness))
 
@@ -553,7 +571,7 @@ defmodule Bitcoinex.Transaction.Witness do
 
     {witness, remaining} =
       if stack_size == 0 do
-        {%Witness{txinwitness: 0}, remaining}
+        {%Witness{txinwitness: []}, remaining}
       else
         {stack_items, remaining} = parse_stack(remaining, [], stack_size)
         {%Witness{txinwitness: stack_items}, remaining}
