@@ -282,7 +282,7 @@ defmodule Bitcoinex.Secp256k1.SchnorrTest do
 
       for _ <- 1..1000 do
         secret =
-          31
+          32
           |> :crypto.strong_rand_bytes()
           |> :binary.decode_unsigned()
 
