@@ -338,4 +338,17 @@ defmodule Bitcoinex.Secp256k1.SchnorrTest do
       end
     end
   end
+
+  describe "signature_point testing" do
+    test "signature_point matches sign_with_nonce" do
+      for _ <- 0..1000 do
+        {sk, pk, nonce, nonce_point, z, _aux} = get_rand_values_for_encrypted_sig()
+        sig_pk = Schnorr.calculate_signature_point(nonce_point, pk, :binary.encode_unsigned(z))
+        %Signature{s: s} = Schnorr.sign_with_nonce(sk, nonce, z)
+        {:ok, sig_sk} = PrivateKey.new(s)
+        # ensure that Signature.s is the privkey to the sig_point
+        assert PrivateKey.to_point(sig_sk) == sig_pk
+      end
+    end
+  end
 end
