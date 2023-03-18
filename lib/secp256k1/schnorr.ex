@@ -296,6 +296,9 @@ defmodule Bitcoinex.Secp256k1.Schnorr do
 
   # @spec calculate_signature_point(Point.t(), Point.(), <<_::256>>) :: Point.t() | {:error, String.t()}
   def calculate_signature_point(r_point, pk, z_bytes) do
+    {r_point, _} = make_point_even(r_point)
+    z_bytes = Utils.pad(z_bytes, 32, :leading)
+
     e =
       calculate_e(Point.x_bytes(r_point), Point.x_bytes(pk), z_bytes)
       |> PrivateKey.new()
