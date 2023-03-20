@@ -3,7 +3,7 @@ defmodule Bitcoinex.Address do
   Bitcoinex.Address supports Base58 and Bech32 address encoding and validation.
   """
 
-  alias Bitcoinex.{Segwit, Base58, Network}
+  alias Bitcoinex.{Base58, Network, Segwit}
 
   @typedoc """
     The address_type describes the address type to use.
@@ -106,9 +106,7 @@ defmodule Bitcoinex.Address do
   @doc """
   Returns a list of supported address types.
   """
-  def supported_address_types() do
-    @address_types
-  end
+  def supported_address_types, do: @address_types
 
   defp is_valid_base58_check_address?(address, valid_prefix) do
     case Base58.decode(address) do

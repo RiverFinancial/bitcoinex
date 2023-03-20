@@ -4,9 +4,9 @@ defmodule Bitcoinex.Secp256k1.Point do
   """
 
   import Bitwise
-  alias Bitcoinex.Utils
   alias Bitcoinex.Secp256k1
   alias Bitcoinex.Secp256k1.Params
+  alias Bitcoinex.Utils
 
   @p Params.curve().p
 

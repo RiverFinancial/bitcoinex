@@ -103,7 +103,7 @@ defmodule Bitcoinex.Secp256k1.PointTest do
 
     test "return error when x is equal or greater than Secp256k1 p" do
       for i <- 0..2 do
-        assert {:error, error} = Point.lift_x(Bitcoinex.Secp256k1.Params.curve().p + i)
+        assert {:error, error} = Point.lift_x(Secp256k1.Params.curve().p + i)
         assert String.match?(error, ~r/(too large)/)
       end
     end

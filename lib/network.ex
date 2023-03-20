@@ -30,13 +30,7 @@ defmodule Bitcoinex.Network do
   @doc """
     Returns a list of supported networks.
   """
-  def supported_networks() do
-    [
-      mainnet(),
-      testnet(),
-      regtest()
-    ]
-  end
+  def supported_networks, do: [mainnet(), testnet(), regtest()]
 
   def mainnet do
     %__MODULE__{

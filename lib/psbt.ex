@@ -133,11 +133,11 @@ defmodule Bitcoinex.PSBT.Global do
   @moduledoc """
   Global properties of a partially signed bitcoin transaction.
   """
+  alias Bitcoinex.Base58
   alias Bitcoinex.PSBT.Global
+  alias Bitcoinex.PSBT.Utils, as: PsbtUtils
   alias Bitcoinex.Transaction
   alias Bitcoinex.Transaction.Utils, as: TxUtils
-  alias Bitcoinex.PSBT.Utils, as: PsbtUtils
-  alias Bitcoinex.Base58
 
   defstruct [
     :unsigned_tx,
@@ -252,12 +252,12 @@ defmodule Bitcoinex.PSBT.In do
   @moduledoc """
   Input properties of a partially signed bitcoin transaction.
   """
-  alias Bitcoinex.Transaction
-  alias Bitcoinex.Transaction.Witness
-  alias Bitcoinex.Transaction.Out
   alias Bitcoinex.PSBT.In
   alias Bitcoinex.PSBT.Utils, as: PsbtUtils
+  alias Bitcoinex.Transaction
+  alias Bitcoinex.Transaction.Out
   alias Bitcoinex.Transaction.Utils, as: TxUtils
+  alias Bitcoinex.Transaction.Witness
 
   defstruct [
     :non_witness_utxo,

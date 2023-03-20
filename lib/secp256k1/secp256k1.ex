@@ -193,7 +193,7 @@ defmodule Bitcoinex.Secp256k1 do
     it returns the private key
   """
   @spec force_even_y(PrivateKey.t()) :: PrivateKey.t() | {:error, String.t()}
-  def force_even_y(%PrivateKey{} = privkey) do
+  def force_even_y(privkey) do
     case PrivateKey.to_point(privkey) do
       {:error, msg} ->
         {:error, msg}
