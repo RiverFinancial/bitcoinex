@@ -1,5 +1,5 @@
 defmodule Bitcoinex.TransactionTest do
-  use ExUnit.Case
+  use ExUnit.Case, async: true
   doctest Bitcoinex.Transaction
 
   alias Bitcoinex.Transaction

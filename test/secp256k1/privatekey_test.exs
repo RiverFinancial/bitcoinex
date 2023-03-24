@@ -1,5 +1,5 @@
 defmodule Bitcoinex.Secp256k1.PrivateKeyTest do
-  use ExUnit.Case
+  use ExUnit.Case, async: true
   doctest Bitcoinex.Secp256k1.PrivateKey
 
   alias Bitcoinex.Secp256k1.PrivateKey

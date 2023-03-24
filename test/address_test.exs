@@ -1,5 +1,5 @@
 defmodule Bitcoinex.AddressTest do
-  use ExUnit.Case
+  use ExUnit.Case, async: true
   doctest Bitcoinex.Address
 
   alias Bitcoinex.Address
