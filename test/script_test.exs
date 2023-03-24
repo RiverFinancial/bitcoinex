@@ -1,5 +1,5 @@
 defmodule Bitcoinex.ScriptTest do
-  use ExUnit.Case
+  use ExUnit.Case, async: true
   doctest Bitcoinex.Script
 
   alias Bitcoinex.{Script, Utils}

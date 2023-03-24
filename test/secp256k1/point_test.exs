@@ -1,5 +1,5 @@
 defmodule Bitcoinex.Secp256k1.PointTest do
-  use ExUnit.Case
+  use ExUnit.Case, async: true
   doctest Bitcoinex.Secp256k1.Point
 
   alias Bitcoinex.Secp256k1
