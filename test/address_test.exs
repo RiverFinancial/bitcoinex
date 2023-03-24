@@ -239,6 +239,10 @@ defmodule Bitcoinex.AddressTest do
     end
   end
 
+  test "if invalid address" do
+    assert Address.decode_type("", :mainnet) == {:error, :decode_error}
+  end
+
   describe "encode/3" do
     test "return true for encoding p2pkh" do
       pubkey_hash = Base.decode16!("6dcd022b3c5e6439238eb333ec1d6ddd1973b5ba", case: :lower)
