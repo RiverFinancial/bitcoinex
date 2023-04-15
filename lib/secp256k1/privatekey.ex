@@ -82,6 +82,14 @@ defmodule Bitcoinex.Secp256k1.PrivateKey do
     end
   end
 
+  @spec to_hex(Bitcoinex.Secp256k1.PrivateKey.t()) :: String.t()
+  def to_hex(%__MODULE__{d: d}) do
+    d
+    |> :binary.encode_unsigned()
+    |> Utils.pad(32, :leading)
+    |> Base.encode16(case: :lower)
+  end
+
   @doc """
   wif returns the base58check encoded private key as a string
   assumes all keys are compressed
