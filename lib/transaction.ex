@@ -6,9 +6,9 @@ defmodule Bitcoinex.Transaction do
   alias Bitcoinex.Transaction
   alias Bitcoinex.Transaction.In
   alias Bitcoinex.Transaction.Out
+  alias Bitcoinex.Transaction.Utils, as: TxUtils
   alias Bitcoinex.Transaction.Witness
   alias Bitcoinex.Utils
-  alias Bitcoinex.Transaction.Utils, as: TxUtils
 
   @type t() :: %__MODULE__{
           version: non_neg_integer(),
@@ -195,8 +195,8 @@ defmodule Bitcoinex.Transaction.Witness do
   @moduledoc """
   Witness structure part of an on-chain transaction.
   """
-  alias Bitcoinex.Transaction.Witness
   alias Bitcoinex.Transaction.Utils, as: TxUtils
+  alias Bitcoinex.Transaction.Witness
 
   @type t :: %__MODULE__{
           txinwitness: list(binary())

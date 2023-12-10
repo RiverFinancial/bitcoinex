@@ -1350,9 +1350,9 @@ defmodule Bitcoinex.ScriptTest do
       {:ok, op3, s} = Script.pop(s)
       {:ok, op_cms, s} = Script.pop(s)
 
-      {:ok, pubkey1} = Bitcoinex.Secp256k1.Point.parse_public_key(pk1)
-      {:ok, pubkey2} = Bitcoinex.Secp256k1.Point.parse_public_key(pk2)
-      {:ok, pubkey3} = Bitcoinex.Secp256k1.Point.parse_public_key(pk3)
+      {:ok, pubkey1} = Point.parse_public_key(pk1)
+      {:ok, pubkey2} = Point.parse_public_key(pk2)
+      {:ok, pubkey3} = Point.parse_public_key(pk3)
 
       assert Script.empty?(s)
       assert push33 == 33 and push33_ == 33 and push33__ == 33
@@ -1360,9 +1360,9 @@ defmodule Bitcoinex.ScriptTest do
       assert op3 == 0x53
       assert op_cms == 0xAE
 
-      assert Bitcoinex.Secp256k1.Point.sec(pubkey1) == pk1
-      assert Bitcoinex.Secp256k1.Point.sec(pubkey2) == pk2
-      assert Bitcoinex.Secp256k1.Point.sec(pubkey3) == pk3
+      assert Point.sec(pubkey1) == pk1
+      assert Point.sec(pubkey2) == pk2
+      assert Point.sec(pubkey3) == pk3
     end
   end
 end

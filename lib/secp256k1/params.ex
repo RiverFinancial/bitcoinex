@@ -1,5 +1,5 @@
 defmodule Bitcoinex.Secp256k1.Params do
-  @doc """
+  @moduledoc """
   Secp256k1 parameters.
   http://www.secg.org/sec2-v2.pdf
   """

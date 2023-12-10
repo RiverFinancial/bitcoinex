@@ -2,7 +2,7 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
   use ExUnit.Case
   doctest Bitcoinex.Segwit
 
-  alias Bitcoinex.LightningNetwork.{Invoice, HopHint}
+  alias Bitcoinex.LightningNetwork.{HopHint, Invoice}
 
   setup_all do
     test_payment_hash = "0001020304050607080900010203040506070809000102030405060708090102"
@@ -19,14 +19,14 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
     test_description_blockstream_ledger =
       "Blockstream Store: 88.85 USD for Blockstream Ledger Nano S x 1, \"Back In My Day\" Sticker x 2, \"I Got Lightning Working\" Sticker x 2 and 1 more items"
 
-    # testHopHintPubkeyBytes1 = Base.decode64!("")
-    testHopHintPubkey1 = "029e03a901b85534ff1e92c43c74431f7ce72046060fcf7a95c37e148f78c77255"
-    testHopHintPubkey2 = "039e03a901b85534ff1e92c43c74431f7ce72046060fcf7a95c37e148f78c77255"
-    testHopHintPubkey3 = "03d06758583bb5154774a6eb221b1276c9e82d65bbaceca806d90e20c108f4b1c7"
+    # test_hop_hint_pubkeyBytes1 = Base.decode64!("")
+    test_hop_hint_pubkey1 = "029e03a901b85534ff1e92c43c74431f7ce72046060fcf7a95c37e148f78c77255"
+    test_hop_hint_pubkey2 = "039e03a901b85534ff1e92c43c74431f7ce72046060fcf7a95c37e148f78c77255"
+    test_hop_hint_pubkey3 = "03d06758583bb5154774a6eb221b1276c9e82d65bbaceca806d90e20c108f4b1c7"
 
-    testSingleHop = [
+    test_single_hop = [
       %HopHint{
-        node_id: testHopHintPubkey1,
+        node_id: test_hop_hint_pubkey1,
         channel_id: 0x0102030405060708,
         fee_base_m_sat: 0,
         fee_proportional_millionths: 20,
@@ -34,16 +34,16 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
       }
     ]
 
-    testDoubleHop = [
+    test_double_hop = [
       %HopHint{
-        node_id: testHopHintPubkey1,
+        node_id: test_hop_hint_pubkey1,
         channel_id: 0x0102030405060708,
         fee_base_m_sat: 1,
         fee_proportional_millionths: 20,
         cltv_expiry_delta: 3
       },
       %HopHint{
-        node_id: testHopHintPubkey2,
+        node_id: test_hop_hint_pubkey2,
         channel_id: 0x030405060708090A,
         fee_base_m_sat: 2,
         fee_proportional_millionths: 30,
@@ -51,11 +51,11 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
       }
     ]
 
-    test_address_testnet_P2PKH = "mk2QpYatsKicvFVuTAQLBryyccRXMUaGHP"
-    test_address_mainnet_P2PKH = "1RustyRX2oai4EYYDpQGWvEL62BBGqN9T"
-    test_address_mainnet_P2SH = "3EktnHQD7RiAE6uzMj2ZifT9YgRrkSgzQX"
-    test_address_mainnet_P2WPKH = "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"
-    test_address_mainnet_P2WSH = "bc1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3qccfmv3"
+    test_address_testnet_p2pkh = "mk2QpYatsKicvFVuTAQLBryyccRXMUaGHP"
+    test_address_mainnet_p2pkh = "1RustyRX2oai4EYYDpQGWvEL62BBGqN9T"
+    test_address_mainnet_p2sh = "3EktnHQD7RiAE6uzMj2ZifT9YgRrkSgzQX"
+    test_address_mainnet_p2wpkh = "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"
+    test_address_mainnet_p2wsh = "bc1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3qccfmv3"
 
     test_pubkey = "03e7156ae33b0a208d0744199163177e909e80176e55d97a2f221ede0f934dd9ad"
 
@@ -87,7 +87,9 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
           min_final_cltv_expiry: 18
         }
       },
-      # Please make a donation of any amount using payment_hash 0001020304050607080900010203040506070809000102030405060708090102 to me @03e7156ae33b0a208d0744199163177e909e80176e55d97a2f221ede0f934dd9ad
+      # Please make a donation of any amount using payment_hash
+      # 0001020304050607080900010203040506070809000102030405060708090102 to me
+      # @03e7156ae33b0a208d0744199163177e909e80176e55d97a2f221ede0f934dd9ad
       {
         "lnbc1pvjluezpp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqdpl2pkx2ctnv5sxxmmwwd5kgetjypeh2ursdae8g6twvus8g6rfwvs8qun0dfjkxaq8rkx3yf5tcsyz3d73gafnh3cax9rn449d9p5uxz9ezhhypd0elx87sjle52x86fux2ypatgddc6k63n7erqz25le42c4u4ecky03ylcqca784w",
         %Invoice{
@@ -149,7 +151,7 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
           amount_msat: 2_000_000_000,
           timestamp: 1_496_314_658,
           description_hash: test_description_hash_slice,
-          fallback_address: test_address_testnet_P2PKH,
+          fallback_address: test_address_testnet_p2pkh,
           min_final_cltv_expiry: 18
         }
       },
@@ -176,8 +178,8 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
           amount_msat: 2_000_000_000,
           timestamp: 1_496_314_658,
           description_hash: test_description_hash_slice,
-          fallback_address: test_address_mainnet_P2PKH,
-          route_hints: testSingleHop,
+          fallback_address: test_address_mainnet_p2pkh,
+          route_hints: test_single_hop,
           min_final_cltv_expiry: 18
         }
       },
@@ -191,8 +193,8 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
           amount_msat: 2_000_000_000,
           timestamp: 1_496_314_658,
           description_hash: test_description_hash_slice,
-          fallback_address: test_address_mainnet_P2PKH,
-          route_hints: testDoubleHop,
+          fallback_address: test_address_mainnet_p2pkh,
+          route_hints: test_double_hop,
           min_final_cltv_expiry: 18
         }
       },
@@ -206,7 +208,7 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
           amount_msat: 2_000_000_000,
           timestamp: 1_496_314_658,
           description_hash: test_description_hash_slice,
-          fallback_address: test_address_mainnet_P2SH,
+          fallback_address: test_address_mainnet_p2sh,
           min_final_cltv_expiry: 18
         }
       },
@@ -220,7 +222,7 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
           amount_msat: 2_000_000_000,
           timestamp: 1_496_314_658,
           description_hash: test_description_hash_slice,
-          fallback_address: test_address_mainnet_P2WPKH,
+          fallback_address: test_address_mainnet_p2wpkh,
           min_final_cltv_expiry: 18
         }
       },
@@ -234,7 +236,7 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
           amount_msat: 2_000_000_000,
           timestamp: 1_496_314_658,
           description_hash: test_description_hash_slice,
-          fallback_address: test_address_mainnet_P2WSH,
+          fallback_address: test_address_mainnet_p2wsh,
           min_final_cltv_expiry: 18
         }
       },
@@ -290,7 +292,7 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
           expiry: 604_800,
           route_hints: [
             %HopHint{
-              node_id: testHopHintPubkey3,
+              node_id: test_hop_hint_pubkey3,
               channel_id: 0x08FE4E000CF00001,
               fee_base_m_sat: 1000,
               fee_proportional_millionths: 2500,

@@ -2,9 +2,9 @@ defmodule Bitcoinex.Secp256k1.SchnorrTest do
   use ExUnit.Case
   doctest Bitcoinex.Secp256k1.Schnorr
 
-  alias Bitcoinex.Utils
   alias Bitcoinex.Secp256k1
   alias Bitcoinex.Secp256k1.{Point, PrivateKey, Schnorr, Signature}
+  alias Bitcoinex.Utils
 
   # BIP340 official test vectors:
   # https://github.com/bitcoin/bips/blob/master/bip-0340/test-vectors.csv

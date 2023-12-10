@@ -2,8 +2,8 @@ defmodule Bitcoinex.Secp256k1.PrivateKey do
   @moduledoc """
    	Contains an integer used to create a Point and sign.
   """
-  alias Bitcoinex.Secp256k1.{Params, Math, Point}
   alias Bitcoinex.Base58
+  alias Bitcoinex.Secp256k1.{Math, Params, Point}
   alias Bitcoinex.Utils
 
   @n Params.curve().n
@@ -39,17 +39,6 @@ defmodule Bitcoinex.Secp256k1.PrivateKey do
     to_point calculate Point from private key or integer
   """
   @spec to_point(t() | non_neg_integer()) :: Point.t() | {:error, String.t()}
-  def to_point(prvkey = %__MODULE__{}) do
-    case validate(prvkey) do
-      {:error, msg} ->
-        {:error, msg}
-
-      {:ok, %__MODULE__{d: d}} ->
-        g = %Point{x: Params.curve().g_x, y: Params.curve().g_y, z: 0}
-        Math.multiply(g, d)
-    end
-  end
-
   def to_point(d) when is_integer(d) do
     case new(d) do
       {:ok, sk} ->
@@ -60,11 +49,22 @@ defmodule Bitcoinex.Secp256k1.PrivateKey do
     end
   end
 
+  def to_point(prvkey) do
+    case validate(prvkey) do
+      {:error, msg} ->
+        {:error, msg}
+
+      {:ok, %__MODULE__{d: d}} ->
+        g = %Point{x: Params.curve().g_x, y: Params.curve().g_y, z: 0}
+        Math.multiply(g, d)
+    end
+  end
+
   @doc """
    serialize_private_key serializes a private key into hex
   """
   @spec serialize_private_key(t()) :: String.t()
-  def serialize_private_key(prvkey = %__MODULE__{}) do
+  def serialize_private_key(%__MODULE__{} = prvkey) do
     case validate(prvkey) do
       {:error, msg} ->
         {:error, msg}
@@ -82,7 +82,7 @@ defmodule Bitcoinex.Secp256k1.PrivateKey do
   assumes all keys are compressed
   """
   @spec wif!(t(), Bitcoinex.Network.network_name()) :: String.t()
-  def wif!(prvkey = %__MODULE__{}, network_name) do
+  def wif!(%__MODULE__{} = prvkey, network_name) do
     case validate(prvkey) do
       {:error, msg} ->
         {:error, msg}

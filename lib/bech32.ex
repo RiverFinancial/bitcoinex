@@ -32,8 +32,11 @@ defmodule Bitcoinex.Bech32 do
 
   @type error :: atom()
 
-  # Inspired by Ecto.Changeset. more descriptive than result tuple
+  # Inspired by `Ecto.Changeset`. It is more descriptive than result tuple
   defmodule DecodeResult do
+    @moduledoc """
+    This module is used to represent result of decoding `Bitcoinex.Bech32`.
+    """
     @type t() :: %__MODULE__{
             encoded_str: String.t(),
             encoding_type: Bitcoinex.Bech32.encoding_type() | nil,
@@ -44,7 +47,7 @@ defmodule Bitcoinex.Bech32 do
     defstruct [:encoded_str, :encoding_type, :hrp, :data, :error]
 
     @spec add_error(t(), atom()) :: t()
-    def add_error(%DecodeResult{} = decode_result, error) do
+    def add_error(%__MODULE__{} = decode_result, error) do
       %{
         decode_result
         | error: error
@@ -57,11 +60,11 @@ defmodule Bitcoinex.Bech32 do
     And we can skip handling same error case for all function
     """
     @spec bind(t(), (t -> t())) :: t()
-    def bind(%DecodeResult{error: error} = decode_result, _fun) when not is_nil(error) do
+    def bind(%__MODULE__{error: error} = decode_result, _fun) when not is_nil(error) do
       decode_result
     end
 
-    def bind(%DecodeResult{} = decode_result, fun) do
+    def bind(decode_result, fun) do
       fun.(decode_result)
     end
   end

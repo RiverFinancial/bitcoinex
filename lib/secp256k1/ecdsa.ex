@@ -1,4 +1,8 @@
 defmodule Bitcoinex.Secp256k1.Ecdsa do
+  @moduledoc """
+  Ecdsa (Elliptic Curve Digital Signature Algorithm) offers a variant of the
+  Digital Signature Algorithm (DSA) which uses elliptic-curve cryptography.
+  """
   alias Bitcoinex.Secp256k1
   alias Bitcoinex.Secp256k1.{Math, Params, Point, PrivateKey, Signature}
 

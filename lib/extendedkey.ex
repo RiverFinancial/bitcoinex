@@ -2,9 +2,8 @@ defmodule Bitcoinex.ExtendedKey do
   @moduledoc """
   	Contains an an extended key as documented in BIP 32.
   """
-  alias Bitcoinex.Secp256k1.{Params, Point, PrivateKey, Math}
   alias Bitcoinex.Base58
-
+  alias Bitcoinex.Secp256k1.{Math, Params, Point, PrivateKey}
   import Bitwise
 
   defmodule DerivationPath do
@@ -37,10 +36,10 @@ defmodule Bitcoinex.ExtendedKey do
     ]
     defstruct [:child_nums]
 
-    def min_hardened_child_num(), do: @min_hardened_child_num
-    def max_hardened_child_num(), do: @max_hardened_child_num
+    def min_hardened_child_num, do: @min_hardened_child_num
+    def max_hardened_child_num, do: @max_hardened_child_num
 
-    def new(), do: %__MODULE__{child_nums: []}
+    def new, do: %__MODULE__{child_nums: []}
 
     @spec to_string(t()) :: {:ok, String.t()} | {:error, String.t()}
     def to_string(%__MODULE__{child_nums: path}), do: tto_string(path, "")
@@ -220,7 +219,7 @@ defmodule Bitcoinex.ExtendedKey do
   def get_parent_fingerprint(%__MODULE__{parent_fingerprint: pfp}), do: pfp
 
   @spec get_fingerprint(t()) :: binary
-  def get_fingerprint(xkey = %__MODULE__{}) do
+  def get_fingerprint(%__MODULE__{} = xkey) do
     if xkey.prefix in @prv_prefixes do
       {:ok, prvkey} =
         xkey.key
@@ -250,10 +249,9 @@ defmodule Bitcoinex.ExtendedKey do
   """
   @spec parse_extended_key(binary) :: {:ok, t()} | {:error, String.t()}
   def parse_extended_key(
-        xkey =
-          <<prefix::binary-size(4), depth::binary-size(1), parent_fingerprint::binary-size(4),
-            child_num::binary-size(4), chaincode::binary-size(32), key::binary-size(33),
-            checksum::binary-size(4)>>
+        <<prefix::binary-size(4), depth::binary-size(1), parent_fingerprint::binary-size(4),
+          child_num::binary-size(4), chaincode::binary-size(32), key::binary-size(33),
+          checksum::binary-size(4)>> = xkey
       ) do
     cond do
       prefix not in @all_prefixes ->
@@ -577,7 +575,7 @@ defmodule Bitcoinex.ExtendedKey do
     path to derive the extended key at that path
   """
   @spec derive_extended_key(t() | binary, DerivationPath.t()) :: {:ok, t()} | {:error, String.t()}
-  def derive_extended_key(xkey = %__MODULE__{}, %DerivationPath{child_nums: path}),
+  def derive_extended_key(%__MODULE__{} = xkey, %DerivationPath{child_nums: path}),
     do: rderive_extended_key(xkey, path)
 
   def derive_extended_key(seed, %DerivationPath{child_nums: path}) do
@@ -585,9 +583,10 @@ defmodule Bitcoinex.ExtendedKey do
     rderive_extended_key(xkey, path)
   end
 
-  defp rderive_extended_key(xkey = %__MODULE__{}, []), do: {:ok, xkey}
+  @spec rderive_extended_key(t, list) :: term
+  defp rderive_extended_key(xkey, []), do: {:ok, xkey}
 
-  defp rderive_extended_key(xkey = %__MODULE__{}, [p | rest]) do
+  defp rderive_extended_key(xkey, [p | rest]) do
     try do
       case p do
         # if asterisk (:any) is in path, return the immediate parent xkey

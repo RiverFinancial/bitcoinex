@@ -7,7 +7,7 @@ defmodule Bitcoinex.Script do
 
   alias Bitcoinex.Secp256k1.Point
 
-  alias Bitcoinex.{Utils, Address, Segwit, Base58, Network}
+  alias Bitcoinex.{Address, Base58, Network, Segwit, Utils}
 
   @wsh_length 32
   @tapkey_length 32
@@ -72,7 +72,7 @@ defmodule Bitcoinex.Script do
     digest of the serialized script, as used in P2SH scripts.
   """
   @spec hash160(t()) :: binary
-  def hash160(script = %__MODULE__{}) do
+  def hash160(%__MODULE__{} = script) do
     script
     |> serialize_script()
     |> Utils.hash160()
@@ -83,7 +83,7 @@ defmodule Bitcoinex.Script do
     digest of the serialized script, as used in P2WSH scripts.
   """
   @spec sha256(t()) :: binary
-  def sha256(script = %__MODULE__{}) do
+  def sha256(%__MODULE__{} = script) do
     script
     |> serialize_script()
     |> Utils.sha256()
@@ -136,7 +136,7 @@ defmodule Bitcoinex.Script do
   	accompanying pushdata or pushbytes opcodes added to the front of the script.
   """
   @spec push_data(t(), binary) :: {:ok, t()} | {:error, String.t()}
-  def push_data(script = %__MODULE__{}, data) do
+  def push_data(%__MODULE__{} = script, data) do
     datalen = byte_size(data)
     script = push_raw_data(script, data)
 
@@ -198,7 +198,7 @@ defmodule Bitcoinex.Script do
   	according to Bitcoin's standard.
   """
   @spec serialize_script(t()) :: binary
-  def serialize_script(script = %__MODULE__{}) do
+  def serialize_script(%__MODULE__{} = script) do
     # serialize_script(%Script{items: [0x51]}) will still display "Q" but
     # it functions as binary 0x51. Use to_hex for displaying scripts.
     serializer(script, <<>>)
@@ -414,7 +414,7 @@ defmodule Bitcoinex.Script do
   """
   @spec extract_multi_policy(t()) ::
           {:ok, non_neg_integer(), list(Point.t())} | {:error, String.t()}
-  def extract_multi_policy(script = %__MODULE__{items: [op_m | items]}) do
+  def extract_multi_policy(%__MODULE__{items: [op_m | items]} = script) do
     if is_multi?(script) do
       {:ok, op_m - 0x50, extractor(items, [])}
     else
@@ -436,7 +436,7 @@ defmodule Bitcoinex.Script do
   	returns :non_standard if no type matches
   """
   @spec get_script_type(t()) :: script_type
-  def get_script_type(script = %__MODULE__{}) do
+  def get_script_type(%__MODULE__{} = script) do
     cond do
       # sorted by most prevalent
       is_p2pkh?(script) -> :p2pkh
@@ -494,7 +494,7 @@ defmodule Bitcoinex.Script do
     and then wrapping then script hash in a p2sh script.
   """
   @spec to_p2sh(t()) :: {:ok, t()} | {:error, String.t()}
-  def to_p2sh(script = %__MODULE__{}) do
+  def to_p2sh(%__MODULE__{} = script) do
     script
     |> hash160()
     |> create_p2sh()
@@ -595,7 +595,7 @@ defmodule Bitcoinex.Script do
     then wrapping the script hash as a p2wsh script.
   """
   @spec to_p2wsh(t()) :: {:ok, t()}
-  def to_p2wsh(script = %__MODULE__{}) do
+  def to_p2wsh(%__MODULE__{} = script) do
     script
     |> sha256()
     |> create_p2wsh()
@@ -608,7 +608,7 @@ defmodule Bitcoinex.Script do
   """
   @spec create_p2tr(binary | Point.t()) :: {:ok, t()}
   def create_p2tr(<<pk::binary-size(@tapkey_length)>>), do: create_witness_scriptpubkey(1, pk)
-  def create_p2tr(q = %Point{}), do: create_witness_scriptpubkey(1, Point.x_bytes(q))
+  def create_p2tr(%Point{} = q), do: create_witness_scriptpubkey(1, Point.x_bytes(q))
   def create_p2tr(_), do: {:error, "public key must be #{@tapkey_length}-bytes"}
 
   @doc """
@@ -637,7 +637,7 @@ defmodule Bitcoinex.Script do
   	Can be used to create a pkh script.
   """
   @spec public_key_hash(Point.t()) :: binary
-  def public_key_hash(p = %Point{}) do
+  def public_key_hash(%Point{} = p) do
     p
     |> Point.sec()
     |> Utils.hash160()
@@ -647,8 +647,8 @@ defmodule Bitcoinex.Script do
   	public_key_to_p2pkh creates a p2pkh script from a public key.
   	All public keys are compressed.
   """
-  @spec public_key_to_p2pkh(Point.t()) :: {:ok, t()}
-  def public_key_to_p2pkh(p = %Point{}) do
+  @spec public_key_to_p2pkh(Point.t() | term) :: {:ok, t()}
+  def public_key_to_p2pkh(%Point{} = p) do
     p
     |> public_key_hash()
     |> create_p2pkh()
@@ -660,8 +660,8 @@ defmodule Bitcoinex.Script do
   	public_key_to_p2wpkh creates a p2wpkh script from a public key.
   	All public keys are compressed.
   """
-  @spec public_key_to_p2wpkh(Point.t()) :: {:ok, t()}
-  def public_key_to_p2wpkh(p = %Point{}) do
+  @spec public_key_to_p2wpkh(Point.t() | term) :: {:ok, t()}
+  def public_key_to_p2wpkh(%Point{} = p) do
     p
     |> public_key_hash()
     |> create_p2wpkh()
@@ -673,8 +673,8 @@ defmodule Bitcoinex.Script do
   	public_key_to_p2sh_p2wpkh creates a p2sh-p2wpkh script from a public key.
   	All public keys are compressed.
   """
-  @spec public_key_to_p2sh_p2wpkh(Point.t()) :: {:ok, t(), t()}
-  def public_key_to_p2sh_p2wpkh(p = %Point{}) do
+  @spec public_key_to_p2sh_p2wpkh(Point.t() | term) :: {:ok, t(), t()}
+  def public_key_to_p2sh_p2wpkh(%Point{} = p) do
     p
     |> public_key_hash()
     |> create_p2sh_p2wpkh()
@@ -702,39 +702,43 @@ defmodule Bitcoinex.Script do
             {:error, "invalid segwit address: #{msg}"}
         end
 
-      # legacy addresses
+      # legacy addresse
       _ ->
-        try do
-          {:ok, <<pfx::little-size(8), body::binary>>} = Base58.decode(addr)
-          tpkh = Network.testnet().p2pkh_version_decimal_prefix
-          mpkh = Network.mainnet().p2pkh_version_decimal_prefix
-          tsh = Network.testnet().p2sh_version_decimal_prefix
-          msh = Network.mainnet().p2sh_version_decimal_prefix
+        from_legacy_address(addr)
+    end
+  end
 
-          case pfx do
-            # p2pkh testnet
-            ^tpkh ->
-              {:ok, s} = create_p2pkh(body)
-              {:ok, s, :testnet}
+  defp from_legacy_address(addr) do
+    try do
+      {:ok, <<pfx::little-size(8), body::binary>>} = Base58.decode(addr)
+      tpkh = Network.testnet().p2pkh_version_decimal_prefix
+      mpkh = Network.mainnet().p2pkh_version_decimal_prefix
+      tsh = Network.testnet().p2sh_version_decimal_prefix
+      msh = Network.mainnet().p2sh_version_decimal_prefix
 
-            # p2pkh mainnet
-            ^mpkh ->
-              {:ok, s} = create_p2pkh(body)
-              {:ok, s, :mainnet}
+      case pfx do
+        # p2pkh testnet
+        ^tpkh ->
+          {:ok, s} = create_p2pkh(body)
+          {:ok, s, :testnet}
 
-            # p2sh testnet
-            ^tsh ->
-              {:ok, s} = create_p2sh(body)
-              {:ok, s, :testnet}
+        # p2pkh mainnet
+        ^mpkh ->
+          {:ok, s} = create_p2pkh(body)
+          {:ok, s, :mainnet}
 
-            # p2sh mainnet
-            ^msh ->
-              {:ok, s} = create_p2sh(body)
-              {:ok, s, :mainnet}
-          end
-        rescue
-          _ -> {:error, "invalid address"}
-        end
+        # p2sh testnet
+        ^tsh ->
+          {:ok, s} = create_p2sh(body)
+          {:ok, s, :testnet}
+
+        # p2sh mainnet
+        ^msh ->
+          {:ok, s} = create_p2sh(body)
+          {:ok, s, :mainnet}
+      end
+    rescue
+      _ -> {:error, "invalid address"}
     end
   end
 
@@ -743,7 +747,7 @@ defmodule Bitcoinex.Script do
   """
   @spec to_address(t(), Network.network_name()) ::
           {:ok, String.t()} | {:error, String.t()}
-  def to_address(script = %__MODULE__{}, network) do
+  def to_address(%__MODULE__{} = script, network) do
     {:ok, head, script} = pop(script)
 
     case head do

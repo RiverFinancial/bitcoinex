@@ -33,7 +33,8 @@ defmodule Bitcoinex.Segwit do
           {:ok, {network, version, program}}
 
         _ ->
-          # encoding type derived from witness version (first byte of data) is different from the code derived from bech32 decoding
+          # encoding type derived from witness version (first byte of data) is
+          # different from the code derived from bech32 decoding
           {:error, :invalid_checksum}
       end
     else
@@ -133,7 +134,8 @@ defmodule Bitcoinex.Segwit do
   defp is_program_length_valid?(version, program)
        when length(program) in @valid_witness_program_length_range do
     case {version, length(program)} do
-      # BIP141 specifies If the version byte is 0, but the witness program is neither 20 nor 32 bytes, the script must fail.
+      # BIP141 specifies If the version byte is 0, but the witness program is
+      # neither 20 nor 32 bytes, the script must fail.
       {0, program_length} when program_length == 20 or program_length == 32 ->
         true
 

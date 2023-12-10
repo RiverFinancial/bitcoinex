@@ -70,9 +70,9 @@ defmodule Bitcoinex.Secp256k1.Math do
   """
   def multiply(p, n) when is_point(p) and is_integer(n) do
     p
-    |> toJacobian()
-    |> jacobianMultiply(n)
-    |> fromJacobian()
+    |> to_jacobian()
+    |> jacobian_multiply(n)
+    |> from_jacobian()
   end
 
   @doc """
@@ -80,17 +80,17 @@ defmodule Bitcoinex.Secp256k1.Math do
   does jacobian addition to return resulting point.
   """
   def add(p, q) when is_point(p) and is_point(q) do
-    jacobianAdd(toJacobian(p), toJacobian(q))
-    |> fromJacobian()
+    jacobian_add(to_jacobian(p), to_jacobian(q))
+    |> from_jacobian()
   end
 
   # Convert our point P to jacobian coordinates.
-  defp toJacobian(p) do
+  defp to_jacobian(p) do
     %Point{x: p.x, y: p.y, z: 1}
   end
 
   # Convert our jacobian coordinates to a point P on secp256k1 curve.
-  defp fromJacobian(p) do
+  defp from_jacobian(p) do
     z = inv(p.z, Params.curve().p)
 
     %Point{
@@ -110,7 +110,7 @@ defmodule Bitcoinex.Secp256k1.Math do
   # double Point P to get point P + P
   # We use the dbl-1998-cmo-2 doubling formula.
   # For reference, http://www.hyperelliptic.org/EFD/g1p/auto-shortw-jacobian.html.
-  defp jacobianDouble(p) do
+  defp jacobian_double(p) do
     if p.y == 0 do
       %Point{x: 0, y: 0, z: 0}
     else
@@ -159,7 +159,7 @@ defmodule Bitcoinex.Secp256k1.Math do
   # add points P and Q to get P + Q
   # We use the add-1998-cmo-2 addition formula.
   # For reference, http://www.hyperelliptic.org/EFD/g1p/auto-shortw-jacobian.html.
-  defp jacobianAdd(p, q) do
+  defp jacobian_add(p, q) do
     if p.y == 0 do
       q
     else
@@ -190,7 +190,7 @@ defmodule Bitcoinex.Secp256k1.Math do
           if s1 != s2 do
             %Point{x: 0, y: 0, z: 1}
           else
-            jacobianDouble(p)
+            jacobian_double(p)
           end
         else
           # H = U2 - U1
@@ -236,11 +236,11 @@ defmodule Bitcoinex.Secp256k1.Math do
   end
 
   # multply point P with scalar n
-  defp jacobianMultiply(_p, n) when n == 0 do
+  defp jacobian_multiply(_p, n) when n == 0 do
     %Point{x: 0, y: 0, z: 1}
   end
 
-  defp jacobianMultiply(p, n) when n == 1 do
+  defp jacobian_multiply(p, n) when n == 1 do
     if p.y == 0 do
       %Point{x: 0, y: 0, z: 1}
     else
@@ -248,7 +248,7 @@ defmodule Bitcoinex.Secp256k1.Math do
     end
   end
 
-  defp jacobianMultiply(p, n)
+  defp jacobian_multiply(p, n)
        # This integer is n, the integer order of G for secp256k1.
        # Unfortunately cannot call Params.curve.n to get the curve order integer,
        # so instead, it is pasted it here.
@@ -259,26 +259,26 @@ defmodule Bitcoinex.Secp256k1.Math do
     if p.y == 0 do
       %Point{x: 0, y: 0, z: 1}
     else
-      jacobianMultiply(p, modulo(n, Params.curve().n))
+      jacobian_multiply(p, modulo(n, Params.curve().n))
     end
   end
 
-  defp jacobianMultiply(p, n) when rem(n, 2) == 0 do
+  defp jacobian_multiply(p, n) when rem(n, 2) == 0 do
     if p.y == 0 do
       %Point{x: 0, y: 0, z: 1}
     else
-      jacobianMultiply(p, div(n, 2))
-      |> jacobianDouble()
+      jacobian_multiply(p, div(n, 2))
+      |> jacobian_double()
     end
   end
 
-  defp jacobianMultiply(p, n) do
+  defp jacobian_multiply(p, n) do
     if p.y == 0 do
       %Point{x: 0, y: 0, z: 1}
     else
-      jacobianMultiply(p, div(n, 2))
-      |> jacobianDouble()
-      |> jacobianAdd(p)
+      jacobian_multiply(p, div(n, 2))
+      |> jacobian_double()
+      |> jacobian_add(p)
     end
   end
 end

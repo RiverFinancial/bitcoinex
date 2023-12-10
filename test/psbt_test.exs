@@ -3,9 +3,9 @@ defmodule Bitcoinex.PSBTTest do
   doctest Bitcoinex.PSBT
 
   alias Bitcoinex.PSBT
+  alias Bitcoinex.PSBT.Global
   alias Bitcoinex.PSBT.In
   alias Bitcoinex.PSBT.Out
-  alias Bitcoinex.PSBT.Global
 
   @valid_psbts [
     %{

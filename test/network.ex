@@ -1,4 +1,7 @@
 defmodule Bitcoinex.Network do
+  @moduledoc """
+  Provides network information for Bitcoin.
+  """
   @enforce_keys [
     :name,
     :hrp_segwit_prefix,
@@ -21,13 +24,7 @@ defmodule Bitcoinex.Network do
 
   @type network_name :: :mainnet | :testnet | :regtest
 
-  def supported_networks() do
-    [
-      mainnet(),
-      testnet(),
-      regtest()
-    ]
-  end
+  def supported_networks, do: [mainnet(), testnet(), regtest()]
 
   def mainnet do
     %__MODULE__{
