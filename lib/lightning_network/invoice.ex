@@ -115,7 +115,7 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
            | :invalid_payment_hash_length
            | :invalid_payment_hash}
           | {:ok, t}
-  defp validate_invoice(invoice) do
+  defp validate_invoice(%__MODULE__{} = invoice) do
     cond do
       is_nil(invoice.network) ->
         {:error, :network_missing}

@@ -64,7 +64,7 @@ defmodule Bitcoinex.Secp256k1.PrivateKey do
    serialize_private_key serializes a private key into hex
   """
   @spec serialize_private_key(t()) :: String.t()
-  def serialize_private_key(prvkey) do
+  def serialize_private_key(%__MODULE__{} = prvkey) do
     case validate(prvkey) do
       {:error, msg} ->
         {:error, msg}
@@ -82,7 +82,7 @@ defmodule Bitcoinex.Secp256k1.PrivateKey do
   assumes all keys are compressed
   """
   @spec wif!(t(), Bitcoinex.Network.network_name()) :: String.t()
-  def wif!(prvkey, network_name) do
+  def wif!(%__MODULE__{} = prvkey, network_name) do
     case validate(prvkey) do
       {:error, msg} ->
         {:error, msg}

@@ -219,7 +219,7 @@ defmodule Bitcoinex.ExtendedKey do
   def get_parent_fingerprint(%__MODULE__{parent_fingerprint: pfp}), do: pfp
 
   @spec get_fingerprint(t()) :: binary
-  def get_fingerprint(xkey) do
+  def get_fingerprint(%__MODULE__{} = xkey) do
     if xkey.prefix in @prv_prefixes do
       {:ok, prvkey} =
         xkey.key

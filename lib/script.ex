@@ -72,7 +72,7 @@ defmodule Bitcoinex.Script do
     digest of the serialized script, as used in P2SH scripts.
   """
   @spec hash160(t()) :: binary
-  def hash160(script) do
+  def hash160(%__MODULE__{} = script) do
     script
     |> serialize_script()
     |> Utils.hash160()
@@ -83,7 +83,7 @@ defmodule Bitcoinex.Script do
     digest of the serialized script, as used in P2WSH scripts.
   """
   @spec sha256(t()) :: binary
-  def sha256(script) do
+  def sha256(%__MODULE__{} = script) do
     script
     |> serialize_script()
     |> Utils.sha256()
@@ -136,7 +136,7 @@ defmodule Bitcoinex.Script do
   	accompanying pushdata or pushbytes opcodes added to the front of the script.
   """
   @spec push_data(t(), binary) :: {:ok, t()} | {:error, String.t()}
-  def push_data(script, data) do
+  def push_data(%__MODULE__{} = script, data) do
     datalen = byte_size(data)
     script = push_raw_data(script, data)
 
@@ -198,7 +198,7 @@ defmodule Bitcoinex.Script do
   	according to Bitcoin's standard.
   """
   @spec serialize_script(t()) :: binary
-  def serialize_script(script) do
+  def serialize_script(%__MODULE__{} = script) do
     # serialize_script(%Script{items: [0x51]}) will still display "Q" but
     # it functions as binary 0x51. Use to_hex for displaying scripts.
     serializer(script, <<>>)
@@ -436,7 +436,7 @@ defmodule Bitcoinex.Script do
   	returns :non_standard if no type matches
   """
   @spec get_script_type(t()) :: script_type
-  def get_script_type(script) do
+  def get_script_type(%__MODULE__{} = script) do
     cond do
       # sorted by most prevalent
       is_p2pkh?(script) -> :p2pkh
@@ -494,7 +494,7 @@ defmodule Bitcoinex.Script do
     and then wrapping then script hash in a p2sh script.
   """
   @spec to_p2sh(t()) :: {:ok, t()} | {:error, String.t()}
-  def to_p2sh(script) do
+  def to_p2sh(%__MODULE__{} = script) do
     script
     |> hash160()
     |> create_p2sh()
@@ -595,7 +595,7 @@ defmodule Bitcoinex.Script do
     then wrapping the script hash as a p2wsh script.
   """
   @spec to_p2wsh(t()) :: {:ok, t()}
-  def to_p2wsh(script) do
+  def to_p2wsh(%__MODULE__{} = script) do
     script
     |> sha256()
     |> create_p2wsh()
@@ -637,7 +637,7 @@ defmodule Bitcoinex.Script do
   	Can be used to create a pkh script.
   """
   @spec public_key_hash(Point.t()) :: binary
-  def public_key_hash(p) do
+  def public_key_hash(%Point{} = p) do
     p
     |> Point.sec()
     |> Utils.hash160()
@@ -747,7 +747,7 @@ defmodule Bitcoinex.Script do
   """
   @spec to_address(t(), Network.network_name()) ::
           {:ok, String.t()} | {:error, String.t()}
-  def to_address(script, network) do
+  def to_address(%__MODULE__{} = script, network) do
     {:ok, head, script} = pop(script)
 
     case head do
