@@ -32,11 +32,10 @@ defmodule Bitcoinex.Bech32 do
 
   @type error :: atom()
 
+  # Inspired by `Ecto.Changeset`. It is more descriptive than result tuple
   defmodule DecodeResult do
     @moduledoc """
-    This module is used to represent result of decoding bech32
-
-    Inspired by `Ecto.Changeset`. It is more descriptive than result tuple
+    This module is used to represent result of decoding `Bitcoinex.Bech32`.
     """
     @type t() :: %__MODULE__{
             encoded_str: String.t(),
