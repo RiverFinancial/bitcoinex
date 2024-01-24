@@ -103,7 +103,9 @@ defmodule Bitcoinex.ExtendedKey do
           raise(ArgumentError, message: "index cannot be greater than #{@max_hardened_child_num}")
 
         lvl < @min_non_hardened_child_num ->
-          raise(ArgumentError, message: "index cannot be less than #{@min_non_hardened_child_num}")
+          raise(ArgumentError,
+            message: "index cannot be less than #{@min_non_hardened_child_num}"
+          )
 
         true ->
           lvlbin =
@@ -382,7 +384,6 @@ defmodule Bitcoinex.ExtendedKey do
         {:error, "switching between public and private prefixes will result in a useless key"}
     end
   end
-
 
   @doc """
     network_from_extended_key returns :testnet or :mainnet

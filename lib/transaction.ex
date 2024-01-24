@@ -699,7 +699,9 @@ defmodule Bitcoinex.Transaction.In do
     input = %In{
       # TODO fix this
       prev_txid:
-        Base.encode16(<<:binary.decode_unsigned(prev_txid, :big)::little-size(256)>>, case: :lower),
+        Base.encode16(<<:binary.decode_unsigned(prev_txid, :big)::little-size(256)>>,
+          case: :lower
+        ),
       prev_vout: prev_vout,
       script_sig: Base.encode16(script_sig, case: :lower),
       sequence_no: sequence_no
