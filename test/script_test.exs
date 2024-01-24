@@ -4,6 +4,7 @@ defmodule Bitcoinex.ScriptTest do
 
   alias Bitcoinex.{Script, Utils}
   alias Bitcoinex.Secp256k1.Point
+  alias Bitcoinex.Taproot
 
   @raw_multisig_scripts [
     "522103a882d414e478039cd5b52a92ffb13dd5e6bd4515497439dffd691a0f12af957521036ce31db9bdd543e72fe3039a1f1c047dab87037c36a669ff90e28da1848f640d210311ffd36c70776538d079fbae117dc38effafb33304af83ce4894589747aee1ef53ae",
@@ -33,6 +34,14 @@ defmodule Bitcoinex.ScriptTest do
       wsh_addr: "bc1qwqdg6squsna38e46795at95yu9atm8azzmyvckulcc7kytlcckxswvvzej",
       sh_addr: ""
     },
+    # from tx: a6e48d3b1c63598598c0f79886bdd059a9a472b071d34c706bedc2288d2cfdcf
+    %{
+      script_hex:
+        "52210375e00eb72e29da82b89367947f29ef34afb75e8654f6ea368e0acdfd92976b7c2103a1b26313f430c4b15bb1fdce663207659d8cac749a0e53d70eff01874496feff2103c96d495bfdd5ba4145e3e046fee45e84a8a48ad05bd8dbb395c011a32cf9f88053ae",
+      network: :mainnet,
+      wsh_addr: "bc1qwqdg6squsna38e46795at95yu9atm8azzmyvckulcc7kytlcckxswvvzej",
+      sh_addr: ""
+    },
     # from tx: 578e8ab81e6eff430fd37eaa460377387d75f0221881fe13cf9e5b400d98b0e3
     %{
       script_hex:
@@ -47,6 +56,17 @@ defmodule Bitcoinex.ScriptTest do
         "522103af40079dabd57915a41fc676c9a1e8e9278b9aa7e3b2cf7db63435e357bd589521024a84c829eb98eb69b37be6adcdc206b462b4c9549a0db2dbc91279a2f031a50a2102a5264fbc1be9b9a7d03d9637a5534ce8d59a06c4c1f30802fe52e7bf6c1dd97153ae",
       network: :mainnet,
       wsh_addr: "bc1qamfphjerjc4jdmmnwku26x8e49m2455x65kldefw79j6j24fya9sy5r9jg",
+      sh_addr: ""
+    }
+  ]
+
+  @raw_sorted_multisig_with_data [
+    # from tx: a6e48d3b1c63598598c0f79886bdd059a9a472b071d34c706bedc2288d2cfdcf
+    %{
+      script_hex:
+        "52210375e00eb72e29da82b89367947f29ef34afb75e8654f6ea368e0acdfd92976b7c2103a1b26313f430c4b15bb1fdce663207659d8cac749a0e53d70eff01874496feff2103c96d495bfdd5ba4145e3e046fee45e84a8a48ad05bd8dbb395c011a32cf9f88053ae",
+      network: :mainnet,
+      wsh_addr: "bc1qwqdg6squsna38e46795at95yu9atm8azzmyvckulcc7kytlcckxswvvzej",
       sh_addr: ""
     }
   ]
@@ -94,9 +114,8 @@ defmodule Bitcoinex.ScriptTest do
     "0020701a8d401c84fb13e6baf169d59684e17abd9fa216c8cc5b9fc63d622ff8c58d"
   ]
 
-  # from 
+  # from
   # https://github.com/bitcoin/bips/blob/master/bip-0350.mediawiki#test-vectors-for-v0-v16-native-segregated-witness-addresses
-  # test vectors that are not valid v0 or v1 scripts have been removed.
   @bip350_test_vectors [
     %{
       b32: "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4",
@@ -130,7 +149,352 @@ defmodule Bitcoinex.ScriptTest do
     }
   ]
 
-  describe "test basics functions" do
+  @bip_350_invalid_test_vectors [
+    # Invalid human-readable part
+    "tc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vq5zuyut",
+    # Invalid checksum (Bech32 instead of Bech32m)
+    "bc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqh2y7hd",
+    # Invalid checksum (Bech32 instead of Bech32m)
+    "tb1z0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqglt7rf",
+    # Invalid checksum (Bech32 instead of Bech32m)
+    "BC1S0XLXVLHEMJA6C4DQV22UAPCTQUPFHLXM9H8Z3K2E72Q4K9HCZ7VQ54WELL",
+    # Invalid checksum (Bech32m instead of Bech32)
+    "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kemeawh",
+    # Invalid checksum (Bech32m instead of Bech32)
+    "tb1q0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vq24jc47",
+    # Invalid character in checksum
+    "bc1p38j9r5y49hruaue7wxjce0updqjuyyx0kh56v8s25huc6995vvpql3jow4",
+    # Invalid witness version
+    "BC130XLXVLHEMJA6C4DQV22UAPCTQUPFHLXM9H8Z3K2E72Q4K9HCZ7VQ7ZWS8R",
+    # Invalid program length (1 byte)
+    "bc1pw5dgrnzv",
+    # Invalid program length (41 bytes)
+    "bc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7v8n0nx0muaewav253zgeav",
+    # Invalid program length for witness version 0 (per BIP141)
+    "BC1QR508D6QEJXTDG4Y5R3ZARVARYV98GJ9P",
+    # Mixed case
+    "tb1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vq47Zagq",
+    # zero padding of more than 4 bits
+    "bc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7v07qwwzcrf",
+    # Non-zero padding in 8-to-5 conversion
+    "tb1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vpggkg4j",
+    # Empty data section
+    "bc1gmk9yu"
+  ]
+
+  # from https://github.com/bitcoin/bips/blob/master/bip-0341/wallet-test-vectors.json
+  @bip_341_script_pubkey_test_vectors [
+    %{
+      given: %{
+        internal_pubkey: "d6889cb081036e0faefa3a35157ad71086b123b2b144b649798b494c300a961d",
+        script_tree: nil
+      },
+      intermediary: %{
+        merkle_root: nil,
+        tweak: "b86e7be8f39bab32a6f2c0443abbc210f0edac0e2c53d501b36b64437d9c6c70",
+        tweaked_pubkey: "53a1f6e454df1aa2776a2814a721372d6258050de330b3c6d10ee8f4e0dda343"
+      },
+      expected: %{
+        script_pubkey: "512053a1f6e454df1aa2776a2814a721372d6258050de330b3c6d10ee8f4e0dda343",
+        bip350_address: "bc1p2wsldez5mud2yam29q22wgfh9439spgduvct83k3pm50fcxa5dps59h4z5"
+      }
+    },
+    %{
+      given: %{
+        internal_pubkey: "187791b6f712a8ea41c8ecdd0ee77fab3e85263b37e1ec18a3651926b3a6cf27",
+        script_tree:
+          Taproot.TapLeaf.from_string(
+            # id: 0,
+            # version
+            192,
+            # script
+            "20d85a959b0290bf19bb89ed43c916be835475d013da4b362117393e25a48229b8ac"
+          )
+      },
+      intermediary: %{
+        leaf_hashes: [
+          "5b75adecf53548f3ec6ad7d78383bf84cc57b55a3127c72b9a2481752dd88b21"
+        ],
+        merkle_root: "5b75adecf53548f3ec6ad7d78383bf84cc57b55a3127c72b9a2481752dd88b21",
+        tweak: "cbd8679ba636c1110ea247542cfbd964131a6be84f873f7f3b62a777528ed001",
+        tweaked_pubkey: "147c9c57132f6e7ecddba9800bb0c4449251c92a1e60371ee77557b6620f3ea3"
+      },
+      expected: %{
+        script_pubkey: "5120147c9c57132f6e7ecddba9800bb0c4449251c92a1e60371ee77557b6620f3ea3",
+        bip350_address: "bc1pz37fc4cn9ah8anwm4xqqhvxygjf9rjf2resrw8h8w4tmvcs0863sa2e586",
+        script_path_control_blocks: [
+          "c1187791b6f712a8ea41c8ecdd0ee77fab3e85263b37e1ec18a3651926b3a6cf27"
+        ]
+      }
+    },
+    %{
+      given: %{
+        internal_pubkey: "93478e9488f956df2396be2ce6c5cced75f900dfa18e7dabd2428aae78451820",
+        script_tree:
+          Taproot.TapLeaf.from_string(
+            # id: 0,
+            # version
+            192,
+            # script
+            "20b617298552a72ade070667e86ca63b8f5789a9fe8731ef91202a91c9f3459007ac"
+          )
+      },
+      intermediary: %{
+        leaf_hashes: [
+          "c525714a7f49c28aedbbba78c005931a81c234b2f6c99a73e4d06082adc8bf2b"
+        ],
+        merkle_root: "c525714a7f49c28aedbbba78c005931a81c234b2f6c99a73e4d06082adc8bf2b",
+        tweak: "6af9e28dbf9d6aaf027696e2598a5b3d056f5fd2355a7fd5a37a0e5008132d30",
+        tweaked_pubkey: "e4d810fd50586274face62b8a807eb9719cef49c04177cc6b76a9a4251d5450e"
+      },
+      expected: %{
+        script_pubkey: "5120e4d810fd50586274face62b8a807eb9719cef49c04177cc6b76a9a4251d5450e",
+        bip350_address: "bc1punvppl2stp38f7kwv2u2spltjuvuaayuqsthe34hd2dyy5w4g58qqfuag5",
+        script_path_control_blocks: [
+          "c093478e9488f956df2396be2ce6c5cced75f900dfa18e7dabd2428aae78451820"
+        ]
+      }
+    },
+    %{
+      given: %{
+        internal_pubkey: "ee4fe085983462a184015d1f782d6a5f8b9c2b60130aff050ce221ecf3786592",
+        script_tree: {
+          Taproot.TapLeaf.from_string(
+            # id: 0,
+            # version
+            192,
+            # script
+            "20387671353e273264c495656e27e39ba899ea8fee3bb69fb2a680e22093447d48ac"
+          ),
+          Taproot.TapLeaf.from_string(
+            # id: 1,
+            # version
+            250,
+            # script
+            "06424950333431"
+          )
+        }
+      },
+      intermediary: %{
+        leaf_hashes: [
+          "8ad69ec7cf41c2a4001fd1f738bf1e505ce2277acdcaa63fe4765192497f47a7",
+          "f224a923cd0021ab202ab139cc56802ddb92dcfc172b9212261a539df79a112a"
+        ],
+        merkle_root: "6c2dc106ab816b73f9d07e3cd1ef2c8c1256f519748e0813e4edd2405d277bef",
+        tweak: "9e0517edc8259bb3359255400b23ca9507f2a91cd1e4250ba068b4eafceba4a9",
+        tweaked_pubkey: "712447206d7a5238acc7ff53fbe94a3b64539ad291c7cdbc490b7577e4b17df5"
+      },
+      expected: %{
+        script_pubkey: "5120712447206d7a5238acc7ff53fbe94a3b64539ad291c7cdbc490b7577e4b17df5",
+        bip350_address: "bc1pwyjywgrd0ffr3tx8laflh6228dj98xkjj8rum0zfpd6h0e930h6saqxrrm",
+        script_path_control_blocks: [
+          "c0ee4fe085983462a184015d1f782d6a5f8b9c2b60130aff050ce221ecf3786592f224a923cd0021ab202ab139cc56802ddb92dcfc172b9212261a539df79a112a",
+          "faee4fe085983462a184015d1f782d6a5f8b9c2b60130aff050ce221ecf37865928ad69ec7cf41c2a4001fd1f738bf1e505ce2277acdcaa63fe4765192497f47a7"
+        ]
+      }
+    },
+    %{
+      given: %{
+        internal_pubkey: "f9f400803e683727b14f463836e1e78e1c64417638aa066919291a225f0e8dd8",
+        script_tree: {
+          Taproot.TapLeaf.from_string(
+            # id: 0,
+            # version
+            192,
+            # script
+            "2044b178d64c32c4a05cc4f4d1407268f764c940d20ce97abfd44db5c3592b72fdac"
+          ),
+          Taproot.TapLeaf.from_string(
+            # id: 1,
+            # version
+            192,
+            # script
+            "07546170726f6f74"
+          )
+        }
+      },
+      intermediary: %{
+        leaf_hashes: [
+          "64512fecdb5afa04f98839b50e6f0cb7b1e539bf6f205f67934083cdcc3c8d89",
+          "2cb2b90daa543b544161530c925f285b06196940d6085ca9474d41dc3822c5cb"
+        ],
+        merkle_root: "ab179431c28d3b68fb798957faf5497d69c883c6fb1e1cd9f81483d87bac90cc",
+        tweak: "639f0281b7ac49e742cd25b7f188657626da1ad169209078e2761cefd91fd65e",
+        tweaked_pubkey: "77e30a5522dd9f894c3f8b8bd4c4b2cf82ca7da8a3ea6a239655c39c050ab220"
+      },
+      expected: %{
+        script_pubkey: "512077e30a5522dd9f894c3f8b8bd4c4b2cf82ca7da8a3ea6a239655c39c050ab220",
+        bip350_address: "bc1pwl3s54fzmk0cjnpl3w9af39je7pv5ldg504x5guk2hpecpg2kgsqaqstjq",
+        script_path_control_blocks: [
+          "c1f9f400803e683727b14f463836e1e78e1c64417638aa066919291a225f0e8dd82cb2b90daa543b544161530c925f285b06196940d6085ca9474d41dc3822c5cb",
+          "c1f9f400803e683727b14f463836e1e78e1c64417638aa066919291a225f0e8dd864512fecdb5afa04f98839b50e6f0cb7b1e539bf6f205f67934083cdcc3c8d89"
+        ]
+      }
+    },
+    %{
+      given: %{
+        internal_pubkey: "e0dfe2300b0dd746a3f8674dfd4525623639042569d829c7f0eed9602d263e6f",
+        script_tree: {
+          Taproot.TapLeaf.from_string(
+            # id: 0,
+            192,
+            # script
+            "2072ea6adcf1d371dea8fba1035a09f3d24ed5a059799bae114084130ee5898e69ac"
+          ),
+          {
+            Taproot.TapLeaf.from_string(
+              # id: 1,
+              192,
+              # script
+              "202352d137f2f3ab38d1eaa976758873377fa5ebb817372c71e2c542313d4abda8ac"
+            ),
+            Taproot.TapLeaf.from_string(
+              # id: 2,
+              192,
+              # script
+              "207337c0dd4253cb86f2c43a2351aadd82cccb12a172cd120452b9bb8324f2186aac"
+            )
+          }
+        }
+      },
+      intermediary: %{
+        leaf_hashes: [
+          "2645a02e0aac1fe69d69755733a9b7621b694bb5b5cde2bbfc94066ed62b9817",
+          "ba982a91d4fc552163cb1c0da03676102d5b7a014304c01f0c77b2b8e888de1c",
+          "9e31407bffa15fefbf5090b149d53959ecdf3f62b1246780238c24501d5ceaf6"
+        ],
+        merkle_root: "ccbd66c6f7e8fdab47b3a486f59d28262be857f30d4773f2d5ea47f7761ce0e2",
+        tweak: "b57bfa183d28eeb6ad688ddaabb265b4a41fbf68e5fed2c72c74de70d5a786f4",
+        tweaked_pubkey: "91b64d5324723a985170e4dc5a0f84c041804f2cd12660fa5dec09fc21783605"
+      },
+      expected: %{
+        script_pubkey: "512091b64d5324723a985170e4dc5a0f84c041804f2cd12660fa5dec09fc21783605",
+        bip350_address: "bc1pjxmy65eywgafs5tsunw95ruycpqcqnev6ynxp7jaasylcgtcxczs6n332e",
+        script_path_control_blocks: [
+          "c0e0dfe2300b0dd746a3f8674dfd4525623639042569d829c7f0eed9602d263e6fffe578e9ea769027e4f5a3de40732f75a88a6353a09d767ddeb66accef85e553",
+          "c0e0dfe2300b0dd746a3f8674dfd4525623639042569d829c7f0eed9602d263e6f9e31407bffa15fefbf5090b149d53959ecdf3f62b1246780238c24501d5ceaf62645a02e0aac1fe69d69755733a9b7621b694bb5b5cde2bbfc94066ed62b9817",
+          "c0e0dfe2300b0dd746a3f8674dfd4525623639042569d829c7f0eed9602d263e6fba982a91d4fc552163cb1c0da03676102d5b7a014304c01f0c77b2b8e888de1c2645a02e0aac1fe69d69755733a9b7621b694bb5b5cde2bbfc94066ed62b9817"
+        ]
+      }
+    },
+    %{
+      given: %{
+        internal_pubkey: "55adf4e8967fbd2e29f20ac896e60c3b0f1d5b0efa9d34941b5958c7b0a0312d",
+        script_tree: {
+          Taproot.TapLeaf.from_string(
+            # id: 0,
+            # version
+            192,
+            # script
+            "2071981521ad9fc9036687364118fb6ccd2035b96a423c59c5430e98310a11abe2ac"
+          ),
+          {
+            Taproot.TapLeaf.from_string(
+              # id: 1,
+              # version
+              192,
+              # script
+              "20d5094d2dbe9b76e2c245a2b89b6006888952e2faa6a149ae318d69e520617748ac"
+            ),
+            Taproot.TapLeaf.from_string(
+              # id: 2,
+              # version
+              192,
+              # script
+              "20c440b462ad48c7a77f94cd4532d8f2119dcebbd7c9764557e62726419b08ad4cac"
+            )
+          }
+        }
+      },
+      intermediary: %{
+        leaf_hashes: [
+          "f154e8e8e17c31d3462d7132589ed29353c6fafdb884c5a6e04ea938834f0d9d",
+          "737ed1fe30bc42b8022d717b44f0d93516617af64a64753b7a06bf16b26cd711",
+          "d7485025fceb78b9ed667db36ed8b8dc7b1f0b307ac167fa516fe4352b9f4ef7"
+        ],
+        merkle_root: "2f6b2c5397b6d68ca18e09a3f05161668ffe93a988582d55c6f07bd5b3329def",
+        tweak: "6579138e7976dc13b6a92f7bfd5a2fc7684f5ea42419d43368301470f3b74ed9",
+        tweaked_pubkey: "75169f4001aa68f15bbed28b218df1d0a62cbbcf1188c6665110c293c907b831"
+      },
+      expected: %{
+        script_pubkey: "512075169f4001aa68f15bbed28b218df1d0a62cbbcf1188c6665110c293c907b831",
+        bip350_address: "bc1pw5tf7sqp4f50zka7629jrr036znzew70zxyvvej3zrpf8jg8hqcssyuewe",
+        script_path_control_blocks: [
+          "c155adf4e8967fbd2e29f20ac896e60c3b0f1d5b0efa9d34941b5958c7b0a0312d3cd369a528b326bc9d2133cbd2ac21451acb31681a410434672c8e34fe757e91",
+          "c155adf4e8967fbd2e29f20ac896e60c3b0f1d5b0efa9d34941b5958c7b0a0312dd7485025fceb78b9ed667db36ed8b8dc7b1f0b307ac167fa516fe4352b9f4ef7f154e8e8e17c31d3462d7132589ed29353c6fafdb884c5a6e04ea938834f0d9d",
+          "c155adf4e8967fbd2e29f20ac896e60c3b0f1d5b0efa9d34941b5958c7b0a0312d737ed1fe30bc42b8022d717b44f0d93516617af64a64753b7a06bf16b26cd711f154e8e8e17c31d3462d7132589ed29353c6fafdb884c5a6e04ea938834f0d9d"
+        ]
+      }
+    }
+  ]
+
+  # https://github.com/bitcoin/bips/blob/master/bip-0067.mediawiki#test-vectors
+  @bip67_test_vectors_m 2
+  @bip67_tests [
+    %{
+      pubkeys: [
+        "02ff12471208c14bd580709cb2358d98975247d8765f92bc25eab3b2763ed605f8",
+        "02fe6f0a5a297eb38c391581c4413e084773ea23954d93f7753db7dc0adc188b2f"
+      ],
+      sorted: [
+        "02fe6f0a5a297eb38c391581c4413e084773ea23954d93f7753db7dc0adc188b2f",
+        "02ff12471208c14bd580709cb2358d98975247d8765f92bc25eab3b2763ed605f8"
+      ],
+      script:
+        "522102fe6f0a5a297eb38c391581c4413e084773ea23954d93f7753db7dc0adc188b2f2102ff12471208c14bd580709cb2358d98975247d8765f92bc25eab3b2763ed605f852ae",
+      address: "39bgKC7RFbpoCRbtD5KEdkYKtNyhpsNa3Z"
+    },
+    # (Already sorted, no action required)
+    %{
+      pubkeys: [
+        "02632b12f4ac5b1d1b72b2a3b508c19172de44f6f46bcee50ba33f3f9291e47ed0",
+        "027735a29bae7780a9755fae7a1c4374c656ac6a69ea9f3697fda61bb99a4f3e77",
+        "02e2cc6bd5f45edd43bebe7cb9b675f0ce9ed3efe613b177588290ad188d11b404"
+      ],
+      sorted: [
+        "02632b12f4ac5b1d1b72b2a3b508c19172de44f6f46bcee50ba33f3f9291e47ed0",
+        "027735a29bae7780a9755fae7a1c4374c656ac6a69ea9f3697fda61bb99a4f3e77",
+        "02e2cc6bd5f45edd43bebe7cb9b675f0ce9ed3efe613b177588290ad188d11b404"
+      ],
+      script:
+        "522102632b12f4ac5b1d1b72b2a3b508c19172de44f6f46bcee50ba33f3f9291e47ed021027735a29bae7780a9755fae7a1c4374c656ac6a69ea9f3697fda61bb99a4f3e772102e2cc6bd5f45edd43bebe7cb9b675f0ce9ed3efe613b177588290ad188d11b40453ae",
+      address: "3CKHTjBKxCARLzwABMu9yD85kvtm7WnMfH"
+    },
+    %{
+      pubkeys: [
+        "030000000000000000000000000000000000004141414141414141414141414141",
+        "020000000000000000000000000000000000004141414141414141414141414141",
+        "020000000000000000000000000000000000004141414141414141414141414140",
+        "030000000000000000000000000000000000004141414141414141414141414140"
+      ],
+      sorted: [
+        "020000000000000000000000000000000000004141414141414141414141414140",
+        "020000000000000000000000000000000000004141414141414141414141414141",
+        "030000000000000000000000000000000000004141414141414141414141414140",
+        "030000000000000000000000000000000000004141414141414141414141414141"
+      ],
+      script:
+        "522102000000000000000000000000000000000000414141414141414141414141414021020000000000000000000000000000000000004141414141414141414141414141210300000000000000000000000000000000000041414141414141414141414141402103000000000000000000000000000000000000414141414141414141414141414154ae",
+      address: "32V85igBri9zcfBRVupVvwK18NFtS37FuD"
+    },
+    %{
+      pubkeys: [
+        "022df8750480ad5b26950b25c7ba79d3e37d75f640f8e5d9bcd5b150a0f85014da",
+        "03e3818b65bcc73a7d64064106a859cc1a5a728c4345ff0b641209fba0d90de6e9",
+        "021f2f6e1e50cb6a953935c3601284925decd3fd21bc445712576873fb8c6ebc18"
+      ],
+      sorted: [
+        "021f2f6e1e50cb6a953935c3601284925decd3fd21bc445712576873fb8c6ebc18",
+        "022df8750480ad5b26950b25c7ba79d3e37d75f640f8e5d9bcd5b150a0f85014da",
+        "03e3818b65bcc73a7d64064106a859cc1a5a728c4345ff0b641209fba0d90de6e9"
+      ],
+      script:
+        "5221021f2f6e1e50cb6a953935c3601284925decd3fd21bc445712576873fb8c6ebc1821022df8750480ad5b26950b25c7ba79d3e37d75f640f8e5d9bcd5b150a0f85014da2103e3818b65bcc73a7d64064106a859cc1a5a728c4345ff0b641209fba0d90de6e953ae",
+      address: "3Q4sF6tv9wsdqu2NtARzNCpQgwifm2rAba"
+    }
+  ]
+
+  describe "test basic functions" do
     test "test new/0 and empty?/1" do
       s = Script.new()
       assert Script.empty?(s)
@@ -465,14 +829,14 @@ defmodule Bitcoinex.ScriptTest do
       assert p2wpkh == p2wpkh2
     end
 
-    test "test is_multi?" do
+    test "test is_multisig?" do
       for ms <- @raw_multisig_scripts do
         {:ok, multi} = Script.parse_script(ms)
-        assert Script.is_multi?(multi)
+        assert Script.is_multisig?(multi)
       end
     end
 
-    test "test create_multi" do
+    test "test create_multisig" do
       # these keys will be added to multisig as compressed keys
       {:ok, pk1} =
         Point.parse_public_key(
@@ -489,8 +853,8 @@ defmodule Bitcoinex.ScriptTest do
           "0411ffd36c70776538d079fbae117dc38effafb33304af83ce4894589747aee1ef992f63280567f52f5ba870678b4ab4ff6c8ea600bd217870a8b4f1f09f3a8e83"
         )
 
-      {:ok, multi} = Script.create_multi(2, [pk1, pk2, pk3])
-      assert Script.is_multi?(multi)
+      {:ok, multisig} = Script.create_multisig(2, [pk1, pk2, pk3])
+      assert Script.is_multisig?(multisig)
 
       {:ok, pk1} =
         Point.parse_public_key(
@@ -507,24 +871,24 @@ defmodule Bitcoinex.ScriptTest do
           "02a5264fbc1be9b9a7d03d9637a5534ce8d59a06c4c1f30802fe52e7bf6c1dd971"
         )
 
-      {:ok, multi} = Script.create_multi(1, [pk1, pk2, pk3])
-      assert Script.is_multi?(multi)
+      {:ok, multi} = Script.create_multisig(1, [pk1, pk2, pk3])
+      assert Script.is_multisig?(multi)
 
-      {:ok, multi} = Script.create_multi(2, [pk1, pk2, pk3])
-      assert Script.is_multi?(multi)
+      {:ok, multi} = Script.create_multisig(2, [pk1, pk2, pk3])
+      assert Script.is_multisig?(multi)
 
-      {:ok, multi} = Script.create_multi(3, [pk1, pk2, pk3])
-      assert Script.is_multi?(multi)
+      {:ok, multi} = Script.create_multisig(3, [pk1, pk2, pk3])
+      assert Script.is_multisig?(multi)
 
       # m cant be greater than n in m-of-n
-      {:error, _msg} = Script.create_multi(4, [pk1, pk2, pk3])
+      {:error, _msg} = Script.create_multisig(4, [pk1, pk2, pk3])
       # m cant be 0
-      {:error, _msg} = Script.create_multi(0, [pk1, pk2, pk3])
+      {:error, _msg} = Script.create_multisig(0, [pk1, pk2, pk3])
       # m cant be greater than n in m-of-n
-      {:error, _msg} = Script.create_multi(0, [])
+      {:error, _msg} = Script.create_multisig(0, [])
     end
 
-    test "test create_p2sh_multi" do
+    test "test create_p2sh_multisig" do
       {:ok, pk1} =
         Point.parse_public_key(
           "04a882d414e478039cd5b52a92ffb13dd5e6bd4515497439dffd691a0f12af9575fa349b5694ed3155b136f09e63975a1700c9f4d4df849323dac06cf3bd6458cd"
@@ -540,9 +904,9 @@ defmodule Bitcoinex.ScriptTest do
           "0411ffd36c70776538d079fbae117dc38effafb33304af83ce4894589747aee1ef992f63280567f52f5ba870678b4ab4ff6c8ea600bd217870a8b4f1f09f3a8e83"
         )
 
-      {:ok, p2sh, multi} = Script.create_p2sh_multi(2, [pk1, pk2, pk3])
+      {:ok, p2sh, multi} = Script.create_p2sh_multisig(2, [pk1, pk2, pk3])
       assert Script.is_p2sh?(p2sh)
-      assert Script.is_multi?(multi)
+      assert Script.is_multisig?(multi)
 
       {:ok, pk1} =
         Point.parse_public_key(
@@ -559,19 +923,19 @@ defmodule Bitcoinex.ScriptTest do
           "02a5264fbc1be9b9a7d03d9637a5534ce8d59a06c4c1f30802fe52e7bf6c1dd971"
         )
 
-      {:ok, p2sh, multi} = Script.create_p2sh_multi(2, [pk1, pk2, pk3])
+      {:ok, p2sh, multi} = Script.create_p2sh_multisig(2, [pk1, pk2, pk3])
       assert Script.is_p2sh?(p2sh)
-      assert Script.is_multi?(multi)
+      assert Script.is_multisig?(multi)
 
       # m cant be greater than n in m-of-n
-      {:error, _msg} = Script.create_p2sh_multi(4, [pk1, pk2, pk3])
+      {:error, _msg} = Script.create_p2sh_multisig(4, [pk1, pk2, pk3])
       # m cant be 0
-      {:error, _msg} = Script.create_p2sh_multi(0, [pk1, pk2, pk3])
+      {:error, _msg} = Script.create_p2sh_multisig(0, [pk1, pk2, pk3])
       # m cant be greater than n in m-of-n
-      {:error, _msg} = Script.create_p2sh_multi(0, [])
+      {:error, _msg} = Script.create_p2sh_multisig(0, [])
     end
 
-    test "test create_p2wsh_multi" do
+    test "test create_p2wsh_multisig" do
       {:ok, pk1} =
         Point.parse_public_key(
           "04a882d414e478039cd5b52a92ffb13dd5e6bd4515497439dffd691a0f12af9575fa349b5694ed3155b136f09e63975a1700c9f4d4df849323dac06cf3bd6458cd"
@@ -587,9 +951,9 @@ defmodule Bitcoinex.ScriptTest do
           "0411ffd36c70776538d079fbae117dc38effafb33304af83ce4894589747aee1ef992f63280567f52f5ba870678b4ab4ff6c8ea600bd217870a8b4f1f09f3a8e83"
         )
 
-      {:ok, p2wsh, multi} = Script.create_p2wsh_multi(2, [pk1, pk2, pk3])
+      {:ok, p2wsh, multi} = Script.create_p2wsh_multisig(2, [pk1, pk2, pk3])
       assert Script.is_p2wsh?(p2wsh)
-      assert Script.is_multi?(multi)
+      assert Script.is_multisig?(multi)
 
       {:ok, pk1} =
         Point.parse_public_key(
@@ -606,16 +970,16 @@ defmodule Bitcoinex.ScriptTest do
           "02a5264fbc1be9b9a7d03d9637a5534ce8d59a06c4c1f30802fe52e7bf6c1dd971"
         )
 
-      {:ok, p2wsh, multi} = Script.create_p2wsh_multi(2, [pk1, pk2, pk3])
+      {:ok, p2wsh, multi} = Script.create_p2wsh_multisig(2, [pk1, pk2, pk3])
       assert Script.is_p2wsh?(p2wsh)
-      assert Script.is_multi?(multi)
+      assert Script.is_multisig?(multi)
 
       # m cant be greater than n in m-of-n
-      {:error, _msg} = Script.create_p2wsh_multi(4, [pk1, pk2, pk3])
+      {:error, _msg} = Script.create_p2wsh_multisig(4, [pk1, pk2, pk3])
       # m cant be 0
-      {:error, _msg} = Script.create_p2wsh_multi(0, [pk1, pk2, pk3])
+      {:error, _msg} = Script.create_p2wsh_multisig(0, [pk1, pk2, pk3])
       # m cant be greater than n in m-of-n
-      {:error, _msg} = Script.create_p2wsh_multi(0, [])
+      {:error, _msg} = Script.create_p2wsh_multisig(0, [])
     end
 
     test "test create scripts from pubkey" do
@@ -682,7 +1046,7 @@ defmodule Bitcoinex.ScriptTest do
 
   describe "test parsing scripts" do
     test "test parse pushdata1 script" do
-      # pushdata1 <data> 
+      # pushdata1 <data>
       data_hex =
         "c5802547372094c58025802547372094c5802547802c9ca07652be7e8025472547372094c5802547802c9ca07652be7e802547372094c5802547802c9ca07652be7e47802c9ca07652be7e6419bc9aa1"
 
@@ -720,7 +1084,7 @@ defmodule Bitcoinex.ScriptTest do
     end
 
     test "test parse pushdata2 script" do
-      # pushdata2 <data> 
+      # pushdata2 <data>
       data_hex =
         "c5802547372094c58025478025473720941cee958bca07652be7e6419bc91cee958b8025473720941cee958bca07652be7e6419bc91cee958b3720941cee958bca07652be7e6419bc91ceec5802547372094c58025478025473720941cee958bca07652be7e6419bc91cee958b8025473720941cee958bca07652be7e6419bc91cee958b3720941cee958bca07652be7e6419c5802547372094c58025478025473720941cee958bca07652be7e6419bc91cee958b8025473720941cee958bca07652be7e6419bc91cee958b3720941cee958bca07652be7ec5802547372094c58025478025473720941cee958bca07652be7e6419bc91cee958b8025473720941cee958bca07652be7e6419bc91cee958b3720941cee958bca07652be7e6419bc91cee958bc58025473720941cee958bca07652be7e6419bc9ca07652be7e6419bc96419bc91cee958bc58025473720941cee958bca07652be7e6419bc9ca07652be7e6419bc9bc91cee958bc58025473720941cee958bca07652be7e6419bc9ca07652c5802547372094c58025478025473720941cee958bca07652be7e6419bc91cee958b8025473720941cee958bca07652be7e6419bc91cee958b3720941cee958bca07652be9bc9958bc58025473720941cee958bca07652be7e6419bc9ca07652be7e6419bc9"
 
@@ -957,7 +1321,7 @@ defmodule Bitcoinex.ScriptTest do
     test "test serialize/parse multisig scripts" do
       for ms <- @raw_multisig_scripts do
         {:ok, multi} = Script.parse_script(ms)
-        assert Script.is_multi?(multi)
+        assert Script.is_multisig?(multi)
         assert Script.to_hex(multi) == ms
       end
     end
@@ -1101,13 +1465,13 @@ defmodule Bitcoinex.ScriptTest do
       assert Script.to_address(s, :mainnet) == {:ok, addr}
     end
 
-    test "test raw multisig to address" do
+    test "test raw unsorted multisig to address" do
       for multi <- @raw_multisigs_with_data do
         {:ok, ms} = Script.parse_script(multi.script_hex)
-        {:ok, m, pks} = Script.extract_multi_policy(ms)
+        {:ok, m, pks} = Script.extract_multisig_policy(ms)
 
         if multi.sh_addr != "" do
-          {:ok, p2sh, multi_script} = Script.create_p2sh_multi(m, pks)
+          {:ok, p2sh, multi_script} = Script.create_p2sh_multisig(m, pks, bip67_sort: false)
 
           {:ok, addr} = Script.to_address(p2sh, multi.network)
 
@@ -1116,7 +1480,32 @@ defmodule Bitcoinex.ScriptTest do
         end
 
         if multi.wsh_addr != "" do
-          {:ok, p2wsh, multi_script} = Script.create_p2wsh_multi(m, pks)
+          {:ok, p2wsh, multi_script} = Script.create_p2wsh_multisig(m, pks, bip67_sort: false)
+
+          {:ok, addr} = Script.to_address(p2wsh, multi.network)
+
+          assert multi_script == ms
+          assert addr == multi.wsh_addr
+        end
+      end
+    end
+
+    test "raw sorted multisig to address" do
+      for multi <- @raw_sorted_multisig_with_data do
+        {:ok, ms} = Script.parse_script(multi.script_hex)
+        {:ok, m, pks} = Script.extract_multisig_policy(ms)
+
+        if multi.sh_addr != "" do
+          {:ok, p2sh, multi_script} = Script.create_p2sh_multisig(m, pks)
+
+          {:ok, addr} = Script.to_address(p2sh, multi.network)
+
+          assert multi_script == ms
+          assert addr == multi.sh_addr
+        end
+
+        if multi.wsh_addr != "" do
+          {:ok, p2wsh, multi_script} = Script.create_p2wsh_multisig(m, pks)
 
           {:ok, addr} = Script.to_address(p2wsh, multi.network)
 
@@ -1130,6 +1519,12 @@ defmodule Bitcoinex.ScriptTest do
       for t <- @bip350_test_vectors do
         {:ok, s} = Script.parse_script(t.hex)
         assert Script.to_address(s, t.net) == {:ok, t.b32}
+      end
+    end
+
+    test "test invalid bip350 test vectors" do
+      for t <- @bip_350_invalid_test_vectors do
+        assert {:error, _} = Script.parse_script(t)
       end
     end
   end
@@ -1248,16 +1643,16 @@ defmodule Bitcoinex.ScriptTest do
     test "extract policy from multisig script" do
       for multi <- @raw_multisigs_with_data do
         {:ok, ms} = Script.parse_script(multi.script_hex)
-        {:ok, m, pks} = Script.extract_multi_policy(ms)
-        {:ok, ms2} = Script.create_multi(m, pks)
+        {:ok, m, pks} = Script.extract_multisig_policy(ms)
+        {:ok, ms2} = Script.create_multisig(m, pks, bip67_sort: false)
 
         assert ms == ms2
       end
 
       for m <- @raw_multisig_scripts do
         {:ok, ms} = Script.parse_script(m)
-        {:ok, m, pks} = Script.extract_multi_policy(ms)
-        {:ok, ms2} = Script.create_multi(m, pks)
+        {:ok, m, pks} = Script.extract_multisig_policy(ms)
+        {:ok, ms2} = Script.create_multisig(m, pks, bip67_sort: false)
 
         assert ms == ms2
       end
@@ -1304,6 +1699,45 @@ defmodule Bitcoinex.ScriptTest do
       assert Bitcoinex.Secp256k1.Point.sec(pubkey1) == pk1
       assert Bitcoinex.Secp256k1.Point.sec(pubkey2) == pk2
       assert Bitcoinex.Secp256k1.Point.sec(pubkey3) == pk3
+    end
+  end
+
+  describe "test bip341 create_p2tr" do
+    test "test bip341 test vectors" do
+      for t <- @bip_341_script_pubkey_test_vectors do
+        {:ok, p} = Point.lift_x(t.given.internal_pubkey)
+        {:ok, script} = Script.create_p2tr(p, t.given.script_tree)
+        assert Script.to_hex(script) == t.expected.script_pubkey
+        assert Script.to_address(script, :mainnet) == {:ok, t.expected.bip350_address}
+      end
+    end
+  end
+
+  describe "bip 67" do
+    def parse_pk(pk) do
+      {:ok, pk} = Point.parse_public_key(pk)
+      pk
+    end
+
+    test "sorting pubkeys" do
+      for t <- @bip67_tests do
+        pubkeys = Enum.map(t.pubkeys, &parse_pk/1)
+        sorted_pubkeys = Enum.map(t.sorted, &parse_pk/1)
+
+        pubkeys = Script.lexicographical_sort_pubkeys(pubkeys)
+
+        zip_list = Enum.zip(pubkeys, sorted_pubkeys)
+        Enum.each(zip_list, fn {pubkey, sorted_pubkey} -> assert pubkey == sorted_pubkey end)
+      end
+    end
+
+    test "script creation" do
+      for t <- @bip67_tests do
+        pubkeys = Enum.map(t.pubkeys, &parse_pk/1)
+        {:ok, script, redeem_script} = Script.create_p2sh_multisig(@bip67_test_vectors_m, pubkeys)
+        assert Script.to_hex(redeem_script) == t.script
+        assert Script.to_address(script, :mainnet) == {:ok, t.address}
+      end
     end
   end
 end

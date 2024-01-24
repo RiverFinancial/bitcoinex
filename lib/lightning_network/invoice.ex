@@ -9,7 +9,7 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
   alias Bitcoinex.LightningNetwork.HopHint
   alias Decimal, as: D
 
-  use Bitwise
+  import Bitwise
   # consider using https://github.com/ejpcmac/typed_struct
 
   @default_min_final_cltv_expiry 18
@@ -150,8 +150,8 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
 
       # TODO if destination exist from tagged field, we dun need to recover but to verify it with signature
       # but that require convert lg sig before using secp256k1 to verify it
-      # TODO refactor too nested
-      case Bitcoinex.Secp256k1.ecdsa_recover_compact(hash, signature, recoveryId) do
+      # TODO refactor to nested
+      case Bitcoinex.Secp256k1.Ecdsa.ecdsa_recover_compact(hash, signature, recoveryId) do
         {:ok, pubkey} ->
           if is_nil(destination) or destination == pubkey do
             {:ok, pubkey}
@@ -564,47 +564,47 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
     end
   end
 
-  defp calculate_milli_satoshi("0" <> _) do
-    {:error, :amount_with_leading_zero}
-  end
-
   defp calculate_milli_satoshi(amount_str) do
-    result =
-      case Regex.run(~r/[munp]$/, amount_str) do
-        [multiplier] when multiplier in @valid_multipliers ->
-          case Integer.parse(String.slice(amount_str, 0..-2)) do
-            {amount, ""} ->
-              {:ok, to_bitcoin(amount, multiplier)}
+    if String.length(amount_str) > 1 and String.starts_with?(amount_str, "0") do
+      {:error, :amount_with_leading_zero}
+    else
+      result =
+        case Regex.run(~r/[munp]$/, amount_str) do
+          [multiplier] when multiplier in @valid_multipliers ->
+            case Integer.parse(String.slice(amount_str, 0..-2)) do
+              {amount, ""} ->
+                {:ok, to_bitcoin(amount, multiplier)}
 
-            _ ->
-              {:error, :invalid_amount}
-          end
+              _ ->
+                {:error, :invalid_amount}
+            end
 
-        _ ->
-          case Integer.parse(amount_str) do
-            {amount_in_bitcoin, ""} ->
-              {:ok, amount_in_bitcoin}
+          _ ->
+            case Integer.parse(amount_str) do
+              {amount_in_bitcoin, ""} ->
+                {:ok, amount_in_bitcoin}
 
-            _ ->
-              {:error, :invalid_amount}
-          end
-      end
-
-    case result do
-      {:ok, amount_in_bitcoin} ->
-        amount_msat_dec = D.mult(amount_in_bitcoin, @milli_satoshi_per_bitcoin)
-        rounded_amount_msat_dec = D.round(amount_msat_dec)
-
-        case D.equal?(rounded_amount_msat_dec, amount_msat_dec) do
-          true ->
-            {:ok, D.to_integer(rounded_amount_msat_dec)}
-
-          false ->
-            {:error, :sub_msat_precision_amount}
+              _ ->
+                {:error, :invalid_amount}
+            end
         end
 
-      {:error, error} ->
-        {:error, error}
+      case result do
+        {:ok, amount_in_bitcoin} ->
+          amount_msat_dec = D.mult(amount_in_bitcoin, @milli_satoshi_per_bitcoin)
+          rounded_amount_msat_dec = D.round(amount_msat_dec)
+
+          case D.equal?(rounded_amount_msat_dec, amount_msat_dec) do
+            true ->
+              {:ok, D.to_integer(rounded_amount_msat_dec)}
+
+            false ->
+              {:error, :sub_msat_precision_amount}
+          end
+
+        {:error, error} ->
+          {:error, error}
+      end
     end
   end
 

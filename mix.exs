@@ -4,8 +4,8 @@ defmodule Bitcoinex.MixProject do
   def project do
     [
       app: :bitcoinex,
-      version: "0.1.4",
-      elixir: "~> 1.8",
+      version: "0.1.7",
+      elixir: "~> 1.11",
       package: package(),
       start_permanent: Mix.env() == :prod,
       dialyzer: dialyzer(),
@@ -26,15 +26,15 @@ defmodule Bitcoinex.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:credo, "~> 1.0.0", only: [:dev, :test], runtime: false},
-      {:dialyxir, "~> 1.0.0-rc.6", only: [:dev, :test], runtime: false},
-      {:excoveralls, "~> 0.10", only: :test},
-      {:mix_test_watch, "~> 0.8", only: :dev, runtime: false},
+      {:credo, "~> 1.6", only: [:dev, :test], runtime: false},
+      {:dialyxir, "~> 1.3.0", only: [:dev, :test], runtime: false},
+      {:excoveralls, "~> 0.14.5", only: :test},
+      {:mix_test_watch, "~> 1.1", only: :dev, runtime: false},
       {:stream_data, "~> 0.1", only: :test},
-      {:timex, "~> 3.1"},
-      {:decimal, "~> 1.0 or ~> 2.0"},
+      {:timex, "== 3.7.6"},
+      {:decimal, "~> 2.0"},
       {:ex_doc, ">= 0.0.0", only: :dev, runtime: false},
-      {:benchee, ">= 1.0.0", only: :dev}
+      {:benchee, ">= 1.1.0", only: :dev}
     ]
   end
 
@@ -54,8 +54,7 @@ defmodule Bitcoinex.MixProject do
     [
       plt_file: plt_file(),
       flags: [
-        :error_handling,
-        :race_conditions
+        :error_handling
       ],
       ignore_warnings: ".dialyzer_ignore.exs"
     ]

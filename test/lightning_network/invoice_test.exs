@@ -414,6 +414,33 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
           description: "simple",
           min_final_cltv_expiry: 40
         }
+      },
+      # Amount is set to 0 explicitly (which might seem like a leading 0, but actually is not)
+      {
+        "lnbcrt01pvjluezpp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqdqqnp4q0n326hr8v9zprg8gsvezcch06gfaqqhde2aj730yg0durunfhv66dnh5eqnn4w30z5j59jdxykc077phshmlw5kuzmvd4r5slafnlk7q3grjpy6nvxg9stq4xt58kcr3utla2vz0783x5920vhe0p7md9jspddgapr",
+        %Invoice{
+          network: :regtest,
+          destination: "03e7156ae33b0a208d0744199163177e909e80176e55d97a2f221ede0f934dd9ad",
+          payment_hash: "0001020304050607080900010203040506070809000102030405060708090102",
+          amount_msat: 0,
+          timestamp: 1_496_314_658,
+          description: "",
+          min_final_cltv_expiry: 18
+        }
+      },
+      # Amount is 1 bitcoin to test no-multiplier parsing
+      {
+        "lnbcrt11p34y28ypp5z4tvam0qzsj6eq7adedy2p0ga2lam4jc3g6kn702t9mj6xyldj6qdqqcqzpgxqyz5vqsp55gkl87n3n8qwqadwrt3gfxcdsls8mk2cv5vgh3v8ujexglxpkv9q9qyyssqjx0f3dgylw8dyhy8z6e4ta3pzg09j90uwhd747fsclx5enjalmprnt583744v683prj48xgc57gumzs2406l5m7jqrem3aewh6nzfkspz9m2px",
+        %Invoice{
+          network: :regtest,
+          destination: "02d60dfe3850d115fdb2114b14396d4d2924a25dafc69098d10841e4474d9977dd",
+          payment_hash: "1556ceede01425ac83dd6e5a4505e8eabfddd6588a3569f9ea59772d189f6cb4",
+          amount_msat: 100_000_000_000,
+          timestamp: 1_666_328_804,
+          expiry: 86_400,
+          description: "",
+          min_final_cltv_expiry: 40
+        }
       }
     ]
 

@@ -28,3 +28,9 @@ bitcoinex-*.tar
 # dialyzer plt
 /_plts/*.plt
 /_plts/*.plt.hash
+
+# idea
+.idea/
+
+# bitcoin related files
+**/*.psbt

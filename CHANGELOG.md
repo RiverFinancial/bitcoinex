@@ -5,6 +5,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.1.7] - 2023-01-16
+### Added
+- Support for Schnorr signature creation and validation
+- Fixed bug which would not correctly parse a BOLT11 invoice with amount explicitly set to 0.
+- Bump Elixir & Erlang Requirements & dependencies
+
 ## [0.1.4] - 2021-05-19
 ### Added
 - BIP32 support with new modules for extended keys and derivation paths.
