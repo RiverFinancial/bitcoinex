@@ -60,6 +60,11 @@ defmodule Bitcoinex.Secp256k1.PrivateKey do
     end
   end
 
+  @spec negate(t()) :: t()
+  def negate(%__MODULE__{d: d}) do
+    %__MODULE__{d: @n - d}
+  end
+
   @doc """
    serialize_private_key serializes a private key into hex
   """
@@ -75,6 +80,14 @@ defmodule Bitcoinex.Secp256k1.PrivateKey do
         |> Utils.pad(32, :leading)
         |> Base.encode16(case: :lower)
     end
+  end
+
+  @spec to_hex(Bitcoinex.Secp256k1.PrivateKey.t()) :: String.t()
+  def to_hex(%__MODULE__{d: d}) do
+    d
+    |> :binary.encode_unsigned()
+    |> Utils.pad(32, :leading)
+    |> Base.encode16(case: :lower)
   end
 
   @doc """

@@ -27,14 +27,14 @@ defmodule Bitcoinex.MixProject do
   defp deps do
     [
       {:credo, "~> 1.6", only: [:dev, :test], runtime: false},
-      {:dialyxir, "~> 1.2.0", only: [:dev, :test], runtime: false},
-      {:excoveralls, "~> 0.10", only: :test},
+      {:dialyxir, "~> 1.3.0", only: [:dev, :test], runtime: false},
+      {:excoveralls, "~> 0.14.5", only: :test},
       {:mix_test_watch, "~> 1.1", only: :dev, runtime: false},
       {:stream_data, "~> 0.1", only: :test},
-      {:timex, "~> 3.1"},
-      {:decimal, "~> 1.0 or ~> 2.0"},
+      {:timex, "== 3.7.6"},
+      {:decimal, "~> 2.0"},
       {:ex_doc, ">= 0.0.0", only: :dev, runtime: false},
-      {:benchee, ">= 1.0.0", only: :dev}
+      {:benchee, ">= 1.1.0", only: :dev}
     ]
   end
 

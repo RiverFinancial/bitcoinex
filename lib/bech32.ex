@@ -8,7 +8,7 @@ defmodule Bitcoinex.Bech32 do
   import Bitwise
 
   @gen [0x3B6A57B2, 0x26508E6D, 0x1EA119FA, 0x3D4233DD, 0x2A1462B3]
-  @data_charset_list 'qpzry9x8gf2tvdw0s3jn54khce6mua7l'
+  @data_charset_list ~c"qpzry9x8gf2tvdw0s3jn54khce6mua7l"
   @data_charset_map @data_charset_list
                     |> Enum.zip(0..Enum.count(@data_charset_list))
                     |> Enum.into(%{})

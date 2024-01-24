@@ -85,8 +85,8 @@ defmodule Bitcoinex.Segwit do
   @doc """
   Simpler Interface to check if address is valid
   """
-  @spec is_valid_segswit_address?(String.t()) :: boolean
-  def is_valid_segswit_address?(address) when is_binary(address) do
+  @spec is_valid_segwit_address?(String.t()) :: boolean
+  def is_valid_segwit_address?(address) when is_binary(address) do
     case decode_address(address) do
       {:ok, _} ->
         true
@@ -147,9 +147,9 @@ defmodule Bitcoinex.Segwit do
 
   defp is_program_length_valid?(_, _), do: false
 
-  defp parse_network('bc'), do: {:ok, :mainnet}
-  defp parse_network('tb'), do: {:ok, :testnet}
-  defp parse_network('bcrt'), do: {:ok, :regtest}
+  defp parse_network(~c"bc"), do: {:ok, :mainnet}
+  defp parse_network(~c"tb"), do: {:ok, :testnet}
+  defp parse_network(~c"bcrt"), do: {:ok, :regtest}
   defp parse_network(_), do: {:error, :invalid_network}
 
   defp witness_version_to_bech_encoding(0), do: :bech32

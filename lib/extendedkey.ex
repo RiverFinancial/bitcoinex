@@ -42,18 +42,21 @@ defmodule Bitcoinex.ExtendedKey do
 
     def new(), do: %__MODULE__{child_nums: []}
 
+    @spec serialize(t()) :: {:ok, binary} | {:error, String.t()}
+    def serialize(dp = %__MODULE__{}), do: to_bin(dp)
+
     @spec to_string(t()) :: {:ok, String.t()} | {:error, String.t()}
-    def to_string(%__MODULE__{child_nums: path}), do: tto_string(path, "")
+    def to_string(%__MODULE__{child_nums: path}), do: path_to_string(path, "")
 
-    defp tto_string([], path_acc), do: {:ok, path_acc}
+    defp path_to_string([], path_acc), do: {:ok, path_acc}
 
-    defp tto_string([l | rest], path_acc) do
+    defp path_to_string([l | rest], path_acc) do
       cond do
         l == :any ->
-          tto_string(rest, path_acc <> "*/")
+          path_to_string(rest, path_acc <> "*/")
 
         l == :anyh ->
-          tto_string(rest, path_acc <> "*'/")
+          path_to_string(rest, path_acc <> "*'/")
 
         l > @max_hardened_child_num ->
           {:error, "index cannot be greater than #{@max_hardened_child_num}"}
@@ -63,7 +66,7 @@ defmodule Bitcoinex.ExtendedKey do
 
         # hardened
         l >= @min_hardened_child_num ->
-          tto_string(
+          path_to_string(
             rest,
             path_acc <>
               (l
@@ -74,30 +77,109 @@ defmodule Bitcoinex.ExtendedKey do
 
         # unhardened
         true ->
-          tto_string(rest, path_acc <> Integer.to_string(l) <> "/")
+          path_to_string(rest, path_acc <> Integer.to_string(l) <> "/")
       end
     end
 
-    @spec from_string(String.t()) :: {:ok, t()} | {:error, String.t()}
-    def from_string(pathstr) do
+    @spec to_bin(t()) :: {:ok, binary} | {:error, String.t()}
+    def to_bin(%__MODULE__{child_nums: child_nums}) do
       try do
-        {:ok, %__MODULE__{child_nums: tfrom_string(String.split(pathstr, "/"))}}
+        {:ok, to_bin(child_nums, <<>>)}
       rescue
         e in ArgumentError -> {:error, e.message}
       end
     end
 
-    defp tfrom_string(path_list) do
-      case path_list do
-        [] -> []
-        [""] -> []
-        ["m" | rest] -> tfrom_string(rest)
-        ["*" | rest] -> [:any | tfrom_string(rest)]
-        ["*'" | rest] -> [:anyh | tfrom_string(rest)]
-        ["*h" | rest] -> [:anyh | tfrom_string(rest)]
-        [i | rest] -> [str_to_level(i) | tfrom_string(rest)]
+    defp to_bin([], path_acc), do: path_acc
+
+    defp to_bin([lvl | rest], path_acc) do
+      cond do
+        lvl == :any or lvl == :anyh ->
+          raise(ArgumentError,
+            message: "Derivation Path with wildcard cannot be encoded to binary."
+          )
+
+        lvl > @max_hardened_child_num ->
+          raise(ArgumentError, message: "index cannot be greater than #{@max_hardened_child_num}")
+
+        lvl < @min_non_hardened_child_num ->
+          raise(ArgumentError,
+            message: "index cannot be less than #{@min_non_hardened_child_num}"
+          )
+
+        true ->
+          lvlbin =
+            lvl
+            |> :binary.encode_unsigned(:little)
+            |> Bitcoinex.Utils.pad(4, :trailing)
+
+          to_bin(rest, path_acc <> lvlbin)
       end
     end
+
+    @spec parse(binary) :: {:ok, t()} | {:error, String.t()}
+    def parse(dp), do: from_bin(dp)
+
+    @spec from_string(String.t()) :: {:ok, t()} | {:error, String.t()}
+    def from_string(pathstr) do
+      try do
+        {:ok,
+         %__MODULE__{
+           child_nums:
+             pathstr
+             |> String.split("/")
+             |> path_from_string([])
+             |> Enum.reverse()
+         }}
+      rescue
+        e in ArgumentError -> {:error, e.message}
+      end
+    end
+
+    defp path_from_string(path_list, child_nums) do
+      case path_list do
+        [] ->
+          child_nums
+
+        [""] ->
+          child_nums
+
+        ["m" | rest] ->
+          if child_nums != [] do
+            raise(ArgumentError,
+              message: "m can only be present at the begining of a derivation path."
+            )
+          else
+            path_from_string(rest, child_nums)
+          end
+
+        ["*" | rest] ->
+          path_from_string(rest, [:any | child_nums])
+
+        ["*'" | rest] ->
+          path_from_string(rest, [:anyh | child_nums])
+
+        ["*h" | rest] ->
+          path_from_string(rest, [:anyh | child_nums])
+
+        [i | rest] ->
+          path_from_string(rest, [str_to_level(i) | child_nums])
+      end
+    end
+
+    @spec from_bin(binary) :: {:ok, t()} | {:error, String.t()}
+    def from_bin(bin) do
+      try do
+        {:ok, %__MODULE__{child_nums: Enum.reverse(from_bin(bin, []))}}
+      rescue
+        _e in ArgumentError -> {:error, "invalid binary encoding of derivation path"}
+      end
+    end
+
+    defp from_bin(<<>>, child_nums), do: child_nums
+
+    defp from_bin(<<level::little-unsigned-32, bin::binary>>, child_nums),
+      do: from_bin(bin, [level | child_nums])
 
     defp str_to_level(level) do
       {num, is_hardened} =
@@ -111,6 +193,7 @@ defmodule Bitcoinex.ExtendedKey do
 
       nnum = String.to_integer(num)
 
+      # TODO benchmark and make this two comparisons
       if nnum in @min_non_hardened_child_num..@max_non_hardened_child_num do
         if is_hardened do
           nnum + @min_hardened_child_num
@@ -124,6 +207,8 @@ defmodule Bitcoinex.ExtendedKey do
 
     def add(%__MODULE__{child_nums: path1}, %__MODULE__{child_nums: path2}),
       do: %__MODULE__{child_nums: path1 ++ path2}
+
+    def depth(%__MODULE__{child_nums: child_nums}), do: length(child_nums)
   end
 
   @type t :: %__MODULE__{
@@ -132,8 +217,7 @@ defmodule Bitcoinex.ExtendedKey do
           parent_fingerprint: binary,
           child_num: binary,
           chaincode: binary,
-          key: binary,
-          checksum: binary
+          key: binary
         }
 
   @enforce_keys [
@@ -142,8 +226,7 @@ defmodule Bitcoinex.ExtendedKey do
     :parent_fingerprint,
     :child_num,
     :chaincode,
-    :key,
-    :checksum
+    :key
   ]
 
   defstruct [
@@ -152,23 +235,55 @@ defmodule Bitcoinex.ExtendedKey do
     :parent_fingerprint,
     :child_num,
     :chaincode,
-    :key,
-    :checksum
+    :key
   ]
 
+  # Single Sig
+  # xpub
   @xpub_pfx <<0x04, 0x88, 0xB2, 0x1E>>
+  # xprv
   @xprv_pfx <<0x04, 0x88, 0xAD, 0xE4>>
+  # tpub
   @tpub_pfx <<0x04, 0x35, 0x87, 0xCF>>
+  # tprv
   @tprv_pfx <<0x04, 0x35, 0x83, 0x94>>
-
+  # ypub
+  @ypub_pfx <<0x04, 0x9D, 0x7C, 0xB2>>
+  # yprv
+  @yprv_pfx <<0x04, 0x9D, 0x78, 0x78>>
+  # upub
+  @upub_pfx <<0x04, 0x4A, 0x52, 0x62>>
+  # uprv
+  @uprv_pfx <<0x04, 0x4A, 0x4E, 0x28>>
+  # zpub
+  @zpub_pfx <<0x04, 0xB2, 0x47, 0x46>>
+  # zprv
+  @zprv_pfx <<0x04, 0xB2, 0x43, 0x0C>>
+  # vpub
+  @vpub_pfx <<0x04, 0x5F, 0x1C, 0xF6>>
+  # vprv
+  @vprv_pfx <<0x04, 0x5F, 0x18, 0xBC>>
+  # Multisig (no BIP or derivation path, from SLIP-132)
+  # @y_pub_pfx <<0x02,0x95,0xb4,0x3f>> #Ypub
+  # @y_prv_pfx <<0x02,0x95,0xb0,0x05>> #Yprv
+  # @z_pub_pfx <<0x02,0xaa,0x7e,0xd3>> #Zpub
+  # @z_prv_pfx <<0x02,0xaa,0x7a,0x99>> #Zprv
   @prv_prefixes [
     @xprv_pfx,
-    @tprv_pfx
+    @tprv_pfx,
+    @yprv_pfx,
+    @uprv_pfx,
+    @zprv_pfx,
+    @vprv_pfx
   ]
 
   @pub_prefixes [
     @xpub_pfx,
-    @tpub_pfx
+    @tpub_pfx,
+    @ypub_pfx,
+    @upub_pfx,
+    @zpub_pfx,
+    @vpub_pfx
   ]
 
   @all_prefixes @prv_prefixes ++ @pub_prefixes
@@ -179,26 +294,95 @@ defmodule Bitcoinex.ExtendedKey do
       :xprv -> @xprv_pfx
       :tpub -> @tpub_pfx
       :tprv -> @tprv_pfx
+      :ypub -> @ypub_pfx
+      :yprv -> @yprv_pfx
+      :upub -> @upub_pfx
+      :uprv -> @uprv_pfx
+      :zpub -> @zpub_pfx
+      :zprv -> @zprv_pfx
+      :vpub -> @vpub_pfx
+      :vprv -> @vprv_pfx
     end
+  end
+
+  defp bip44 do
+    [
+      @xpub_pfx,
+      @xprv_pfx,
+      @tpub_pfx,
+      @tprv_pfx
+    ]
+  end
+
+  defp bip49 do
+    [
+      @ypub_pfx,
+      @yprv_pfx,
+      @upub_pfx,
+      @uprv_pfx
+    ]
+  end
+
+  defp bip84 do
+    [
+      @zpub_pfx,
+      @zprv_pfx,
+      @vpub_pfx,
+      @vprv_pfx
+    ]
   end
 
   defp prv_to_pub_prefix(prv_pfx) do
     case prv_pfx do
       @xprv_pfx -> @xpub_pfx
       @tprv_pfx -> @tpub_pfx
+      @yprv_pfx -> @ypub_pfx
+      @uprv_pfx -> @upub_pfx
+      @zprv_pfx -> @zpub_pfx
+      @vprv_pfx -> @vpub_pfx
     end
   end
 
   defp mainnet_prefixes do
     [
       @xpub_pfx,
-      @xprv_pfx
+      @xprv_pfx,
+      @ypub_pfx,
+      @yprv_pfx,
+      @zpub_pfx,
+      @zprv_pfx
     ]
   end
 
   @spec network_from_prefix(binary) :: atom
-  defp network_from_prefix(prefix) do
+  def network_from_prefix(prefix) do
     if prefix in mainnet_prefixes(), do: :mainnet, else: :testnet
+  end
+
+  @spec script_type_from_prefix(binary) :: atom
+  def script_type_from_prefix(prefix) do
+    cond do
+      prefix in bip44() -> :p2pkh
+      # p2sh or p2sh_p2wpkh?
+      prefix in bip49() -> :p2sh_p2wpkh
+      prefix in bip84() -> :p2wpkh
+    end
+  end
+
+  @spec switch_prefix(t(), atom) :: t() | {:error, String.t()}
+  def switch_prefix(xkey = %__MODULE__{prefix: pfx}, new_pfx) do
+    new_pfx_bin = pfx_atom_to_bin(new_pfx)
+
+    cond do
+      new_pfx_bin in @prv_prefixes and pfx in @prv_prefixes ->
+        %__MODULE__{xkey | prefix: new_pfx_bin}
+
+      new_pfx_bin in @pub_prefixes and pfx in @pub_prefixes ->
+        %__MODULE__{xkey | prefix: new_pfx_bin}
+
+      true ->
+        {:error, "switching between public and private prefixes will result in a useless key"}
+    end
   end
 
   @doc """
@@ -245,15 +429,29 @@ defmodule Bitcoinex.ExtendedKey do
   # PARSE & SERIALIZE
 
   @doc """
-    parse_extended_key takes binary or string representation
-    of an extended key and parses it to an extended key object
+    parse! calls parse, which takes binary or string representation
+    of an extended key and parses it to an extended key object.
+    parse! raises ArgumentError on failure.
   """
-  @spec parse_extended_key(binary) :: {:ok, t()} | {:error, String.t()}
-  def parse_extended_key(
+  @spec parse!(binary) :: t()
+  def parse!(xpub) do
+    case parse(xpub) do
+      {:ok, res} -> res
+      {:error, msg} -> raise(ArgumentError, message: msg)
+    end
+  end
+
+  @doc """
+    parse takes binary or string representation
+    of an extended key and parses it to an extended key object
+    returns {:error, msg} on failure
+  """
+  @spec parse(binary) :: {:ok, t()} | {:error, String.t()}
+  def parse(
         xkey =
           <<prefix::binary-size(4), depth::binary-size(1), parent_fingerprint::binary-size(4),
             child_num::binary-size(4), chaincode::binary-size(32), key::binary-size(33),
-            checksum::binary-size(4)>>
+            _checksum::binary-size(4)>>
       ) do
     cond do
       prefix not in @all_prefixes ->
@@ -276,15 +474,25 @@ defmodule Bitcoinex.ExtendedKey do
                parent_fingerprint: parent_fingerprint,
                child_num: child_num,
                chaincode: chaincode,
-               key: key,
-               checksum: checksum
+               key: key
              }}
         end
     end
   end
 
+  # parse without checksum (used for PSBT encodings)
+  def parse(
+        xkey =
+          <<_prefix::binary-size(4), _depth::binary-size(1), _parent_fingerprint::binary-size(4),
+            _child_num::binary-size(4), _chaincode::binary-size(32), _key::binary-size(33)>>
+      ) do
+    xkey
+    |> Base58.append_checksum()
+    |> parse()
+  end
+
   # parse from string
-  def parse_extended_key(xkey) do
+  def parse(xkey) do
     case Base58.decode(xkey) do
       {:error, _} ->
         {:error, "error parsing key"}
@@ -292,7 +500,7 @@ defmodule Bitcoinex.ExtendedKey do
       {:ok, xkey} ->
         xkey
         |> Base58.append_checksum()
-        |> parse_extended_key()
+        |> parse()
     end
   end
 
@@ -303,23 +511,33 @@ defmodule Bitcoinex.ExtendedKey do
   end
 
   @doc """
-    serialize_extended_key takes an extended key
+    serialize takes an extended key
     and returns the binary
   """
-  @spec serialize_extended_key(t()) :: binary
-  def serialize_extended_key(xkey) do
-    (xkey.prefix <>
-       xkey.depth <> xkey.parent_fingerprint <> xkey.child_num <> xkey.chaincode <> xkey.key)
-    |> Base58.append_checksum()
+  @spec serialize(t(), list({:with_checksum?, boolean})) :: binary
+  def serialize(xkey, opts \\ []) do
+    with_checksum? = Keyword.get(opts, :with_checksum?, true)
+
+    extended_key_without_checksum_bin =
+      xkey.prefix <>
+        xkey.depth <> xkey.parent_fingerprint <> xkey.child_num <> xkey.chaincode <> xkey.key
+
+    case with_checksum? do
+      true ->
+        Base58.append_checksum(extended_key_without_checksum_bin)
+
+      false ->
+        extended_key_without_checksum_bin
+    end
   end
 
   @doc """
     display returns the extended key as a string
   """
-  @spec display_extended_key(t()) :: String.t()
-  def display_extended_key(xkey) do
+  @spec display(t()) :: String.t()
+  def display(xkey) do
     xkey
-    |> serialize_extended_key()
+    |> serialize()
     |> Base58.encode_base()
   end
 
@@ -339,7 +557,7 @@ defmodule Bitcoinex.ExtendedKey do
 
       (prefix <> depth_fingerprint_childnum <> chaincode <> <<0>> <> key)
       |> Base58.append_checksum()
-      |> parse_extended_key()
+      |> parse()
     else
       {:error, "invalid extended private key prefix"}
     end
@@ -368,7 +586,7 @@ defmodule Bitcoinex.ExtendedKey do
         |> Kernel.<>(xprv.chaincode)
         |> Kernel.<>(pubkey)
         |> Base58.append_checksum()
-        |> parse_extended_key()
+        |> parse()
       rescue
         _ in MatchError -> {:error, "invalid private key"}
       end
@@ -475,7 +693,7 @@ defmodule Bitcoinex.ExtendedKey do
             (xkey.prefix <>
                child_depth <> fingerprint <> i <> child_chaincode <> Point.sec(pubkey))
             |> Base58.append_checksum()
-            |> parse_extended_key()
+            |> parse()
           end
         end
     end
@@ -526,7 +744,7 @@ defmodule Bitcoinex.ExtendedKey do
 
       (xkey.prefix <> child_depth <> fingerprint <> i <> child_chaincode <> <<0>> <> child_key)
       |> Base58.append_checksum()
-      |> parse_extended_key()
+      |> parse()
     rescue
       _ in MatchError -> {:error, "invalid private key in extended private key"}
     end
@@ -578,16 +796,16 @@ defmodule Bitcoinex.ExtendedKey do
   """
   @spec derive_extended_key(t() | binary, DerivationPath.t()) :: {:ok, t()} | {:error, String.t()}
   def derive_extended_key(xkey = %__MODULE__{}, %DerivationPath{child_nums: path}),
-    do: rderive_extended_key(xkey, path)
+    do: derive_extended_key(xkey, path)
 
   def derive_extended_key(seed, %DerivationPath{child_nums: path}) do
     {:ok, xkey} = seed_to_master_private_key(seed)
-    rderive_extended_key(xkey, path)
+    derive_extended_key(xkey, path)
   end
 
-  defp rderive_extended_key(xkey = %__MODULE__{}, []), do: {:ok, xkey}
+  def derive_extended_key(xkey = %__MODULE__{}, []), do: {:ok, xkey}
 
-  defp rderive_extended_key(xkey = %__MODULE__{}, [p | rest]) do
+  def derive_extended_key(xkey = %__MODULE__{}, [p | rest]) do
     try do
       case p do
         # if asterisk (:any) is in path, return the immediate parent xkey
@@ -597,7 +815,7 @@ defmodule Bitcoinex.ExtendedKey do
         # otherwise it is an integer, so derive child at that index.
         _ ->
           case derive_child_key(xkey, p) do
-            {:ok, child_key} -> rderive_extended_key(child_key, rest)
+            {:ok, child_key} -> derive_extended_key(child_key, rest)
             {:error, msg} -> {:error, msg}
           end
       end
