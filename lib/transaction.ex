@@ -4,12 +4,9 @@ defmodule Bitcoinex.Transaction do
   Supports serialization of transactions.
   """
   alias Bitcoinex.Transaction
-  alias Bitcoinex.Transaction.In
-  alias Bitcoinex.Transaction.Out
-  alias Bitcoinex.Transaction.Witness
-  alias Bitcoinex.Utils
+  alias Bitcoinex.Transaction.{In, Out, Witness}
+  alias Bitcoinex.{Script, Taproot, Utils}
   alias Bitcoinex.Transaction.Utils, as: TxUtils
-  alias Bitcoinex.Taproot
 
   @type t() :: %__MODULE__{
           version: non_neg_integer(),
@@ -25,7 +22,11 @@ defmodule Bitcoinex.Transaction do
     :inputs,
     :outputs,
     :witnesses,
-    :lock_time
+    :lock_time,
+    # used to cache for sighash calculation
+    :hash_prevouts,
+    :hash_sequence,
+    :hash_outputs
   ]
 
   @minimum_time_locktime 500_000_000
@@ -52,6 +53,7 @@ defmodule Bitcoinex.Transaction do
   ]
 
   def valid_sighash_flags(), do: @valid_sighash_flags
+
 
   @doc """
     Returns the TxID of the given tranasction.
@@ -424,6 +426,71 @@ defmodule Bitcoinex.Transaction do
          lock_time: lock_time
        }}
     end
+  end
+
+  @doc """
+    Returns the sighash of the transaction for a specific input.
+    opts can include :sighash_type, :witness_script, or :redeem_script.
+  """
+  def bip143_sighash(tx, input_index, opts \\ []) do
+    sighash_type = Keyword.get(opts, :sighash_type, @sighash_all)
+    input_value = Keyword.get(opts, :prev_input_value, nil)
+    input_sequence = Enum.at(tx.inputs, input_index).sequence_no
+
+    # opts could include witness_script or redeem_script
+    script_code = Script.script_code(opts)
+    hash_prevouts = hash_prevouts(tx)
+    hash_sequence = hash_sequence(tx)
+    hash_outputs = hash_outputs(tx)
+    outpoint = get_outpoint(tx, input_index)
+
+    sig_msg =
+      <<tx.version::little-size(32),
+        hash_prevouts::binary-size(32),
+        hash_sequence::binary-size(32),
+        outpoint::binary-size(36),
+        script_code::binary,
+        input_value::little-size(64),
+        input_sequence::little-size(32),
+        hash_outputs::binary-size(32),
+        tx.lock_time::little-size(32),
+        sighash_type::little-size(32)>>
+
+    Utils.double_sha256(sig_msg)
+  end
+
+  # TODO: any way to cache these?
+  def hash_prevouts(tx) do
+    prevouts = Enum.reduce(tx.inputs, <<>>, fn input, acc ->
+      acc <> In.serialize_prevout(input)
+    end)
+    hash_prevouts = Utils.double_sha256(prevouts)
+    hash_prevouts
+    # %__MODULE__{tx | hash_prevouts: hash_prevouts}
+  end
+
+  def hash_sequence(tx) do
+    sequences = Enum.reduce(tx.inputs, <<>>, fn input, acc ->
+      acc <> Utils.int_to_little(input.sequence_no, 4)
+    end)
+    hash_sequence = Utils.double_sha256(sequences)
+    hash_sequence
+    # %__MODULE__{tx | hash_sequence: hash_sequence}
+  end
+
+  def hash_outputs(tx) do
+    hash_outputs =
+      tx.outputs
+      |> Out.serialize_outputs()
+      |> :erlang.list_to_binary()
+      |> Utils.double_sha256()
+    hash_outputs
+    # %__MODULE__{tx | hash_outputs: hash_outputs}
+  end
+
+  defp get_outpoint(tx, input_index) do
+    input = Enum.at(tx.inputs, input_index)
+    In.serialize_prevout(input)
   end
 end
 

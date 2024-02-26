@@ -908,6 +908,36 @@ defmodule Bitcoinex.Script do
         {:error, "non standard script type"}
     end
   end
+
+  @doc """
+  	script_code returns the script code given the segwit script type.
+    for p2wsh, include :witness_script in the opts and the serialized
+    witness_script will be returned
+    for p2wpkh, include :pubkey_hash in the opts and the serialized
+    p2wpkh script will be returned
+  """
+  def script_code(opts) do
+    cond do
+      opts[:witness_script] ->
+        script_code(:witness_script, opts[:witness_script])
+
+      opts[:pubkey_hash] ->
+        script_code(:pubkey_hash, opts[:pubkey_hash])
+
+      true ->
+        {:error, "invalid script code options"}
+    end
+  end
+
+  def script_code(:witness_script, witness_script) do
+    # TODO: maybe just serialize? check with tests
+    serialize_with_compact_size(witness_script)
+  end
+
+  def script_code(:pubkey_hash, <<pubkey_hash::binary-size(@h160_length)>>) do
+    {:ok, script} = create_p2pkh(pubkey_hash)
+    serialize_with_compact_size(script)
+  end
 end
 
 defimpl String.Chars, for: Bitcoinex.Script do

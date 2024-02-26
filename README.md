@@ -6,6 +6,8 @@ Bitcoinex is striving to be the best and most up-to-date Bitcoin Library for Eli
 ## Documentation
 Documentation is available on [hexdocs.pm](https://hexdocs.pm/bitcoinex/api-reference.html).
 
+NOTE: `OP_CODESEPARATOR` is not supported in this library. Sighashes for inputs using `OP_CODESEPARATOR` will not be correctly calculated. Regular BIP143 and BIP341 sighashes are supported.
+
 ## Current Utilities
 * Serialization and validation for Bech32 and Base58.
 * Support for standard on-chain scripts (P2PKH..P2WPKH) and Bolt#11 Lightning Invoices.

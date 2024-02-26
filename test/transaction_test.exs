@@ -410,6 +410,53 @@ defmodule Bitcoinex.TransactionTest do
     }
   }
 
+  # https://github.com/bitcoin/bips/blob/master/bip-0143.mediawiki
+  @bip143_sighash_tests %{
+    p2wpkh: %{
+      tx_hex: "0100000002fff7f7881a8099afa6940d42d1e7f6362bec38171ea3edf433541db4e4ad969f0000000000eeffffffef51e1b804cc89d182d279655c3aa89e815b1b309fe287d9b2b55d57b90ec68a0100000000ffffffff02202cb206000000001976a9148280b37df378db99f66f85c95a783a76ac7a6d5988ac9093510d000000001976a9143bde42dbee7e4dbe6a21b2d50ce2f0167faa815988ac11000000",
+      prev_outs: [
+        # p2pk
+        %{
+          script: "2103c9f4836b9a4f77fc0d81f7bcb01b7f1b35916864b9476c241ce9fc198bd25432ac",
+          privkey: "bbc27228ddcb9209d7fd6f36b02f7dfa6252af40bb2f1cbc7a557da8027ff866",
+          value: 625_000_000
+        },
+        # p2wpkh
+        %{
+          pubkey_hash: "1d0f172a0ecb48aee1be1f2687d2963ae33f71a1",
+          scriptpubkey: "00141d0f172a0ecb48aee1be1f2687d2963ae33f71a1",
+          private_key: "619c335025c7f4012e556c2a58b2506e30b8511b53ade95ea316fd8c3286feb9",
+          public_key: "025476c2e83188368da1ff3e292e7acafcdb3566bb0ad253f62fc70f07aeee6357",
+          value: 600_000_000
+        }
+      ],
+      sighash_type: 0x01,
+
+      hash_prevouts_preimage: "fff7f7881a8099afa6940d42d1e7f6362bec38171ea3edf433541db4e4ad969f00000000ef51e1b804cc89d182d279655c3aa89e815b1b309fe287d9b2b55d57b90ec68a01000000",
+      hash_prevouts: "96b827c8483d4e9b96712b6713a7b68d6e8003a781feba36c31143470b4efd37",
+
+      hash_sequence_preimage: "eeffffffffffffff",
+      hash_sequence: "52b0a642eea2fb7ae638c36f6252b6750293dbe574a806984b8e4d8548339a3b",
+
+      hashOutputs_preimage: "202cb206000000001976a9148280b37df378db99f66f85c95a783a76ac7a6d5988ac9093510d000000001976a9143bde42dbee7e4dbe6a21b2d50ce2f0167faa815988ac",
+      hash_outputs: "863ef3e1a92afbfdb97f31ad0fc7683ee943e9abcf2501590ff8f6551f47e5e5",
+
+      hash_preimage: "0100000096b827c8483d4e9b96712b6713a7b68d6e8003a781feba36c31143470b4efd3752b0a642eea2fb7ae638c36f6252b6750293dbe574a806984b8e4d8548339a3bef51e1b804cc89d182d279655c3aa89e815b1b309fe287d9b2b55d57b90ec68a010000001976a9141d0f172a0ecb48aee1be1f2687d2963ae33f71a188ac0046c32300000000ffffffff863ef3e1a92afbfdb97f31ad0fc7683ee943e9abcf2501590ff8f6551f47e5e51100000001000000",
+
+      sighash:     "c37af31116d1b27caf68aae9e3ac82f1477929014d5b917657d0eb49478cb670",
+      signature:    "304402203609e17b84f6a7d30c80bfa610b5b4542f32a8a0d5447a12fb1366d7f01cc44a0220573a954c4518331561406f90300e8f3358f51928d43c212a8caed02de67eebee",
+
+    },
+
+    p2wsh: %{
+      # signed, not from test vectors but tx 043b3cd097e9addf983dd4b47c2e964fd16fbad2290554ee5b073dab6b75bc15
+      tx_hex: "01000000000101c02bccb4396cced81ee91fe062bed7c7fc4960e69437dfb596378fee69327b6b0000000000feffffff022f9e57b2000000002200203426851bb56818a4207d39d6818835ed2ff0e2b83f68ebb3db1087b5f19106d35956780000000000160014ba5a7dd009f9bd3b83da14ea8d6eafa09eded702050047304402207e8c00bd5a67d83f73a4c88a3b1da115a9d98303825d1020a8c5495d724e4c47022026f3a9f9cd32c7dc6d3ec9999c306990a34eff68e5e7db03bfe6fc8dca634f910147304402200137acbb6fb584f6768f6a60945a578114933ee690bb50a4fb2986864092a45302205454dcad9aa33b70ac4ed7e4803acbf4f2dc483156533632e962d6297f75d33801473044022026ac7b484ac8dba69de1e662773825684fb99745fa36e5f2bbbd85177e57fd29022073943b41b3a634e9f4fff695c6ba3ced4f91a887d4a54bfc1d6d5239f5d9a86f01ad532102105437efdff4fbb1ec18897fab99c4bf15e538bc6eec088691da1b6447281bb321026c3e8c288bffc3de7032399e909e6443c44c9facae704284f8eea7aa20d31b2e2102e7326fb935a47f2ec5f63e31e091f186ca7bffe4546c0a09560a7b8add65b61621032e0109e82455a59a92d1d152529bb2688dad2c1c0e614f34683e04abfdfea1302103ed70af84f987ff6494cb6def95d65b3f75560f7ec861d12351ff955143d198a255ae43830c00",
+
+    }
+  }
+
+
+
   @bip69_txs [
     %{
       tx_hex:
@@ -917,6 +964,45 @@ defmodule Bitcoinex.TransactionTest do
           end)
         end
       end
+    end
+  end
+
+  describe "bip143_sighash" do
+    # https://github.com/bitcoin/bips/blob/master/bip-0143.mediawiki#native-p2wpkh
+    test "BIP143 test vector P2WPKH" do
+      t = @bip143_sighash_tests.p2wpkh
+      {:ok, unsigned_tx} = Transaction.decode(t.tx_hex)
+
+      hash_prevouts = Transaction.hash_prevouts(unsigned_tx)
+      assert hash_prevouts == Utils.hex_to_bin(t.hash_prevouts)
+
+      hash_sequence = Transaction.hash_sequence(unsigned_tx)
+      assert hash_sequence == Utils.hex_to_bin(t.hash_sequence)
+
+      hash_outputs = Transaction.hash_outputs(unsigned_tx)
+      assert hash_outputs == Utils.hex_to_bin(t.hash_outputs)
+
+      # take pubkey, make pkh
+      input = Enum.at(t.prev_outs, 1)
+      pkh = Base.decode16!(input.pubkey_hash, case: :lower)
+      value = input.value
+      sighash = Transaction.bip143_sighash(unsigned_tx, 1, sighash_type: t.sighash_type, pubkey_hash: pkh, prev_input_value: value)
+      assert sighash == Utils.hex_to_bin(t.sighash)
+    end
+
+    test "BIP143 test vector P2WSH" do
+      t = @bip143_sighash_tests.p2wpkh
+      {:ok, unsigned_tx} = Transaction.decode(t.tx_hex)
+
+      hash_prevouts = Transaction.hash_prevouts(unsigned_tx)
+      assert hash_prevouts == Utils.hex_to_bin(t.hash_prevouts)
+
+      hash_sequence = Transaction.hash_sequence(unsigned_tx)
+      assert hash_sequence == Utils.hex_to_bin(t.hash_sequence)
+
+      hash_outputs = Transaction.hash_outputs(unsigned_tx)
+      assert hash_outputs == Utils.hex_to_bin(t.hash_outputs)
+
     end
   end
 end
