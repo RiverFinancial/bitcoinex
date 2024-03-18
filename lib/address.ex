@@ -15,7 +15,7 @@ defmodule Bitcoinex.Address do
     * p2wsh: Pay-To-Witness-Script-Hash
   """
   @address_types ~w(p2pkh p2sh p2wpkh p2wsh p2tr)a
-  @type address_type :: unquote(AltoSupport.ElixirUtils.Macro.list_to_union_type_ast(@address_types))
+  @type address_type :: :p2pkh | :p2sh | :p2wpkh | :p2wsh | :p2tr
 
   @doc """
   Accepts a public key hash, network, and address_type and returns its address.
