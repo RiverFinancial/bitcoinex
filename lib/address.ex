@@ -34,6 +34,13 @@ defmodule Bitcoinex.Address do
     Base58.encode(<<decimal_prefix>> <> script_hash)
   end
 
+  def encode(script_hash, network_name, :p2wpkh) do
+    case Segwit.encode_address(network_name, 0, :binary.bin_to_list(script_hash)) do
+      {:ok, address} -> address
+      {:error, _} -> ""
+    end
+  end
+
   @doc """
   Checks if the address is valid.
   Both encoding and network is checked.
