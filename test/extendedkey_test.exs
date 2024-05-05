@@ -1,5 +1,5 @@
 defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
-  use ExUnit.Case
+  use ExUnit.Case, async: true
   doctest Bitcoinex.ExtendedKey
 
   alias Bitcoinex.ExtendedKey

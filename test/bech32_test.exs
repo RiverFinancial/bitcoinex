@@ -1,5 +1,5 @@
 defmodule Bitcoinex.Bech32Test do
-  use ExUnit.Case
+  use ExUnit.Case, async: true
   doctest Bitcoinex.Bech32
 
   alias Bitcoinex.Bech32

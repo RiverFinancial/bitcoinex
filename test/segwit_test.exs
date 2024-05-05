@@ -1,5 +1,5 @@
 defmodule Bitcoinex.SegwitTest do
-  use ExUnit.Case
+  use ExUnit.Case, async: true
   doctest Bitcoinex.Segwit
 
   alias Bitcoinex.Segwit

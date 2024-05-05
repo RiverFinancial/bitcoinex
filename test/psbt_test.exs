@@ -1,5 +1,5 @@
 defmodule Bitcoinex.PSBTTest do
-  use ExUnit.Case
+  use ExUnit.Case, async: true
   doctest Bitcoinex.PSBT
 
   alias Bitcoinex.PSBT
