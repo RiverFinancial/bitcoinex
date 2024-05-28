@@ -523,7 +523,7 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
     } do
       for {_valid_encoded_invoice, invoice} <- invoices do
         expires_at = Invoice.expires_at(invoice)
-        assert Timex.to_unix(expires_at) - (invoice.expiry || 3600) == invoice.timestamp
+        assert DateTime.to_unix(expires_at) - (invoice.expiry || 3600) == invoice.timestamp
       end
     end
   end
