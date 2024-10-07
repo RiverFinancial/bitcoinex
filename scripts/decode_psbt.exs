@@ -13,9 +13,9 @@ defmodule DecodePSBT do
   def run(args) do
     psbt_path = List.first(args)
     hash = calculate_sha256(psbt_path)
-    %{inputs: inputs, outputs: outputs} = decode_psbt(psbt_path)
+    data = decode_psbt(psbt_path)
 
-    print_results(hash, inputs, outputs)
+    print_results(hash, data)
 
     :ok
   end
@@ -23,8 +23,8 @@ defmodule DecodePSBT do
   @doc """
   Print the results to the console.
   """
-  @spec print_results(String.t(), list(map()), list(map())) :: :ok
-  def print_results(hash, inputs, outputs) do
+  @spec print_results(String.t(), map()) :: :ok
+  def print_results(hash, %{inputs: inputs, outputs: outputs, fee: fee}) do
     IO.puts("SHA256: #{hash}")
 
     IO.puts("Inputs:")
@@ -36,6 +36,8 @@ defmodule DecodePSBT do
     Enum.each(outputs, fn output ->
       IO.puts("  #{output.address}: #{output.value}")
     end)
+
+    IO.puts("Fee: #{fee}")
 
     :ok
   end
@@ -52,16 +54,27 @@ defmodule DecodePSBT do
   @doc """
   Decode the PSBT file.
   """
-  @spec decode_psbt(String.t()) :: %{inputs: list(map()), outputs: list(map())}
+  @spec decode_psbt(String.t()) :: %{inputs: list(map()), outputs: list(map()), fee: non_neg_integer()}
   def decode_psbt(psbt_path) do
     {:ok, psbt} = PSBT.from_file(psbt_path)
     %PSBT{global: %PSBT.Global{unsigned_tx: tx}, inputs: inputs} = psbt
     %Bitcoinex.Transaction{outputs: outputs} = tx
 
+    inputs = parse_inputs(inputs)
+    outputs = parse_outputs(outputs)
+
+    fee = sum_values(inputs) - sum_values(outputs)
+
     %{
-      inputs: parse_inputs(inputs),
-      outputs: parse_outputs(outputs)
+      inputs: inputs,
+      outputs: outputs,
+      fee: fee
     }
+  end
+
+  @spec sum_values(list(%{value: non_neg_integer()})) :: non_neg_integer()
+  defp sum_values(entries) do
+    Enum.reduce(entries, 0, fn %{value: value}, sum -> sum + value end)
   end
 
   @doc """
