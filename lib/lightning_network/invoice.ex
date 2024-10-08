@@ -99,7 +99,7 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
   @spec expires_at(Bitcoinex.LightningNetwork.Invoice.t()) :: DateTime.t()
   def expires_at(%__MODULE__{} = invoice) do
     expiry = invoice.expiry
-    Timex.from_unix(invoice.timestamp + expiry, :second)
+    DateTime.from_unix!(invoice.timestamp + expiry)
   end
 
   # checking some invariant for invoice
