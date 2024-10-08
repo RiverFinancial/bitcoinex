@@ -27,19 +27,25 @@ defmodule DecodePSBT do
   def print_results(hash, %{inputs: inputs, outputs: outputs, fee: fee}) do
     IO.puts("SHA256: #{hash}")
 
-    IO.puts("Inputs:")
+    IO.puts("\nInputs:")
     Enum.each(inputs, fn input ->
-      IO.puts("  #{input.address}: #{input.value}")
+      IO.puts("  #{input.address}: #{sats_to_btc_str(input.value)} BTC")
     end)
 
-    IO.puts("Outputs:")
+    IO.puts("\nOutputs:")
     Enum.each(outputs, fn output ->
-      IO.puts("  #{output.address}: #{output.value}")
+      IO.puts("  #{output.address}: #{sats_to_btc_str(output.value)} BTC")
     end)
 
-    IO.puts("Fee: #{fee}")
+    IO.puts("\nFee: #{sats_to_btc_str(fee)} BTC")
 
     :ok
+  end
+
+  # Convert sats to btc.
+  @spec sats_to_btc_str(non_neg_integer()) :: String.t()
+  defp sats_to_btc_str(sats) do
+    :erlang.float_to_binary(sats / 100_000_000, decimals: 8)
   end
 
   @doc """
