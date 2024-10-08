@@ -101,6 +101,14 @@ Handle bitcoin addresses:
   {:ok, "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"}
   ```
 
+# Decoding a PSBT
+
+We have a simple script for decoding a PSBT to view the inputs and outputs. Once you've installed elixir, erlang, and the mix dependencies, you can run the command below:
+
+```bash
+mix run scripts/decode_psbt.exs <psbt_file_path> 
+```
+
 ## Roadmap
 Continued support for on-chain and off-chain functionality including:
 * Full script support including validation.
