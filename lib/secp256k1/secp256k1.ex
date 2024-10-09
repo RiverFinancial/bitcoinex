@@ -113,7 +113,14 @@ defmodule Bitcoinex.Secp256k1 do
 
     @spec serialize_signature(t()) :: binary
     def serialize_signature(%__MODULE__{r: r, s: s}) do
-      :binary.encode_unsigned(r) <> :binary.encode_unsigned(s)
+      Utils.int_to_big(r, 32) <> Utils.int_to_big(s, 32)
+    end
+
+    @spec to_hex(t()) :: binary
+    def to_hex(sig) do
+      sig
+      |> serialize_signature()
+      |> Base.encode16(case: :lower)
     end
 
     @doc """
