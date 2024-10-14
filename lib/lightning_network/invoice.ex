@@ -545,7 +545,7 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
           {:ok, {network_name, nil}}
 
         _ ->
-          amount_str = String.slice(rest_hrp, hrp_segwit_prefix_size..-1)
+          amount_str = String.slice(rest_hrp, hrp_segwit_prefix_size..-1//1)
 
           case calculate_milli_satoshi(amount_str) do
             {:ok, amount} ->
@@ -571,7 +571,7 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
       result =
         case Regex.run(~r/[munp]$/, amount_str) do
           [multiplier] when multiplier in @valid_multipliers ->
-            case Integer.parse(String.slice(amount_str, 0..-2)) do
+            case Integer.parse(String.slice(amount_str, 0..-2//1)) do
               {amount, ""} ->
                 {:ok, to_bitcoin(amount, multiplier)}
 
