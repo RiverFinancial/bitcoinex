@@ -14,8 +14,8 @@ defmodule Bitcoinex.Address do
     * p2wpkh: Pay-to-Witness-Public-Key-Hash
     * p2wsh: Pay-To-Witness-Script-Hash
   """
-  @type address_type :: :p2pkh | :p2sh | :p2wpkh | :p2wsh
   @address_types ~w(p2pkh p2sh p2wpkh p2wsh p2tr)a
+  @type address_type :: :p2pkh | :p2sh | :p2wpkh | :p2wsh | :p2tr
 
   @doc """
   Accepts a public key hash, network, and address_type and returns its address.
