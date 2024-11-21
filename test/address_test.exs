@@ -1,5 +1,5 @@
 defmodule Bitcoinex.AddressTest do
-  use ExUnit.Case
+  use ExUnit.Case, async: true
   doctest Bitcoinex.Address
 
   alias Bitcoinex.Address
@@ -237,6 +237,10 @@ defmodule Bitcoinex.AddressTest do
         assert Address.decode_type(testnet_p2tr, :testnet) == {:ok, :p2tr}
       end
     end
+  end
+
+  test "if invalid address" do
+    assert Address.decode_type("", :mainnet) == {:error, :decode_error}
   end
 
   describe "encode/3" do

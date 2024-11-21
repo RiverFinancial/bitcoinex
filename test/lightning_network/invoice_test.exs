@@ -1,5 +1,5 @@
 defmodule Bitcoinex.LightningNetwork.InvoiceTest do
-  use ExUnit.Case
+  use ExUnit.Case, async: true
   doctest Bitcoinex.Segwit
 
   alias Bitcoinex.LightningNetwork.{Invoice, HopHint}
