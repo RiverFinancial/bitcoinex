@@ -214,3 +214,33 @@ defmodule Bitcoinex.Base58Test do
     end
   end
 end
+defmodule BitcoinTest do
+  use ExUnit.Case
+  alias Bitcoin
+
+  test "create a new Bitcoin struct" do
+    btc = Bitcoin.new(%{
+      blocktime: 1231006505,
+      data: "The Times 03/Jan/2009 Chancellor on brink of second bailout for banks",
+      divisible: true,
+      flags: %{},
+      issuer: "Satoshi Nakamoto",
+      name: "BTC",
+      propertyid: 0,
+      rdata: nil,
+      registered: false,
+      totaltokens: "19841681.00000000",
+      url: "http://www.bitcoin.org"
+    })
+
+    assert btc.blocktime == 1231006505
+    assert btc.data == "The Times 03/Jan/2009 Chancellor on brink of second bailout for banks"
+    assert btc.divisible == true
+    assert btc.issuer == "Satoshi Nakamoto"
+    assert btc.name == "BTC"
+    assert btc.propertyid == 0
+    assert btc.totaltokens == "19841681.00000000"
+    assert btc.url == "http://www.bitcoin.org"
+  end
+end
+mix test
