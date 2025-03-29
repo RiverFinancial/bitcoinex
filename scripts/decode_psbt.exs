@@ -116,7 +116,7 @@ defmodule DecodePSBT do
   end
 
   # map between a sighash's int and a name
-  @spec sighash_name(non_neg_integer)
+  @spec sighash_name(non_neg_integer()) :: String.t()
   defp sighash_name(n) do
     case n do
       0x00 -> "SIGHASH_DEFAULT" # for Segwit v1 (taproot) inputs only
@@ -125,7 +125,7 @@ defmodule DecodePSBT do
       0x03 -> "SIGHASH_SINGLE"
       0x81 -> "SIGHASH_ALL/ANYONECANPAY"
       0x82 -> "SIGHASH_NONE/ANYONECANPAY"
-      0x82 -> "SIGHASH_SINGLE/ANYONECANPAY"
+      0x83 -> "SIGHASH_SINGLE/ANYONECANPAY"
     end
   end
 
