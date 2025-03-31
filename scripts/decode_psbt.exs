@@ -29,6 +29,9 @@ defmodule DecodePSBT do
 
     IO.puts("\nInputs:")
     Enum.each(inputs, fn input ->
+      if input.note != nil do
+        IO.puts(input.note)
+      end
       IO.puts("  #{input.address}: #{sats_to_btc_str(input.value)} BTC")
     end)
 
@@ -92,16 +95,38 @@ defmodule DecodePSBT do
       %PSBT.In{witness_utxo: %Transaction.Out{
         value: value,
         script_pub_key: script_pub_key
-      }} = input
+      }, sighash_type: sighash_type} = input
 
       {:ok, script} = Script.parse_script(script_pub_key)
       {:ok, address} = Script.to_address(script, :mainnet)
 
+      note =
+        if sighash_type != nil and sighash_type != 0x01 do
+          "🚨🚨🚨 WARNING: NON-STANDARD SIGHASH TYPE: #{sighash_name(sighash_type)} 🚨🚨🚨"
+        else
+          nil
+        end
+
       %{
         address: address,
-        value: value
+        value: value,
+        note: note
       }
     end)
+  end
+
+  # map between a sighash's int and a name
+  @spec sighash_name(non_neg_integer)
+  defp sighash_name(n) do
+    case n do
+      0x00 -> "SIGHASH_DEFAULT" # for Segwit v1 (taproot) inputs only
+      0x01 -> "SIGHASH_ALL"
+      0x02 -> "SIGHASH_NONE"
+      0x03 -> "SIGHASH_SINGLE"
+      0x81 -> "SIGHASH_ALL/ANYONECANPAY"
+      0x82 -> "SIGHASH_NONE/ANYONECANPAY"
+      0x82 -> "SIGHASH_SINGLE/ANYONECANPAY"
+    end
   end
 
   @doc """
