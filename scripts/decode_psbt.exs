@@ -100,7 +100,12 @@ defmodule DecodePSBT do
       {:ok, script} = Script.parse_script(script_pub_key)
       {:ok, address} = Script.to_address(script, :mainnet)
 
-      sighash_type = Bitcoinex.Utils.little_to_int(sighash_type)
+      sighash_type =
+        if sighash_type != nil do
+          Bitcoinex.Utils.little_to_int(sighash_type)
+        else
+          nil
+        end
 
       note =
         if sighash_type != nil and sighash_type != 0x01 do
