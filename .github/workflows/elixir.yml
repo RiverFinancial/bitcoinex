@@ -63,7 +63,7 @@ jobs:
     strategy:
       matrix:
         otp: ['26.0']
-        elixir: ['1.16.0']
+        elixir: ['1.16.1']
     steps:
     - uses: actions/checkout@v4
     - name: Set up Elixir
