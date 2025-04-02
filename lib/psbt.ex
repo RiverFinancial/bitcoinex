@@ -316,8 +316,7 @@ defmodule Bitcoinex.PSBT.Global do
   end
 
   # TODO: fix
-  def add_field(global, :proprietary, value = %{key: k, value: v})
-      when is_binary(k) and is_binary(v) do
+  def add_field(global, :proprietary, value) do
     proprietaries = PsbtUtils.append(global.proprietary, value)
     %Global{global | proprietary: proprietaries}
   end
@@ -1611,11 +1610,11 @@ defmodule Bitcoinex.PSBT.Out do
   end
 
   # TODO: fix
-  defp parse(<<@psbt_out_proprietary::big-size(8)>>, psbt, output) do
-    {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    output = add_field(output, :proprietary, value)
-    {output, psbt}
-  end
+  # defp parse(<<@psbt_out_proprietary::big-size(8)>>, psbt, output) do
+  #   {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
+  #   output = add_field(output, :proprietary, value)
+  #   {output, psbt}
+  # end
 
   defp parse_tap_tree(<<>>, scripts), do: Enum.reverse(scripts)
 

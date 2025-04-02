@@ -571,7 +571,7 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
       result =
         case Regex.run(~r/[munp]$/, amount_str) do
           [multiplier] when multiplier in @valid_multipliers ->
-            case Integer.parse(String.slice(amount_str, 0..-2)) do
+            case Integer.parse(String.slice(amount_str, 0..-2//1)) do
               {amount, ""} ->
                 {:ok, to_bitcoin(amount, multiplier)}
 
