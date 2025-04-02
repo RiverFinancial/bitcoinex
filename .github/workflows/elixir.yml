@@ -28,4 +28,4 @@ jobs:
     - name: Run tests
       run: mix test
     - name: format and lint
-      run: mix format --check-formatted
+      run: mix lint.all

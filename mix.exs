@@ -8,7 +8,6 @@ defmodule Bitcoinex.MixProject do
       elixir: "~> 1.11",
       package: package(),
       start_permanent: Mix.env() == :prod,
-      dialyzer: dialyzer(),
       deps: deps(),
       aliases: aliases(),
       description: description(),
@@ -27,7 +26,6 @@ defmodule Bitcoinex.MixProject do
   defp deps do
     [
       {:credo, "~> 1.6", only: [:dev, :test], runtime: false},
-      {:dialyxir, "~> 1.2.0", only: [:dev, :test], runtime: false},
       {:excoveralls, "~> 0.10", only: :test},
       {:mix_test_watch, "~> 1.1", only: :dev, runtime: false},
       {:stream_data, "~> 0.1", only: :test},
@@ -41,27 +39,10 @@ defmodule Bitcoinex.MixProject do
     [
       "lint.all": [
         "format --check-formatted",
-        "credo --strict --only warning",
-        "dialyzer --halt-exit-status"
+        "credo --strict --only warning"
       ],
       compile: ["compile --warnings-as-errors"]
     ]
-  end
-
-  # Dialyzer configuration
-  defp dialyzer do
-    [
-      plt_file: plt_file(),
-      flags: [
-        :error_handling
-      ],
-      ignore_warnings: ".dialyzer_ignore.exs"
-    ]
-  end
-
-  # Use a custom PLT directory for CI caching.
-  defp plt_file do
-    {:no_warn, "_plts/dialyzer.plt"}
   end
 
   defp package do
