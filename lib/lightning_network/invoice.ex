@@ -99,7 +99,7 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
   @spec expires_at(Bitcoinex.LightningNetwork.Invoice.t()) :: DateTime.t()
   def expires_at(%__MODULE__{} = invoice) do
     expiry = invoice.expiry
-    Timex.from_unix(invoice.timestamp + expiry, :second)
+    DateTime.from_unix!(invoice.timestamp + expiry)
   end
 
   # checking some invariant for invoice
@@ -545,7 +545,7 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
           {:ok, {network_name, nil}}
 
         _ ->
-          amount_str = String.slice(rest_hrp, hrp_segwit_prefix_size..-1)
+          amount_str = String.slice(rest_hrp, hrp_segwit_prefix_size..-1//1)
 
           case calculate_milli_satoshi(amount_str) do
             {:ok, amount} ->
