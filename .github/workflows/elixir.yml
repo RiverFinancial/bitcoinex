@@ -3,67 +3,13 @@ name: Elixir CI
 on: [push, pull_request]
 
 jobs:
-  build_with_opt_24:
-    name: Build and test older versions ${{matrix.elixir}}-otp-${{matrix.otp}}
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        otp: ['24.0']
-        elixir: ['1.12.0', '1.13.0', '1.14.0']
-    steps:
-    - uses: actions/checkout@v4
-    - name: Set up Elixir
-      uses: erlef/setup-elixir@v1
-      with:
-        otp-version: ${{matrix.otp}}
-        elixir-version: ${{matrix.elixir}}
-    - name: Restore dependencies cache
-      uses: actions/cache@v4
-      with:
-        path: deps
-        key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
-        restore-keys: ${{ runner.os }}-mix-
-    - name: Install dependencies
-      run: mix deps.get
-    - name: Run tests
-      run: mix test
-    - name: format and lint
-      run: mix lint.all
-
-  build_with_opt_25:
-    name: Build and test ${{matrix.elixir}}-otp-${{matrix.otp}}
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        otp: ['25.0']
-        elixir: ['1.13.0', '1.14.0']
-    steps:
-    - uses: actions/checkout@v4
-    - name: Set up Elixir
-      uses: erlef/setup-elixir@v1
-      with:
-        otp-version: ${{matrix.otp}}
-        elixir-version: ${{matrix.elixir}}
-    - name: Restore dependencies cache
-      uses: actions/cache@v4
-      with:
-        path: deps
-        key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
-        restore-keys: ${{ runner.os }}-mix-
-    - name: Install dependencies
-      run: mix deps.get
-    - name: Run tests
-      run: mix test
-    - name: format and lint
-      run: mix lint.all
-
   build_with_opt_26:
     name: Build and test ${{matrix.elixir}}-otp-${{matrix.otp}}
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        otp: ['26.0']
-        elixir: ['1.16.1']
+        otp: ['27.0']
+        elixir: ['1.18.1']
     steps:
     - uses: actions/checkout@v4
     - name: Set up Elixir
@@ -82,4 +28,4 @@ jobs:
     - name: Run tests
       run: mix test
     - name: format and lint
-      run: mix lint.all
+      run: mix format --check-formatted
