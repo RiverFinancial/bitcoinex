@@ -106,6 +106,16 @@ defmodule Bitcoinex.Secp256k1.Point do
   end
 
   @doc """
+    negate returns the pubkey with the same x but the other y.
+    It does this by passing y % 2 == 0 as y_is_odd to Secp256k1.get_y.
+  """
+  @spec negate(t()) :: t()
+  def negate(%__MODULE__{x: x, y: y}) do
+    {:ok, y} = Secp256k1.get_y(x, (y &&& 1) == 0)
+    %__MODULE__{x: x, y: y}
+  end
+
+  @doc """
   sec serializes a compressed public key to binary
   """
   @spec sec(t()) :: binary
@@ -124,7 +134,7 @@ defmodule Bitcoinex.Secp256k1.Point do
   """
   @spec x_bytes(t()) :: binary
   def x_bytes(%__MODULE__{x: x}) do
-    Bitcoinex.Utils.pad(:binary.encode_unsigned(x), 32, :leading)
+    Utils.int_to_big(x, 32)
   end
 
   @doc """
