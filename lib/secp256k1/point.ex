@@ -59,6 +59,9 @@ defmodule Bitcoinex.Secp256k1.Point do
           {:ok, y} -> {:ok, %__MODULE__{x: x, y: y}}
           _ -> {:error, "invalid public key"}
         end
+
+      _ ->
+        {:error, "invalid public key"}
     end
   end
 
