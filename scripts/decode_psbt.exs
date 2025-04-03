@@ -100,6 +100,13 @@ defmodule DecodePSBT do
       {:ok, script} = Script.parse_script(script_pub_key)
       {:ok, address} = Script.to_address(script, :mainnet)
 
+      sighash_type =
+        if sighash_type != nil do
+          Bitcoinex.Utils.little_to_int(sighash_type)
+        else
+          nil
+        end
+
       note =
         if sighash_type != nil and sighash_type != 0x01 do
           "🚨🚨🚨 WARNING: NON-STANDARD SIGHASH TYPE: #{sighash_name(sighash_type)} 🚨🚨🚨"
@@ -116,7 +123,7 @@ defmodule DecodePSBT do
   end
 
   # map between a sighash's int and a name
-  @spec sighash_name(non_neg_integer)
+  @spec sighash_name(non_neg_integer()) :: String.t()
   defp sighash_name(n) do
     case n do
       0x00 -> "SIGHASH_DEFAULT" # for Segwit v1 (taproot) inputs only
@@ -125,7 +132,8 @@ defmodule DecodePSBT do
       0x03 -> "SIGHASH_SINGLE"
       0x81 -> "SIGHASH_ALL/ANYONECANPAY"
       0x82 -> "SIGHASH_NONE/ANYONECANPAY"
-      0x82 -> "SIGHASH_SINGLE/ANYONECANPAY"
+      0x83 -> "SIGHASH_SINGLE/ANYONECANPAY"
+      _ -> "UNKNOWN"
     end
   end
 
