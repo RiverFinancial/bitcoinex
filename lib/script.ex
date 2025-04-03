@@ -410,7 +410,7 @@ defmodule Bitcoinex.Script do
 
   @doc """
     extract_multi_policy takes in a raw multisig script and returns the m, the
-    number of signatures required and the n authorized public keys.
+    number of signatures required, and the n authorized public keys.
   """
   @spec extract_multi_policy(t()) ::
           {:ok, non_neg_integer(), list(Point.t())} | {:error, String.t()}
