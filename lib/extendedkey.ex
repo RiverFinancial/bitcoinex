@@ -132,8 +132,7 @@ defmodule Bitcoinex.ExtendedKey do
           parent_fingerprint: binary,
           child_num: binary,
           chaincode: binary,
-          key: binary,
-          checksum: binary
+          key: binary
         }
 
   @enforce_keys [
@@ -142,8 +141,7 @@ defmodule Bitcoinex.ExtendedKey do
     :parent_fingerprint,
     :child_num,
     :chaincode,
-    :key,
-    :checksum
+    :key
   ]
 
   defstruct [
@@ -152,8 +150,7 @@ defmodule Bitcoinex.ExtendedKey do
     :parent_fingerprint,
     :child_num,
     :chaincode,
-    :key,
-    :checksum
+    :key
   ]
 
   @xpub_pfx <<0x04, 0x88, 0xB2, 0x1E>>
@@ -253,7 +250,7 @@ defmodule Bitcoinex.ExtendedKey do
         xkey =
           <<prefix::binary-size(4), depth::binary-size(1), parent_fingerprint::binary-size(4),
             child_num::binary-size(4), chaincode::binary-size(32), key::binary-size(33),
-            checksum::binary-size(4)>>
+            _checksum::binary-size(4)>>
       ) do
     cond do
       prefix not in @all_prefixes ->
@@ -276,8 +273,7 @@ defmodule Bitcoinex.ExtendedKey do
                parent_fingerprint: parent_fingerprint,
                child_num: child_num,
                chaincode: chaincode,
-               key: key,
-               checksum: checksum
+               key: key
              }}
         end
     end
