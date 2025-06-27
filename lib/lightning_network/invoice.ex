@@ -142,7 +142,7 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
   defp validate_and_parse_signature_data(destination, hrp, invoice_data, signature_data)
        when is_list(invoice_data) and is_list(signature_data) do
     with {:ok, signature_data_in_byte} <- Bech32.convert_bits(signature_data, 5, 8),
-         {signature, [recoveryId]} = split_at(signature_data_in_byte, -1),
+         {signature, [recovery_id]} = split_at(signature_data_in_byte, -1),
          {:ok, invoice_data_in_byte} <- Bech32.convert_bits(invoice_data, 5, 8) do
       to_sign = (hrp |> :erlang.binary_to_list()) ++ invoice_data_in_byte
       signature = signature |> byte_list_to_binary
@@ -151,7 +151,7 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
       # TODO if destination exist from tagged field, we dun need to recover but to verify it with signature
       # but that require convert lg sig before using secp256k1 to verify it
       # TODO refactor too nested
-      case Bitcoinex.Secp256k1.Ecdsa.ecdsa_recover_compact(hash, signature, recoveryId) do
+      case Bitcoinex.Secp256k1.Ecdsa.ecdsa_recover_compact(hash, signature, recovery_id) do
         {:ok, pubkey} ->
           if is_nil(destination) or destination == pubkey do
             {:ok, pubkey}
@@ -401,10 +401,11 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
 
       17 ->
         case Bech32.convert_bits(rest, 5, 8, false) do
-          {:ok, pubKeyHash} ->
+          {:ok, pub_key_hash} ->
             {:ok,
-             Bitcoinex.Address.encode(
-               pubKeyHash |> :binary.list_to_bin(),
+             pub_key_hash
+             |> :binary.list_to_bin()
+             |> Bitcoinex.Address.encode(
                network,
                :p2pkh
              )}
@@ -415,10 +416,11 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
 
       18 ->
         case Bech32.convert_bits(rest, 5, 8, false) do
-          {:ok, scriptHash} ->
+          {:ok, script_hash} ->
             {:ok,
-             Bitcoinex.Address.encode(
-               scriptHash |> :binary.list_to_bin(),
+             script_hash
+             |> :binary.list_to_bin()
+             |> Bitcoinex.Address.encode(
                network,
                :p2sh
              )}
