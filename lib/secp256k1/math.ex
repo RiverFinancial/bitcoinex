@@ -238,16 +238,12 @@ defmodule Bitcoinex.Secp256k1.Math do
   end
 
   # multply point P with scalar n
-  defp jacobian_multiply(_p, n) when n == 0 do
-    %Point{x: 0, y: 0, z: 1}
-  end
+  defp jacobian_multiply(_p, 0), do: %Point{x: 0, y: 0, z: 1}
 
-  defp jacobian_multiply(p, n) when n == 1 do
-    if p.y == 0 do
-      %Point{x: 0, y: 0, z: 1}
-    else
-      p
-    end
+  defp jacobian_multiply(p, 1) do
+    if p.y == 0,
+      do: %Point{x: 0, y: 0, z: 1},
+      else: p
   end
 
   defp jacobian_multiply(p, n)
@@ -269,7 +265,8 @@ defmodule Bitcoinex.Secp256k1.Math do
     if p.y == 0 do
       %Point{x: 0, y: 0, z: 1}
     else
-      jacobian_multiply(p, div(n, 2))
+      p
+      |> jacobian_multiply(div(n, 2))
       |> jacobian_double()
     end
   end
@@ -278,7 +275,8 @@ defmodule Bitcoinex.Secp256k1.Math do
     if p.y == 0 do
       %Point{x: 0, y: 0, z: 1}
     else
-      jacobian_multiply(p, div(n, 2))
+      p
+      |> jacobian_multiply(div(n, 2))
       |> jacobian_double()
       |> jacobian_add(p)
     end
