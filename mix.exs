@@ -4,7 +4,7 @@ defmodule Bitcoinex.MixProject do
   def project do
     [
       app: :bitcoinex,
-      version: "0.1.8",
+      version: "0.1.9",
       elixir: "~> 1.11",
       package: package(),
       start_permanent: Mix.env() == :prod,
@@ -27,6 +27,7 @@ defmodule Bitcoinex.MixProject do
     [
       {:credo, "~> 1.6", only: [:dev, :test], runtime: false},
       {:excoveralls, "~> 0.10", only: :test},
+      {:jason, "~> 1.0", only: [:dev, :test]},
       {:mix_test_watch, "~> 1.1", only: :dev, runtime: false},
       {:stream_data, "~> 0.1", only: :test},
       {:decimal, "~> 1.0 or ~> 2.0"},
