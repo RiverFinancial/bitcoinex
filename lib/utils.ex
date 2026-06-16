@@ -107,4 +107,58 @@ defmodule Bitcoinex.Utils do
     |> Enum.map(fn {b0, b1} -> Bitwise.bxor(b0, b1) end)
     |> :binary.list_to_bin()
   end
+
+  @doc """
+    lexicographical_sort returns the two binaries in ascending byte order.
+  """
+  @spec lexicographical_sort(binary, binary) :: {binary, binary}
+  def lexicographical_sort(bin0, bin1) when is_binary(bin0) and is_binary(bin1) do
+    if lexicographical_cmp(:binary.bin_to_list(bin0), :binary.bin_to_list(bin1)) do
+      {bin0, bin1}
+    else
+      {bin1, bin0}
+    end
+  end
+
+  @doc """
+    lexicographical_cmp returns true if the first byte list is less than or equal
+    to the second in byte order. The equal case returns true.
+  """
+  @spec lexicographical_cmp(list(byte), list(byte)) :: boolean
+  def lexicographical_cmp([], []), do: true
+
+  def lexicographical_cmp([b0 | r0], [b1 | r1]) do
+    cond do
+      b0 == b1 ->
+        lexicographical_cmp(r0, r1)
+
+      b1 < b0 ->
+        # initial order was incorrect, must be swapped
+        false
+
+      true ->
+        # bin0, bin1 was the correct order
+        true
+    end
+  end
+
+  @doc """
+    Returns the serialized variable length (compact size) unsigned integer.
+  """
+  @spec serialize_compact_size_unsigned_int(non_neg_integer()) :: binary
+  def serialize_compact_size_unsigned_int(compact_size) do
+    cond do
+      compact_size >= 0 and compact_size <= 0xFC ->
+        <<compact_size::little-size(8)>>
+
+      compact_size <= 0xFFFF ->
+        <<0xFD>> <> <<compact_size::little-size(16)>>
+
+      compact_size <= 0xFFFFFFFF ->
+        <<0xFE>> <> <<compact_size::little-size(32)>>
+
+      compact_size <= 0xFFFFFFFFFFFFFFFF ->
+        <<0xFF>> <> <<compact_size::little-size(64)>>
+    end
+  end
 end

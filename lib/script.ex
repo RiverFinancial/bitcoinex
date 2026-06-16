@@ -7,7 +7,7 @@ defmodule Bitcoinex.Script do
 
   alias Bitcoinex.Secp256k1.Point
 
-  alias Bitcoinex.{Utils, Address, Segwit, Base58, Network}
+  alias Bitcoinex.{Utils, Address, Segwit, Base58, Network, Taproot}
 
   @wsh_length 32
   @tapkey_length 32
@@ -212,6 +212,17 @@ defmodule Bitcoinex.Script do
     script
     |> serialize_script()
     |> Base.encode16(case: :lower)
+  end
+
+  @doc """
+  	serialize_with_compact_size serializes the script and prepends its length
+  	as a compact-size unsigned integer, as used in BIP341/342 leaf and sighash
+  	serialization.
+  """
+  @spec serialize_with_compact_size(t()) :: binary
+  def serialize_with_compact_size(script = %__MODULE__{}) do
+    s = serialize_script(script)
+    Utils.serialize_compact_size_unsigned_int(byte_size(s)) <> s
   end
 
   @doc """
@@ -610,6 +621,38 @@ defmodule Bitcoinex.Script do
   def create_p2tr(<<pk::binary-size(@tapkey_length)>>), do: create_witness_scriptpubkey(1, pk)
   def create_p2tr(q = %Point{}), do: create_witness_scriptpubkey(1, Point.x_bytes(q))
   def create_p2tr(_), do: {:error, "public key must be #{@tapkey_length}-bytes"}
+
+  @doc """
+  	create_p2tr/2 creates a p2tr script from an UNTWEAKED internal key P and an
+  	optional `script_tree` (see `Bitcoinex.Taproot`). It applies the BIP341
+  	taproot tweak to derive the output key Q = P + H_TapTweak(P || merkle_root)·G
+  	and wraps Q in the witness scriptpubkey. Pass `script_tree: nil` for a
+  	key-path-only output.
+
+  	This differs from `create_p2tr/1`, which treats its argument as the
+  	already-tweaked output key Q. Silent-payment outputs are spent using the
+  	output key directly and therefore use `create_p2tr/1`, not this function.
+  """
+  @spec create_p2tr(Point.t() | binary | nil, Taproot.script_tree()) ::
+          {:ok, t()} | {:error, String.t()}
+  def create_p2tr(nil, nil), do: {:error, "script_tree or internal pubkey must be non-nil"}
+
+  def create_p2tr(p = %Point{}, script_tree), do: create_p2tr(Point.x_bytes(p), script_tree)
+
+  def create_p2tr(<<px::binary-size(@tapkey_length)>>, script_tree) do
+    {_, merkle_root} = Taproot.merkelize_script_tree(script_tree)
+
+    case Point.lift_x(px) do
+      {:error, msg} ->
+        {:error, msg}
+
+      {:ok, p} ->
+        case Taproot.tweak_pubkey(p, merkle_root) do
+          {:error, msg} -> {:error, msg}
+          q = %Point{} -> create_p2tr(q)
+        end
+    end
+  end
 
   @doc """
   	create_p2sh_p2wpkh creates a p2wsh script using the passed 20-byte public key hash
