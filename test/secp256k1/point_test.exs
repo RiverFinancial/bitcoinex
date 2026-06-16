@@ -71,6 +71,13 @@ defmodule Bitcoinex.Secp256k1.PointTest do
       assert Point.parse_public_key(sec) == {:ok, pk}
       assert Point.serialize_public_key(pk) == sec
     end
+
+    test "returns error (does not raise) for a 33-byte key with an invalid prefix byte" do
+      for prefix <- [0x00, 0x01, 0x04, 0x05, 0x06, 0xFF] do
+        bad = <<prefix>> <> :binary.copy(<<0x07>>, 32)
+        assert {:error, _} = Point.parse_public_key(bad)
+      end
+    end
   end
 
   describe "sec/1" do
@@ -106,6 +113,40 @@ defmodule Bitcoinex.Secp256k1.PointTest do
         assert {:error, error} = Point.lift_x(Bitcoinex.Secp256k1.Params.curve().p + i)
         assert String.match?(error, ~r/(too large)/)
       end
+    end
+  end
+
+  describe "negate/1" do
+    test "preserves x, flips y-parity, and is the additive inverse" do
+      p = Secp256k1.Params.curve().p
+
+      for hex <- @x_only_pubkeys do
+        {:ok, point} = Point.lift_x(hex)
+        neg = Point.negate(point)
+
+        assert neg.x == point.x
+        assert neg.y == p - point.y
+        # lift_x returns the even-Y point; its negation is odd-Y
+        assert Point.has_even_y(point)
+        refute Point.has_even_y(neg)
+        # P + (-P) is the point at infinity
+        assert Point.is_inf(Secp256k1.Math.add(point, neg))
+        # negation is an involution
+        assert Point.negate(neg).x == point.x
+        assert Point.negate(neg).y == point.y
+      end
+    end
+
+    test "negation switches the SEC parity byte (03 <-> 02), x unchanged" do
+      odd = "033b15e1b8c51bb947a134d17addc3eb6abbda551ad02137699636f907ad7e0f1a"
+      even = "023b15e1b8c51bb947a134d17addc3eb6abbda551ad02137699636f907ad7e0f1a"
+      {:ok, point} = Point.parse_public_key(Base.decode16!(odd, case: :lower))
+      assert Point.sec(Point.negate(point)) == Base.decode16!(even, case: :lower)
+    end
+
+    test "the point at infinity negates to itself" do
+      infinity = %Point{x: 0, y: 0}
+      assert Point.negate(infinity) == infinity
     end
   end
 end

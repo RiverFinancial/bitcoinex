@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.9] - 2026-06-15
+### Added
+- BIP-352 Silent Payments primitives in `Bitcoinex.SilentPayments`: `input_hash/2`, `shared_secret/3`, `shared_secret_tweak/2`, `sum_input_privkeys/2`, `sum_input_pubkeys/2`, label tweaks (`label_tweak/2`, `label_point/2`, `create_labeled_spend_pubkey/3`), send/scan/spend derivation (`create_output_pubkey/5`, `scan_output/5`, `spending_privkey/3`, `output_label_candidates/2`), and `sp1q…`/`tsp1q…` address `encode_address/3` / `decode_address/1`. Validated against the official BIP-352 test vectors.
+- `Bitcoinex.Secp256k1.Point.negate/1`, `PrivateKey.negate/1`, `PrivateKey.to_hex/1`, and `Signature.to_hex/1`.
+
+### Changed
+- `Secp256k1.Signature.serialize_signature/1` now left-pads `r` and `s` so a compact signature is always the correct 64 bytes (BIP-340).
+
 ## [0.1.8] - 2024-03-01
 ### Added
 - Fix warning emitted from String.slice with negative step when parsing amountful BOLT11 invoices.

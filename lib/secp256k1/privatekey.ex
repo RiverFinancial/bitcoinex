@@ -61,6 +61,16 @@ defmodule Bitcoinex.Secp256k1.PrivateKey do
   end
 
   @doc """
+    negate returns the additive inverse of the private key, `(n - d) mod n`. Its
+    public key is the negation of the original's. Used for BIP-340 even-Y
+    normalization and BIP-352 scalar arithmetic.
+  """
+  @spec negate(t()) :: t()
+  def negate(%__MODULE__{d: d}) do
+    %__MODULE__{d: Math.modulo(@n - d, @n)}
+  end
+
+  @doc """
    serialize_private_key serializes a private key into hex
   """
   @spec serialize_private_key(t()) :: String.t()
@@ -69,12 +79,21 @@ defmodule Bitcoinex.Secp256k1.PrivateKey do
       {:error, msg} ->
         {:error, msg}
 
-      {:ok, %__MODULE__{d: d}} ->
-        d
-        |> :binary.encode_unsigned()
-        |> Utils.pad(32, :leading)
-        |> Base.encode16(case: :lower)
+      {:ok, sk} ->
+        to_hex(sk)
     end
+  end
+
+  @doc """
+    to_hex serializes a private key to a 32-byte (64-char) lowercase hex string.
+    Unlike serialize_private_key/1 it does not validate the key range.
+  """
+  @spec to_hex(t()) :: String.t()
+  def to_hex(%__MODULE__{d: d}) do
+    d
+    |> :binary.encode_unsigned()
+    |> Utils.pad(32, :leading)
+    |> Base.encode16(case: :lower)
   end
 
   @doc """

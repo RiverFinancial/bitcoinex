@@ -165,4 +165,39 @@ defmodule Bitcoinex.Secp256k1.Secp256k1Test do
       end
     end
   end
+
+  describe "Signature.serialize_signature/1 and to_hex/1" do
+    test "pads r and s each to 32 bytes (64-byte compact signature)" do
+      sig = %Signature{r: 1, s: 1}
+      assert byte_size(Signature.serialize_signature(sig)) == 64
+
+      expected = String.duplicate("0", 63) <> "1" <> String.duplicate("0", 63) <> "1"
+      assert Signature.to_hex(sig) == expected
+      assert String.length(Signature.to_hex(sig)) == 128
+    end
+
+    test "to_hex round-trips through parse_signature (incl. small/leading-zero r,s)" do
+      sigs = [
+        %Signature{
+          r:
+            3_086_008_707_114_705_845_761_137_809_128_827_774_006_369_836_063_216_572_143_683_251_326_398_205_321,
+          s:
+            48_832_473_706_270_939_780_454_642_696_934_734_127_348_929_209_136_601_810_472_271_862_324_755_985_375
+        },
+        # r and s with leading zero bytes — would round-trip incorrectly under the old
+        # variable-length serialization, exercising the 32-byte padding fix.
+        %Signature{r: 1, s: 1}
+      ]
+
+      for sig <- sigs do
+        {:ok, parsed} =
+          sig
+          |> Signature.to_hex()
+          |> Base.decode16!(case: :lower)
+          |> Signature.parse_signature()
+
+        assert parsed == sig
+      end
+    end
+  end
 end
