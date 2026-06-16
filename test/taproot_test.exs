@@ -58,9 +58,18 @@ defmodule Bitcoinex.TaprootTest do
       end
     end
 
-    test "build_control_block/3 produces blocks that validate_taproot_scriptpath_spend accepts" do
-      # Exercises the BIP341 script-path control-block round trip for the
-      # tree-bearing vectors (construction and validation are independent paths).
+    test "the scriptPubKey produces the expected bip350 (bech32m) address" do
+      for {e, i} <- Enum.with_index(@spk_vectors) do
+        {:ok, spk} = Script.parse_script(e["expected"]["scriptPubKey"])
+        {:ok, addr} = Script.to_address(spk, :mainnet)
+        assert addr == e["expected"]["bip350Address"], "address mismatch for vector #{i}"
+      end
+    end
+
+    test "TapLeaf.hash/1 and build_control_block/3 match the BIP341 ground-truth values" do
+      # Non-circular: leaf hashes and control blocks are compared to the
+      # vector's own `leafHashes` / `scriptPathControlBlocks`, and the produced
+      # control block is also checked against the independent validator.
       for {e, i} <- Enum.with_index(@spk_vectors), e["given"]["scriptTree"] != nil do
         {:ok, p} = Point.lift_x(decode(e["given"]["internalPubkey"]))
         tree = build_tree(e["given"]["scriptTree"])
@@ -68,7 +77,16 @@ defmodule Bitcoinex.TaprootTest do
         q = Taproot.tweak_pubkey(p, root)
 
         for {{leaf, _path}, idx} <- Enum.with_index(nodes) do
+          assert Taproot.TapLeaf.hash(leaf) ==
+                   decode(Enum.at(e["intermediary"]["leafHashes"], idx)),
+                 "leaf hash #{idx} mismatch for vector #{i}"
+
           control_block = Taproot.build_control_block(p, tree, idx)
+
+          assert control_block == decode(Enum.at(e["expected"]["scriptPathControlBlocks"], idx)),
+                 "control block #{idx} mismatch for vector #{i}"
+
+          # and it validates under the independent BIP341 script-path check
           script_bytes = Script.serialize_script(leaf.script)
 
           assert Taproot.validate_taproot_scriptpath_spend(q, script_bytes, control_block) ==
@@ -87,6 +105,12 @@ defmodule Bitcoinex.TaprootTest do
 
       tweak = Taproot.calculate_taptweak(p, <<>>)
       assert Bitcoinex.Utils.int_to_big(tweak, 32) == decode(e["intermediary"]["tweak"])
+    end
+  end
+
+  describe "create_p2tr/2 error paths" do
+    test "requires a non-nil internal key or script tree" do
+      assert {:error, _} = Script.create_p2tr(nil, nil)
     end
   end
 end

@@ -40,7 +40,8 @@ defmodule Bitcoinex.Taproot do
       pk ->
         t = calculate_taptweak(pk, h)
 
-        if t > @n do
+        # BIP341: fail if t >= n (curve order)
+        if t >= @n do
           {:error, "invalid tweaked key"}
         else
           %PrivateKey{d: Math.modulo(sk.d + t, @n)}
@@ -57,7 +58,8 @@ defmodule Bitcoinex.Taproot do
   def tweak_pubkey(pk = %Point{}, h) do
     t = calculate_taptweak(pk, h)
 
-    if t > @n do
+    # BIP341: fail if t >= n (curve order)
+    if t >= @n do
       {:error, "invalid tweaked key"}
     else
       t_point = PrivateKey.to_point(t)

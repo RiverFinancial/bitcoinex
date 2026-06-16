@@ -127,4 +127,76 @@ defmodule Bitcoinex.Bip341KeyspendVectorsTest do
       assert Enum.sort(hash_types) == [0x00, 0x01, 0x02, 0x03, 0x81, 0x82, 0x83]
     end
   end
+
+  describe "BIP341 fullySignedTx (end-to-end)" do
+    test "each key-path input's witness equals the expected witness signature" do
+      {:ok, tx} = Transaction.decode(@keypath["auxiliary"]["fullySignedTx"])
+
+      for spend <- @keypath["inputSpending"] do
+        idx = spend["given"]["txinIndex"]
+        expected_witness = spend["expected"]["witness"]
+        witness = Enum.at(tx.witnesses, idx)
+        assert witness.txinwitness == expected_witness, "witness mismatch at input #{idx}"
+      end
+    end
+  end
+
+  describe "bip341_sigmsg guards" do
+    test "rejects invalid sighash flags and out-of-range ext_flag" do
+      tx = unsigned_tx()
+      amounts = prev_amounts()
+      spks = prev_scriptpubkeys()
+
+      # 0x04 is not a valid sighash flag
+      assert {:error, _} = Transaction.bip341_sigmsg(tx, 0x04, 0, 0, amounts, spks)
+      # ext_flag must be 0..127
+      assert {:error, _} = Transaction.bip341_sigmsg(tx, 0x00, 128, 0, amounts, spks)
+      # and bip341_sighash propagates the error
+      assert {:error, _} = Transaction.bip341_sighash(tx, 0x04, 0, 0, amounts, spks)
+    end
+  end
+
+  describe "silent-payment spend path (no taproot tweak)" do
+    test "an output key used directly is spent by signing the key directly" do
+      # A silent-payment output places the output key directly in the
+      # scriptPubKey (no BIP341 taptweak). The spending key `d` comes from
+      # SilentPayments.spending_privkey/3; here we stand in a concrete `d` and
+      # assert the spend works WITHOUT Taproot.tweak_privkey.
+      {:ok, d} =
+        PrivateKey.new(0xB7E151628AED2A6ABF7158809CF4F3C762E7160F38B4DA56A784D9045190CFEF)
+
+      d = Bitcoinex.Secp256k1.force_even_y(d)
+      output_key = PrivateKey.to_point(d)
+
+      # SP output: wrap the output key directly via create_p2tr/1 (NOT /2)
+      {:ok, spk} = Script.create_p2tr(output_key)
+
+      tx = %Transaction{
+        version: 2,
+        inputs: [
+          %Transaction.In{
+            prev_txid: "a7b1d058aa1b82af168831044720b16766b5a99667720b1c110464cd125c466b",
+            prev_vout: 0,
+            script_sig: "",
+            sequence_no: 0xFFFFFFFF
+          }
+        ],
+        outputs: [%Transaction.Out{value: 9000, script_pub_key: Script.to_hex(spk)}],
+        lock_time: 0
+      }
+
+      sighash =
+        Transaction.bip341_sighash(tx, 0x00, 0, 0, [10000], [
+          Script.serialize_with_compact_size(spk)
+        ])
+
+      z = :binary.decode_unsigned(sighash)
+      {:ok, sig} = Schnorr.sign(d, z, 0)
+
+      # validator uses the even-Y lift of the x-only output key
+      {:ok, even_q} = Point.lift_x(output_key.x)
+      assert Schnorr.verify_signature(even_q, z, sig)
+      assert byte_size(Signature.serialize_signature(sig)) == 64
+    end
+  end
 end
