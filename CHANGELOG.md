@@ -6,7 +6,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Changed
-- Widen `decimal` dependency constraint to allow `~> 3.0` in addition to `~> 1.0` and `~> 2.0`. Ecto 3.14+ requires `decimal ~> 3.0`, which is unsolvable against bitcoinex's previous `~> 1.0 or ~> 2.0` constraint, blocking adoption in any project on a recent Ecto.
+- Widen `decimal` dependency constraint to allow `~> 3.0` in addition to `~> 1.0` and `~> 2.0`.
 
 ## [0.1.8] - 2024-03-01
 ### Added
