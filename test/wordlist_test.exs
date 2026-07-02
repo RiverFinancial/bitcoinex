@@ -45,6 +45,19 @@ defmodule Bitcoinex.WordlistTest do
         Wordlist.load!(Path.join(@priv_dir, "nonexistent.txt"), 1)
       end
     end
+
+    test "raises on duplicate words" do
+      path = Path.join(System.tmp_dir!(), "bitcoinex_wordlist_dup_test.txt")
+      File.write!(path, "alpha\nbeta\nalpha\n")
+
+      try do
+        assert_raise ArgumentError, ~r/duplicate/, fn ->
+          Wordlist.load!(path, 3)
+        end
+      after
+        File.rm!(path)
+      end
+    end
   end
 
   describe "SLIP-39 word list constraints" do

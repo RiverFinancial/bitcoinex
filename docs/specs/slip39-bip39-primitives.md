@@ -196,7 +196,7 @@ Note thresholds/counts are stored **1-based** in the struct; the wire format sto
 
 - First 4 words (40 bits) = the metadata above; remaining words (minus 3 checksum words) = padded share value.
 - **Encode:** `pad_bits = rem(10 - rem(bit_size(share_value), 10), 10)` — leading zero bits so the padded share value is a multiple of 10 bits. Since `share_value` is whole bytes, `pad_bits ∈ {0, 2, 4, 6, 8}`. 16-byte value: 2 pad bits → 13 value words; 32-byte: 4 pad bits → 26 value words.
-- **Decode:** with `value_words = word_count - 7`, `value_bits = value_words * 10` and `pad_bits = rem(value_bits, 16)`. Per SLIP-39, `pad_bits` **MUST NOT exceed 8** — reject with `{:error, :invalid_padding}` if `pad_bits > 8` (this rules out e.g. 21-word mnemonics, where `rem(140, 16) == 12`) or if any padding bit is nonzero. `share_value` is the trailing `value_bits - pad_bits` bits (a whole number of bytes by construction).
+- **Decode:** with `value_words = word_count - 7`, `value_bits = value_words * 10` and `pad_bits = rem(value_bits, 16)`. Per SLIP-39, `pad_bits` **MUST NOT exceed 8** — reject with `{:error, :invalid_secret_length}` if `pad_bits > 8` (this rules out e.g. 21-word mnemonics, where `rem(140, 16) == 12`; official vector #40 names this case "invalid master secret length" — `pad_bits > 8` can only arise from an odd-length share value, so the length atom is the accurate one) and `{:error, :invalid_padding}` if any padding bit is nonzero. `share_value` is the trailing `value_bits - pad_bits` bits (a whole number of bytes by construction).
 
 ```
 @spec encode(t()) :: String.t()                            # struct -> space-joined mnemonic
@@ -234,7 +234,7 @@ Note thresholds/counts are stored **1-based** in the struct; the wire format sto
 **`combine_mnemonics/2`.**
 1. Validate passphrase (printable ASCII, as in generate — `:invalid_passphrase`); `Share.decode/1` every mnemonic (propagate first `{:error, _}`).
 2. Cross-share consistency: all shares must share `identifier`, `extendable`, `iteration_exponent`, `group_threshold`, `group_count`, and `byte_size(share_value)` (`:mismatching_shares`).
-3. Group by `group_index`. Distinct group count must equal `group_threshold` (`:insufficient_groups` / `:too_many_groups`). Within each present group: all members share the same `member_threshold`; member count must equal that threshold (`:insufficient_member_shares`); member indices distinct (`:duplicate_member_index`).
+3. Group by `group_index`. Distinct group count must equal `group_threshold` (`:insufficient_groups` / `:too_many_groups`). Within each present group: all members share the same `member_threshold`; member count must equal that threshold (`:insufficient_member_shares` / `:too_many_member_shares`, matching the reference implementation's exactly-threshold behavior); member indices distinct (`:duplicate_member_index`).
 4. Per group: `group_value = Shamir.recover_secret(Ti, [{member_index, share_value}])`.
 5. `ems = Shamir.recover_secret(group_threshold, [{group_index, group_value}])`.
 6. `ms = Cipher.decrypt(ems, passphrase, e, id, ext)`; return `{:ok, ms}`.
@@ -301,7 +301,7 @@ Word lists and checksum logic otherwise stay scheme-specific (RS1024 ≠ bech32 
 - All `@`-constants from §3.3.
 - `@type group_spec`, `generate_mnemonics/4`, `combine_mnemonics/2` (§3.9).
 - private validators (`validate_secret/1`, `validate_groups/2`), grouping/consistency helpers.
-- Error atoms: `:invalid_secret_length`, `:invalid_group_threshold`, `:invalid_member_threshold`, `:invalid_passphrase`, `:mismatching_shares`, `:insufficient_groups`, `:too_many_groups`, `:insufficient_member_shares`, `:duplicate_member_index`, `:empty_mnemonic_set`.
+- Error atoms: `:invalid_secret_length`, `:invalid_group_threshold`, `:invalid_member_threshold`, `:invalid_passphrase`, `:mismatching_shares`, `:insufficient_groups`, `:too_many_groups`, `:insufficient_member_shares`, `:too_many_member_shares`, `:duplicate_member_index`, `:empty_mnemonic_set`.
 
 ### `lib/slip39/gf256.ex` — `Bitcoinex.SLIP39.GF256` (new)
 - `@exp_table`, `@log_table` (generated in the module body per §3.4 — not via a same-module `defp`; generator 3, poly `0x11B`).
@@ -318,7 +318,7 @@ Word lists and checksum logic otherwise stay scheme-specific (RS1024 ≠ bech32 
 - `rs1024_polymod/1`, `rs1024_create_checksum/2`, `rs1024_verify_checksum/2`, `indices_to_words/1`, `words_to_indices/1` (§3.7). Error atom: `:word_not_in_list`.
 
 ### `lib/slip39/share.ex` — `Bitcoinex.SLIP39.Share` (new)
-- Struct (§3.8), `encode/1`, `decode/1`. Error atoms: `:invalid_checksum`, `:invalid_mnemonic_length`, `:invalid_padding`, `:invalid_group_threshold`.
+- Struct (§3.8), `encode/1`, `decode/1`. Error atoms: `:invalid_checksum`, `:invalid_mnemonic_length`, `:invalid_padding`, `:invalid_secret_length` (pad_bits > 8, per official vector #40), `:invalid_group_threshold`.
 
 ### `priv/bip39_english.txt`, `priv/slip39_english.txt` (new)
 - Verbatim upstream lists (2048 / 1024 lines, newline-separated). Source: BIP-39 `english.txt` and SLIP-39 `wordlist.txt`.
@@ -430,7 +430,7 @@ Test files mirror `lib/` as `test/*_test.exs` / `test/slip39/*_test.exs`, `use E
 - `encode/1` round-trips every decoded struct back to the identical mnemonic string.
 - `decode/1`: mutated checksum word → `{:error, :invalid_checksum}`.
 - `decode/1`: too-short mnemonic (< 20 words) → `{:error, :invalid_mnemonic_length}`.
-- `decode/1`: non-zero padding bits → `{:error, :invalid_padding}`; 21-word mnemonic (`rem(140,16) == 12 > 8`) → `{:error, :invalid_padding}`.
+- `decode/1`: non-zero padding bits → `{:error, :invalid_padding}`; 21-word mnemonic (`rem(140,16) == 12 > 8`) → `{:error, :invalid_secret_length}` (see §3.8).
 - `decode/1`: `group_threshold > group_count` in the metadata → `{:error, :invalid_group_threshold}` (official vectors #10/#29).
 - Threshold/count off-by-one: struct stores 1-based, wire stores 0-based (encode of `Gt=2` produces the byte for `1`).
 - Both 128-bit (20-word) and 256-bit (33-word) shares.
