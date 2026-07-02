@@ -13,6 +13,13 @@ defmodule Bitcoinex.SLIP39.CipherTest do
         )
 
   describe "encrypt/5 and decrypt/5" do
+    test "reject odd-length and empty input at the function boundary" do
+      for bad <- [<<1>>, :binary.copy(<<1>>, 17), <<>>] do
+        assert_raise FunctionClauseError, fn -> Cipher.encrypt(bad, "", 0, 0, false) end
+        assert_raise FunctionClauseError, fn -> Cipher.decrypt(bad, "", 0, 0, false) end
+      end
+    end
+
     test "round-trip identity across ext, e, passphrase, and MS length" do
       for ms <- [@ms16, @ms32],
           passphrase <- ["", "TREZOR"],

@@ -28,7 +28,8 @@ defmodule Bitcoinex.SLIP39.Cipher do
   `extendable` is `false`.
   """
   @spec encrypt(binary, binary, 0..15, 0..0x7FFF, boolean) :: binary
-  def encrypt(ms, passphrase, iteration_exponent, identifier, extendable) do
+  def encrypt(ms, passphrase, iteration_exponent, identifier, extendable)
+      when rem(byte_size(ms), 2) == 0 and byte_size(ms) > 0 do
     feistel(
       ms,
       Enum.to_list(0..(@round_count - 1)),
@@ -46,7 +47,8 @@ defmodule Bitcoinex.SLIP39.Cipher do
   identifier, extendable)`; runs the Feistel rounds in reverse order.
   """
   @spec decrypt(binary, binary, 0..15, 0..0x7FFF, boolean) :: binary
-  def decrypt(ems, passphrase, iteration_exponent, identifier, extendable) do
+  def decrypt(ems, passphrase, iteration_exponent, identifier, extendable)
+      when rem(byte_size(ems), 2) == 0 and byte_size(ems) > 0 do
     feistel(
       ems,
       Enum.to_list((@round_count - 1)..0//-1),
