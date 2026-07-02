@@ -38,6 +38,25 @@ defmodule Bitcoinex.Utils do
     )
   end
 
+  @doc """
+  pbkdf2 derives a key of key_len bytes from the password and salt using
+  PBKDF2-HMAC (RFC 2898). Callers own any string normalization and salt
+  construction (e.g. BIP-39 NFKD, SLIP-39 salt prefixes).
+  """
+  @spec pbkdf2(:sha256 | :sha512, binary, binary, pos_integer(), pos_integer()) :: binary
+  def pbkdf2(digest, password, salt, iterations, key_len) do
+    :crypto.pbkdf2_hmac(digest, password, salt, iterations, key_len)
+  end
+
+  @doc """
+  int_list_to_bits packs a list of non-negative integers into a bitstring,
+  MSB-first, using width bits per integer.
+  """
+  @spec int_list_to_bits(list(non_neg_integer()), pos_integer()) :: bitstring
+  def int_list_to_bits(ints, width) do
+    for i <- ints, into: <<>>, do: <<i::size(width)>>
+  end
+
   @typedoc """
     The pad_type describes the padding to use.
   """
