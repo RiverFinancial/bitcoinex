@@ -50,7 +50,8 @@ defmodule Bitcoinex.Utils do
 
   @doc """
   int_list_to_bits packs a list of non-negative integers into a bitstring,
-  MSB-first, using width bits per integer.
+  MSB-first, using width bits per integer. Each integer must fit in width
+  bits; larger values are truncated to their low width bits.
   """
   @spec int_list_to_bits(list(non_neg_integer()), pos_integer()) :: bitstring
   def int_list_to_bits(ints, width) do

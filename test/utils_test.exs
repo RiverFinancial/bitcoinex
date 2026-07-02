@@ -49,6 +49,10 @@ defmodule Bitcoinex.UtilsTest do
       assert Utils.int_list_to_bits([1023, 0], 10) == <<1023::size(10), 0::size(10)>>
     end
 
+    test "packs the maximum 11-bit value" do
+      assert Utils.int_list_to_bits([2047], 11) == <<2047::size(11)>>
+    end
+
     test "empty list yields empty bitstring" do
       assert Utils.int_list_to_bits([], 10) == <<>>
     end
@@ -56,7 +60,7 @@ defmodule Bitcoinex.UtilsTest do
     property "round-trips against the bitstring comprehension" do
       check all(
               width <- StreamData.member_of([10, 11]),
-              ints <- StreamData.list_of(StreamData.integer(0..1023), max_length: 50)
+              ints <- StreamData.list_of(StreamData.integer(0..(2 ** width - 1)), max_length: 50)
             ) do
         bits = Utils.int_list_to_bits(ints, width)
         assert bit_size(bits) == length(ints) * width
