@@ -222,6 +222,24 @@ defmodule Bitcoinex.BIP39Test do
 
       assert BIP39.mnemonic_to_entropy(mnemonic) == {:error, :invalid_checksum}
     end
+
+    test "rejects non-canonical whitespace" do
+      # seed derivation is byte-exact, so a double-spaced mnemonic would
+      # derive a key no other wallet reproduces; the reference
+      # implementation rejects such input during validation
+      [_entropy_hex, mnemonic, _seed_hex, _xprv] = hd(@bip39_vectors)
+
+      for bad <- [
+            String.replace(mnemonic, " ", "  ", global: false),
+            " " <> mnemonic,
+            mnemonic <> " ",
+            String.replace(mnemonic, " ", "\t", global: false),
+            String.replace(mnemonic, " ", "\n", global: false)
+          ] do
+        assert {:error, _} = BIP39.mnemonic_to_entropy(bad)
+        refute BIP39.valid?(bad)
+      end
+    end
   end
 
   describe "valid?/1" do
@@ -294,6 +312,32 @@ defmodule Bitcoinex.BIP39Test do
                "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon",
                "TREZOR"
              ) == {:error, :invalid_checksum}
+    end
+
+    test "returns an error for an unknown prefix atom" do
+      [_entropy_hex, mnemonic, _seed_hex, _xprv] = hd(@bip39_vectors)
+
+      assert BIP39.to_master_private_key(mnemonic, "", :bogus) ==
+               {:error, "invalid extended private key prefix"}
+    end
+
+    test "derives a testnet tprv" do
+      [_entropy_hex, mnemonic, _seed_hex, _xprv] = hd(@bip39_vectors)
+      assert {:ok, _key} = BIP39.to_master_private_key(mnemonic, "", :tprv)
+    end
+  end
+
+  describe "input hygiene" do
+    test "to_seed raises a clear error on non-UTF8 input" do
+      [_entropy_hex, mnemonic, _seed_hex, _xprv] = hd(@bip39_vectors)
+
+      assert_raise ArgumentError, ~r/valid UTF-8/, fn ->
+        BIP39.to_seed(mnemonic, <<0xFF>>)
+      end
+
+      assert_raise ArgumentError, ~r/valid UTF-8/, fn ->
+        BIP39.to_seed(<<0xFF, 0xFE>>, "")
+      end
     end
   end
 

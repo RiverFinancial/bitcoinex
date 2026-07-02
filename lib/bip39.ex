@@ -40,8 +40,6 @@ defmodule Bitcoinex.BIP39 do
   """
   @spec entropy_to_mnemonic(binary) :: {:ok, String.t()} | {:error, error()}
   def entropy_to_mnemonic(entropy)
-
-  def entropy_to_mnemonic(entropy)
       when is_binary(entropy) and byte_size(entropy) in @entropy_byte_lengths do
     checksum_len = div(bit_size(entropy), 32)
     <<checksum::bitstring-size(checksum_len), _::bitstring>> = Utils.sha256(entropy)
@@ -60,10 +58,16 @@ defmodule Bitcoinex.BIP39 do
     mnemonic_to_entropy decodes a mnemonic sentence back into its entropy,
     validating the word count, every word's membership in the word list,
     and the checksum.
+
+    Words must be separated by exactly one space with no leading or
+    trailing whitespace, matching the reference implementation. Seed
+    derivation is byte-exact over the mnemonic string, so accepting
+    non-canonical spacing here would validate mnemonics that derive
+    keys no other wallet reproduces.
   """
   @spec mnemonic_to_entropy(String.t()) :: {:ok, binary} | {:error, error()}
   def mnemonic_to_entropy(mnemonic) when is_binary(mnemonic) do
-    words = String.split(mnemonic)
+    words = String.split(mnemonic, " ")
 
     with :ok <- validate_word_count(words),
          {:ok, indices} <- words_to_indices(words) do
@@ -107,14 +111,25 @@ defmodule Bitcoinex.BIP39 do
     from a mnemonic sentence and an optional passphrase. The mnemonic's
     checksum is validated before derivation.
   """
+  @prv_prefix_atoms [:xprv, :tprv]
+
   @spec to_master_private_key(String.t(), binary, atom) ::
           {:ok, ExtendedKey.t()} | {:error, error() | String.t()}
   def to_master_private_key(mnemonic, passphrase \\ "", prefix \\ :xprv)
       when is_binary(mnemonic) and is_binary(passphrase) do
-    with {:ok, _entropy} <- mnemonic_to_entropy(mnemonic) do
+    with :ok <- validate_prefix(prefix),
+         {:ok, _entropy} <- mnemonic_to_entropy(mnemonic) do
       mnemonic
       |> to_seed(passphrase)
       |> ExtendedKey.seed_to_master_private_key(prefix)
+    end
+  end
+
+  defp validate_prefix(prefix) do
+    if prefix in @prv_prefix_atoms do
+      :ok
+    else
+      {:error, "invalid extended private key prefix"}
     end
   end
 
@@ -156,5 +171,11 @@ defmodule Bitcoinex.BIP39 do
     end
   end
 
-  defp nfkd(str), do: :unicode.characters_to_nfkd_binary(str)
+  defp nfkd(str) do
+    if String.valid?(str) do
+      :unicode.characters_to_nfkd_binary(str)
+    else
+      raise ArgumentError, "mnemonic and passphrase must be valid UTF-8"
+    end
+  end
 end
