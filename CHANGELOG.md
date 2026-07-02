@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 ### Added
 - BIP-39 mnemonic support (`Bitcoinex.BIP39`): entropy-to-mnemonic encoding and decoding with checksum validation, NFKD-normalized seed derivation via PBKDF2-HMAC-SHA512, and master extended private key derivation.
+- SLIP-39 Shamir's Secret-Sharing mnemonic support (`Bitcoinex.SLIP39`): two-level (group/member) secret splitting via `generate_mnemonics/4` and recovery via `combine_mnemonics/2`, with passphrase encryption (four-round Feistel over PBKDF2-HMAC-SHA256), GF(256) Shamir sharing with digest verification, RS1024 checksums, and the extendable share-set flag. Verified against all 45 official SLIP-0039 test vectors.
 
 ## [0.1.8] - 2024-03-01
 ### Added
