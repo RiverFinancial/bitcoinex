@@ -25,6 +25,7 @@ defmodule Bitcoinex.SLIP39.Shamir do
   @digest_length_bytes 4
   @digest_index 254
   @secret_index 255
+  @max_share_count 16
 
   @doc """
   Splits `secret` into `count` shares recoverable from any `threshold` of them.
@@ -45,12 +46,15 @@ defmodule Bitcoinex.SLIP39.Shamir do
       true
   """
   @spec split_secret(1..16, 1..16, binary(), (pos_integer() -> binary())) :: [{byte(), binary()}]
-  def split_secret(1, count, secret, _rng) do
+  def split_secret(1, count, secret, _rng) when count in 1..@max_share_count do
     for i <- 0..(count - 1), do: {i, secret}
   end
 
+  # count is capped so share indices can never collide with the digest (254)
+  # and secret (255) anchor indices; an uncapped count would emit the secret
+  # verbatim as the share at index 255
   def split_secret(threshold, count, secret, rng)
-      when threshold >= 2 and threshold <= count do
+      when threshold >= 2 and threshold <= count and count <= @max_share_count do
     random_share_count = threshold - 2
 
     base_shares =
@@ -78,20 +82,28 @@ defmodule Bitcoinex.SLIP39.Shamir do
   When `threshold == 1` the single share's value is the secret. Otherwise the
   secret (index 255) and digest share (index 254) are interpolated from the
   given points and the digest is verified; a wrong, corrupted, or
-  under-threshold share set yields `{:error, :invalid_digest}`.
+  under-threshold share set yields `{:error, :invalid_digest}`. Share
+  indices must be distinct; duplicates yield
+  `{:error, :duplicate_share_indices}`.
   """
   @spec recover_secret(1..16, [{byte(), binary()}]) ::
-          {:ok, binary()} | {:error, :invalid_digest}
+          {:ok, binary()} | {:error, :invalid_digest | :duplicate_share_indices}
   def recover_secret(1, [{_index, value} | _rest]), do: {:ok, value}
 
   def recover_secret(threshold, shares) when threshold >= 2 do
-    secret = GF256.interpolate(shares, @secret_index)
-    digest_share = GF256.interpolate(shares, @digest_index)
+    indices = Enum.map(shares, fn {index, _value} -> index end)
 
-    if valid_digest?(digest_share, secret) do
-      {:ok, secret}
+    if indices == Enum.uniq(indices) do
+      secret = GF256.interpolate(shares, @secret_index)
+      digest_share = GF256.interpolate(shares, @digest_index)
+
+      if valid_digest?(digest_share, secret) do
+        {:ok, secret}
+      else
+        {:error, :invalid_digest}
+      end
     else
-      {:error, :invalid_digest}
+      {:error, :duplicate_share_indices}
     end
   end
 

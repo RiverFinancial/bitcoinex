@@ -126,6 +126,41 @@ defmodule Bitcoinex.SLIP39.ShamirTest do
       assert Shamir.recover_secret(2, [Enum.at(shares_a, 0), Enum.at(shares_b, 1)]) ==
                {:error, :invalid_digest}
     end
+
+    test "duplicate share indices -> {:error, :duplicate_share_indices}" do
+      rng = make_rng(23)
+      [share_a, share_b | _] = Shamir.split_secret(2, 3, @secret_16, rng)
+
+      # identical duplicate
+      assert Shamir.recover_secret(2, [share_a, share_a]) ==
+               {:error, :duplicate_share_indices}
+
+      # same index, conflicting values
+      {index_a, _value_a} = share_a
+      {_index_b, value_b} = share_b
+
+      assert Shamir.recover_secret(2, [share_a, {index_a, value_b}]) ==
+               {:error, :duplicate_share_indices}
+    end
+  end
+
+  describe "split_secret/4 contract guards" do
+    test "count above 16 raises instead of leaking anchor shares" do
+      # an uncapped count would emit the secret verbatim at index 255
+      rng = make_rng(29)
+
+      assert_raise FunctionClauseError, fn ->
+        Shamir.split_secret(2, 256, @secret_16, rng)
+      end
+
+      assert_raise FunctionClauseError, fn ->
+        Shamir.split_secret(2, 17, @secret_16, rng)
+      end
+
+      assert_raise FunctionClauseError, fn ->
+        Shamir.split_secret(1, 17, @secret_16, rng)
+      end
+    end
   end
 
   describe "create_digest/2 and valid_digest?/2" do
