@@ -34,6 +34,14 @@ defmodule Bitcoinex.SLIP39.ShareTest do
              }
     end
 
+    test "vector 42: valid extendable mnemonic without sharing (128 bits)" do
+      # pins the extendable-flag wire path with a named assertion
+      assert {:ok, share} = Share.decode(vector_mnemonic(41))
+      assert share.extendable == true
+      assert byte_size(share.share_value) == 16
+      assert Share.encode(share) == vector_mnemonic(41)
+    end
+
     test "vector 4: basic sharing 2-of-3 (128 bits)" do
       assert {:ok, share} = Share.decode(vector_mnemonic(3))
 
@@ -277,6 +285,22 @@ defmodule Bitcoinex.SLIP39.ShareTest do
 
         mutated = mutated_indices |> Encoding.indices_to_words() |> Enum.join(" ")
         assert {:error, _reason} = Share.decode(mutated)
+      end
+    end
+
+    property "decode never raises on arbitrary strings" do
+      check all(input <- StreamData.string([0x0..0xD7FF, 0xE000..0x10FFFF], max_length: 300)) do
+        assert match?({:ok, _}, Share.decode(input)) or
+                 match?({:error, _}, Share.decode(input))
+      end
+    end
+
+    property "decode never raises on random valid-word sequences" do
+      check all(indices <- list_of(integer(0..1023), min_length: 0, max_length: 40)) do
+        mnemonic = indices |> Encoding.indices_to_words() |> Enum.join(" ")
+
+        assert match?({:ok, _}, Share.decode(mnemonic)) or
+                 match?({:error, _}, Share.decode(mnemonic))
       end
     end
   end
