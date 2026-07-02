@@ -68,7 +68,11 @@ defmodule Bitcoinex.SLIP39 do
   `1 <= group_threshold <= length(groups) <= 16`),
   `:invalid_member_threshold` (each spec requires `1 <= t <= n <= 16` and
   forbids `t == 1` with `n > 1`), `:invalid_passphrase` (printable ASCII,
-  code points 32-126, only).
+  code points 32-126, only), `:invalid_identifier` (integer in `0..0x7FFF`),
+  `:invalid_iteration_exponent` (integer in `0..15`). The identifier and
+  iteration exponent are range-checked because the wire format truncates
+  them to 15 and 4 bits: unvalidated out-of-range values would encode
+  shares whose recombination silently yields a different master secret.
   """
   @spec generate_mnemonics(1..16, [group_spec()], binary(), keyword()) ::
           {:ok, [[String.t()]]} | {:error, atom()}
@@ -81,8 +85,14 @@ defmodule Bitcoinex.SLIP39 do
     with :ok <- validate_secret(master_secret),
          :ok <- validate_group_threshold(group_threshold, length(groups)),
          :ok <- validate_groups(groups),
-         :ok <- validate_passphrase(passphrase) do
-      identifier = Keyword.get(opts, :identifier) || random_identifier(rng)
+         :ok <- validate_passphrase(passphrase),
+         :ok <- validate_identifier(Keyword.get(opts, :identifier)),
+         :ok <- validate_iteration_exponent(iteration_exponent) do
+      identifier =
+        case Keyword.get(opts, :identifier) do
+          nil -> random_identifier(rng)
+          identifier -> identifier
+        end
 
       ems =
         Cipher.encrypt(master_secret, passphrase, iteration_exponent, identifier, extendable)
@@ -192,6 +202,20 @@ defmodule Bitcoinex.SLIP39 do
       {:error, :invalid_passphrase}
     end
   end
+
+  # the wire format truncates the identifier to 15 bits and the iteration
+  # exponent to 4 bits; out-of-range values would encrypt with parameters
+  # that differ from the encoded ones, so recombination would silently
+  # yield a different master secret
+  defp validate_identifier(nil), do: :ok
+
+  defp validate_identifier(identifier) when is_integer(identifier) and identifier in 0..0x7FFF,
+    do: :ok
+
+  defp validate_identifier(_identifier), do: {:error, :invalid_identifier}
+
+  defp validate_iteration_exponent(e) when is_integer(e) and e in 0..15, do: :ok
+  defp validate_iteration_exponent(_e), do: {:error, :invalid_iteration_exponent}
 
   defp validate_non_empty([]), do: {:error, :empty_mnemonic_set}
   defp validate_non_empty(_mnemonics), do: :ok

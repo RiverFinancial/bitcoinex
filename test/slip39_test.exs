@@ -257,6 +257,37 @@ defmodule Bitcoinex.SLIP39Test do
       assert SLIP39.generate_mnemonics(1, [{2, 3}], @secret_16, passphrase: <<7>>) ==
                {:error, :invalid_passphrase}
     end
+
+    test "out-of-range identifier returns {:error, :invalid_identifier}" do
+      # the wire format truncates identifiers to 15 bits: an unvalidated
+      # identifier of 40_000 would encode as 7232 while the Feistel salt
+      # used 40_000, so recombination would silently yield a wrong secret
+      for bad <- [40_000, 0x8000, -1, :zero, "0"] do
+        assert SLIP39.generate_mnemonics(1, [{2, 3}], @secret_16, identifier: bad) ==
+                 {:error, :invalid_identifier}
+      end
+    end
+
+    test "identifier boundary values are accepted and round-trip" do
+      for identifier <- [0, 0x7FFF] do
+        assert {:ok, [mnemonics]} =
+                 SLIP39.generate_mnemonics(1, [{2, 3}], @secret_16,
+                   identifier: identifier,
+                   rng: make_rng(41)
+                 )
+
+        assert SLIP39.combine_mnemonics(Enum.take(mnemonics, 2)) == {:ok, @secret_16}
+      end
+    end
+
+    test "out-of-range iteration exponent returns {:error, :invalid_iteration_exponent}" do
+      # the wire format truncates the exponent to 4 bits: e = 16 would
+      # encode as 0 while encryption used 10_000 <<< 16 iterations
+      for bad <- [16, -1, 1.0] do
+        assert SLIP39.generate_mnemonics(1, [{2, 3}], @secret_16, iteration_exponent: bad) ==
+                 {:error, :invalid_iteration_exponent}
+      end
+    end
   end
 
   describe "combine_mnemonics/2 validation" do
