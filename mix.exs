@@ -47,7 +47,8 @@ defmodule Bitcoinex.MixProject do
 
   defp package do
     [
-      files: ~w(lib priv test .formatter.exs mix.exs README.md UNLICENSE CHANGELOG.md SECURITY.md),
+      files:
+        ~w(lib priv test .formatter.exs mix.exs README.md UNLICENSE CHANGELOG.md SECURITY.md),
       licenses: ["Unlicense"],
       links: %{"GitHub" => "https://github.com/RiverFinancial/bitcoinex"}
     ]
