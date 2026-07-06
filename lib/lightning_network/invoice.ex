@@ -42,7 +42,8 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
           description_hash: String.t() | nil,
           fallback_address: String.t() | nil,
           min_final_cltv_expiry: non_neg_integer,
-          route_hints: list(HopHint.t())
+          # each route hint (one per r field) is a list of one or more hops
+          route_hints: list(list(HopHint.t()))
         }
 
   @prefix "ln"
@@ -216,18 +217,15 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
           end
         end
 
-      # r field HopHints
+      # r field HopHints. BOLT#11 allows multiple r fields, each containing
+      # one full route hint (a list of one or more hops), so accumulate them.
       3 ->
-        if Map.has_key?(acc, :route_hints) do
-          {:ok, acc}
-        else
-          case parse_hop_hints(data) do
-            {:ok, hop_hints} ->
-              {:ok, Map.put(acc, :route_hints, hop_hints)}
+        case parse_hop_hints(data) do
+          {:ok, hop_hints} ->
+            {:ok, Map.update(acc, :route_hints, [hop_hints], &(&1 ++ [hop_hints]))}
 
-            {:error, error} ->
-              {:error, error}
-          end
+          {:error, error} ->
+            {:error, error}
         end
 
       # x field

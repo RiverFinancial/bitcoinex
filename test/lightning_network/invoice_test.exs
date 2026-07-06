@@ -177,7 +177,7 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
           timestamp: 1_496_314_658,
           description_hash: test_description_hash_slice,
           fallback_address: test_address_mainnet_P2PKH,
-          route_hints: testSingleHop,
+          route_hints: [testSingleHop],
           min_final_cltv_expiry: 18
         }
       },
@@ -192,7 +192,34 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
           timestamp: 1_496_314_658,
           description_hash: test_description_hash_slice,
           fallback_address: test_address_mainnet_P2PKH,
-          route_hints: testDoubleHop,
+          route_hints: [testDoubleHop],
+          min_final_cltv_expiry: 18
+        }
+      },
+      # two r fields (two route hints of one hop each), signed with the BOLT#11
+      # spec test key. All r fields must be parsed, not just the first.
+      {
+        "lnbc20m1pvjluezpp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqhp58yjmdan79s6qqdhdzgynm4zwqd5d7xmw5fk98klysy043l2ahrqsfpp3qjmp7lwpagxun9pygexvgpjdc4jdj85frzjq20q82gphp2nflc7jtzrcazrra7wwgzxqc8u7754cdlpfrmccae92qgzqvzq2ps8pqqqqqqqqqqqq9qqqvrzjqw0q82gphp2nflc7jtzrcazrra7wwgzxqc8u7754cdlpfrmccae92qcyq5rqwzqfpgqqqqqzqqqqq8sqqst07cl8ma7yr3zn0pucpf3e85nxrhzpsnsdldmzhgr29u7586h60se4jazfls8u9py6g3clfd8ljrsvq7d6s2pwesmkwnaayvplyr2scpnqyw9d",
+        %Invoice{
+          network: :mainnet,
+          destination: test_pubkey,
+          payment_hash: test_payment_hash,
+          amount_msat: 2_000_000_000,
+          timestamp: 1_496_314_658,
+          description_hash: test_description_hash_slice,
+          fallback_address: test_address_mainnet_P2PKH,
+          route_hints: [
+            testSingleHop,
+            [
+              %HopHint{
+                node_id: testHopHintPubkey2,
+                channel_id: 0x030405060708090A,
+                fee_base_m_sat: 2,
+                fee_proportional_millionths: 30,
+                cltv_expiry_delta: 4
+              }
+            ]
+          ],
           min_final_cltv_expiry: 18
         }
       },
@@ -289,13 +316,15 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
           min_final_cltv_expiry: 10,
           expiry: 604_800,
           route_hints: [
-            %HopHint{
-              node_id: testHopHintPubkey3,
-              channel_id: 0x08FE4E000CF00001,
-              fee_base_m_sat: 1000,
-              fee_proportional_millionths: 2500,
-              cltv_expiry_delta: 40
-            }
+            [
+              %HopHint{
+                node_id: testHopHintPubkey3,
+                channel_id: 0x08FE4E000CF00001,
+                fee_base_m_sat: 1000,
+                fee_proportional_millionths: 2500,
+                cltv_expiry_delta: 40
+              }
+            ]
           ]
         }
       },
