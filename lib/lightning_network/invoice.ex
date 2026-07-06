@@ -24,7 +24,7 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
     :timestamp,
     :description,
     :description_hash,
-    :fallback_address,
+    fallback_addresses: [],
     route_hints: [],
     expiry: @default_expiry,
     min_final_cltv_expiry: @default_min_final_cltv_expiry
@@ -40,7 +40,8 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
           # description and description_hash are either both non-nil or nil
           description: String.t() | nil,
           description_hash: String.t() | nil,
-          fallback_address: String.t() | nil,
+          # one per f field with a known version, most-preferred first
+          fallback_addresses: list(String.t()),
           min_final_cltv_expiry: non_neg_integer,
           # each route hint (one per r field) is a list of one or more hops
           route_hints: list(list(HopHint.t()))
@@ -56,6 +57,8 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
   @sha256_hash_base32_length 52
   @pubkey_base32_length 53
   @hop_hint_length 51
+  # lnd has this limit but BOLT#11 itself does not
+  @max_route_hints 20
   @type error :: atom
 
   @doc """
@@ -122,8 +125,7 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
       !is_nil(invoice.description) && !is_nil(invoice.description_hash) ->
         {:error, :both_description_and_description_hash_missing}
 
-      # lnd have this but not in Bolt11. do we need to enforce this?
-      Enum.count(invoice.route_hints) > 20 ->
+      Enum.count(invoice.route_hints) > @max_route_hints ->
         {:error, :too_many_private_routes}
 
       String.length(invoice.payment_hash) != 64 ->
@@ -177,7 +179,13 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
   end
 
   defp parse_tagged_fields(data, network) when is_list(data) do
-    do_parse_tagged_fields(data, %{}, network)
+    with {:ok, acc} <- do_parse_tagged_fields(data, %{}, network) do
+      # multi-valued fields are accumulated by prepending; restore encounter order
+      {:ok,
+       acc
+       |> Map.replace_lazy(:route_hints, &Enum.reverse/1)
+       |> Map.replace_lazy(:fallback_addresses, &Enum.reverse/1)}
+    end
   end
 
   defp do_parse_tagged_fields([type, data_length1, data_length2 | rest], acc, network) do
@@ -221,8 +229,21 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
       # one full route hint (a list of one or more hops), so accumulate them.
       3 ->
         case parse_hop_hints(data) do
+          # BOLT#11 requires an r field to contain "one or more entries",
+          # so an empty one is invalid; skip it rather than fail
+          {:ok, []} ->
+            {:ok, acc}
+
           {:ok, hop_hints} ->
-            {:ok, Map.update(acc, :route_hints, [hop_hints], &(&1 ++ [hop_hints]))}
+            route_hints = Map.get(acc, :route_hints, [])
+
+            # enforced during parsing so a hostile invoice packed with r fields
+            # is rejected before accumulating unbounded work
+            if Enum.count(route_hints) >= @max_route_hints do
+              {:error, :too_many_private_routes}
+            else
+              {:ok, Map.put(acc, :route_hints, [hop_hints | route_hints])}
+            end
 
           {:error, error} ->
             {:error, error}
@@ -237,18 +258,21 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
           {:ok, Map.put(acc, :expiry, expiry)}
         end
 
-      # f field fallback address
+      # f field fallback address. BOLT#11 allows one or more f fields
+      # (most-preferred first), so accumulate them.
       9 ->
-        if Map.has_key?(acc, :fallback_address) do
-          {:ok, acc}
-        else
-          case parse_fallback_address(data, network) do
-            {:ok, fallback_address} ->
-              {:ok, Map.put(acc, :fallback_address, fallback_address)}
+        case parse_fallback_address(data, network) do
+          # BOLT#11 readers "MUST skip over f fields that use an unknown version";
+          # a later f field may still carry a known version
+          {:ok, nil} ->
+            {:ok, acc}
 
-            {:error, error} ->
-              {:error, error}
-          end
+          {:ok, fallback_address} ->
+            {:ok,
+             Map.update(acc, :fallback_addresses, [fallback_address], &[fallback_address | &1])}
+
+          {:error, error} ->
+            {:error, error}
         end
 
       # d field

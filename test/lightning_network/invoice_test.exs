@@ -149,7 +149,7 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
           amount_msat: 2_000_000_000,
           timestamp: 1_496_314_658,
           description_hash: test_description_hash_slice,
-          fallback_address: test_address_testnet_P2PKH,
+          fallback_addresses: [test_address_testnet_P2PKH],
           min_final_cltv_expiry: 18
         }
       },
@@ -176,7 +176,7 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
           amount_msat: 2_000_000_000,
           timestamp: 1_496_314_658,
           description_hash: test_description_hash_slice,
-          fallback_address: test_address_mainnet_P2PKH,
+          fallback_addresses: [test_address_mainnet_P2PKH],
           route_hints: [testSingleHop],
           min_final_cltv_expiry: 18
         }
@@ -191,7 +191,7 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
           amount_msat: 2_000_000_000,
           timestamp: 1_496_314_658,
           description_hash: test_description_hash_slice,
-          fallback_address: test_address_mainnet_P2PKH,
+          fallback_addresses: [test_address_mainnet_P2PKH],
           route_hints: [testDoubleHop],
           min_final_cltv_expiry: 18
         }
@@ -207,7 +207,7 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
           amount_msat: 2_000_000_000,
           timestamp: 1_496_314_658,
           description_hash: test_description_hash_slice,
-          fallback_address: test_address_mainnet_P2PKH,
+          fallback_addresses: [test_address_mainnet_P2PKH],
           route_hints: [
             testSingleHop,
             [
@@ -265,6 +265,38 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
           min_final_cltv_expiry: 80
         }
       },
+      # 1 hophint followed by an empty r field. BOLT#11 requires each r field to
+      # contain one or more entries, so the empty r field is skipped.
+      {
+        "lnbc20m1pvjluezpp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqhp58yjmdan79s6qqdhdzgynm4zwqd5d7xmw5fk98klysy043l2ahrqsfpp3qjmp7lwpagxun9pygexvgpjdc4jdj85frzjq20q82gphp2nflc7jtzrcazrra7wwgzxqc8u7754cdlpfrmccae92qgzqvzq2ps8pqqqqqqqqqqqq9qqqvrqqtc7hun0s30rh0gq0a975wcudnzvsphujjyhtw3ten8xkur5ms8qpcjxfk4sty093gtrhfqsxsns8lf8ge7twyx6ve80wd0xhsglardcpfzqtth",
+        %Invoice{
+          network: :mainnet,
+          destination: test_pubkey,
+          payment_hash: test_payment_hash,
+          amount_msat: 2_000_000_000,
+          timestamp: 1_496_314_658,
+          description_hash: test_description_hash_slice,
+          fallback_addresses: [test_address_mainnet_P2PKH],
+          route_hints: [testSingleHop],
+          min_final_cltv_expiry: 18
+        }
+      },
+      # three f fields: P2PKH, then one with an unknown version (19, skipped),
+      # then P2WPKH. All known-version fallback addresses are collected in order.
+      {
+        "lnbc20m1pvjluezpp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqhp58yjmdan79s6qqdhdzgynm4zwqd5d7xmw5fk98klysy043l2ahrqsfpp3qjmp7lwpagxun9pygexvgpjdc4jdj85frzjq20q82gphp2nflc7jtzrcazrra7wwgzxqc8u7754cdlpfrmccae92qgzqvzq2ps8pqqqqqqqqqqqq9qqqvfqynpzrfppqw508d6qejxtdg4y5r3zarvary0c5xw7kyjc3xmnnm03spelf55p7jd4z9rdlj7zenmlr5hd96s8f939me8gytjt4rzcg4x4gz8z8hssrzk8e20q89qnrngz274vswzl2rg0w3hgp6wrvs7",
+        %Invoice{
+          network: :mainnet,
+          destination: test_pubkey,
+          payment_hash: test_payment_hash,
+          amount_msat: 2_000_000_000,
+          timestamp: 1_496_314_658,
+          description_hash: test_description_hash_slice,
+          fallback_addresses: [test_address_mainnet_P2PKH, test_address_mainnet_P2WPKH],
+          route_hints: [testSingleHop],
+          min_final_cltv_expiry: 18
+        }
+      },
       # On mainnet, with fallback (p2sh) address 3EktnHQD7RiAE6uzMj2ZifT9YgRrkSgzQX
       {
         "lnbc20m1pvjluezpp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqhp58yjmdan79s6qqdhdzgynm4zwqd5d7xmw5fk98klysy043l2ahrqsfppj3a24vwu6r8ejrss3axul8rxldph2q7z9kk822r8plup77n9yq5ep2dfpcydrjwzxs0la84v3tfw43t3vqhek7f05m6uf8lmfkjn7zv7enn76sq65d8u9lxav2pl6x3xnc2ww3lqpagnh0u",
@@ -275,7 +307,7 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
           amount_msat: 2_000_000_000,
           timestamp: 1_496_314_658,
           description_hash: test_description_hash_slice,
-          fallback_address: test_address_mainnet_P2SH,
+          fallback_addresses: [test_address_mainnet_P2SH],
           min_final_cltv_expiry: 18
         }
       },
@@ -289,7 +321,7 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
           amount_msat: 2_000_000_000,
           timestamp: 1_496_314_658,
           description_hash: test_description_hash_slice,
-          fallback_address: test_address_mainnet_P2WPKH,
+          fallback_addresses: [test_address_mainnet_P2WPKH],
           min_final_cltv_expiry: 18
         }
       },
@@ -303,7 +335,7 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
           amount_msat: 2_000_000_000,
           timestamp: 1_496_314_658,
           description_hash: test_description_hash_slice,
-          fallback_address: test_address_mainnet_P2WSH,
+          fallback_addresses: [test_address_mainnet_P2WSH],
           min_final_cltv_expiry: 18
         }
       },
@@ -432,7 +464,7 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
           timestamp: 1_496_314_658,
           description_hash: "3925b6f67e2c340036ed12093dd44e0368df1b6ea26c53dbe4811f58fd5db8c1",
           min_final_cltv_expiry: 18,
-          fallback_address: "3EktnHQD7RiAE6uzMj2ZifT9YgRrkSgzQX"
+          fallback_addresses: ["3EktnHQD7RiAE6uzMj2ZifT9YgRrkSgzQX"]
         }
       },
       {
@@ -445,7 +477,7 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
           timestamp: 1_496_314_658,
           description_hash: "3925b6f67e2c340036ed12093dd44e0368df1b6ea26c53dbe4811f58fd5db8c1",
           min_final_cltv_expiry: 18,
-          fallback_address: "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"
+          fallback_addresses: ["bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"]
         }
       },
       {
@@ -458,7 +490,7 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
           timestamp: 1_496_314_658,
           description_hash: "3925b6f67e2c340036ed12093dd44e0368df1b6ea26c53dbe4811f58fd5db8c1",
           min_final_cltv_expiry: 18,
-          fallback_address: "bc1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3qccfmv3"
+          fallback_addresses: ["bc1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3qccfmv3"]
         }
       },
       {
@@ -577,6 +609,20 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
         assert {:ok, decoded_invoice} = Invoice.decode(valid_encoded_invoice)
         assert decoded_invoice == invoice
       end
+    end
+
+    test "fail to decode an invoice with more than 20 route hints" do
+      # the 1-hophint test vector with 20 extra single-hop r fields appended
+      # (21 route hints total), re-signed with the BOLT#11 spec test key
+      invoice =
+        "lnbc20m1pvjluezpp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqhp58yjmdan79s6qqdhdzgynm4zwqd5d7xmw5fk98klysy043l2ahrqsfpp3qjmp7lwpagxun9pygexvgpjdc4jdj85frzjq20q82gphp2nflc7jtzrcazrra7wwgzxqc8u7754cdlpfrmccae92qgzqvzq2ps8pqqqqqqqqqqqq9qqqv" <>
+          String.duplicate(
+            "rzjqw0q82gphp2nflc7jtzrcazrra7wwgzxqc8u7754cdlpfrmccae92qcyq5rqwzqfpgqqqqqzqqqqq8sqqs",
+            20
+          ) <>
+          "2s6kt43k6yavner648k8394mdvhuaamke6rp6tueag8h5qczq6w3c9yhq30snnj3httslvh8af2acrdffrmpsrnupjmumuy074378kqp7dqpmh"
+
+      assert {:error, :too_many_private_routes} = Invoice.decode(invoice)
     end
 
     test "fail to decode with invalid segwit addresses in mainnet", %{
