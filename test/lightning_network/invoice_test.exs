@@ -223,6 +223,48 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
           min_final_cltv_expiry: 18
         }
       },
+      # real-world invoice with three r fields (three single-hop route hints)
+      {
+        "lnbc1p4ycf36pp5tg2m82kyfskhrgjdjerue486v5hhkrvz6nh8hgwh32s2n9t026dqdqlf35kw6r5de5kueeqv3jhqmmnd96zqvqcqzzsxqrrssrzjqw4t06fjwutwa9rt37l6uqumpku9x4j5neevtn9pz04x0zfapqs72r9kdyqqvcsqqyqqqqqqqqqqqqqq2qrzjqvphmsywntrrhqjcraumvc4y6r8v4z5v593trte429v4hredj7ms5rdxngqqgecqqyqqqqqqqqqqqqqq2qrzjqvphmsywntrrhqjcraumvc4y6r8v4z5v593trte429v4hredj7ms5rpeeqqqt9cqqyqqqqqqqqqqqqqq2qsp5yl9unpjreynlvuzmdq9z4ln700kufrk6lcsg2pe8cvzm0lu2alus9qxpqysgqzjkvm4js03nff029qlvk34hnw3g97nrkerllqrfehyqcwcwvps89y8q78qptjnn5kv28f62zkmvyj52u6ls6xeytxes630l0ke5qpccq8dd6nl",
+        %Invoice{
+          network: :mainnet,
+          destination: "0294774ee02a9faa5a5870061f7f4833686184ad14a0b163c49442516c9edac1db",
+          payment_hash: "5a15b3aac44c2d71a24d9647ccd4fa652f7b0d82d4ee7ba1d78aa0a9956f569a",
+          timestamp: 1_783_375_418,
+          description: "Lightning deposit 0",
+          expiry: 3600,
+          route_hints: [
+            [
+              %HopHint{
+                node_id: "03aab7e9327716ee946b8fbfae039b0db85356549e72c5cca113ea67893d0821e5",
+                channel_id: 0x0CB6690006620001,
+                fee_base_m_sat: 0,
+                fee_proportional_millionths: 0,
+                cltv_expiry_delta: 80
+              }
+            ],
+            [
+              %HopHint{
+                node_id: "03037dc08e9ac63b82581f79b662a4d0ceca8a8ca162b1af3551595b8f2d97b70a",
+                channel_id: 0x0DA69A0004670001,
+                fee_base_m_sat: 0,
+                fee_proportional_millionths: 0,
+                cltv_expiry_delta: 80
+              }
+            ],
+            [
+              %HopHint{
+                node_id: "03037dc08e9ac63b82581f79b662a4d0ceca8a8ca162b1af3551595b8f2d97b70a",
+                channel_id: 0x0C39C80005970001,
+                fee_base_m_sat: 0,
+                fee_proportional_millionths: 0,
+                cltv_expiry_delta: 80
+              }
+            ]
+          ],
+          min_final_cltv_expiry: 80
+        }
+      },
       # On mainnet, with fallback (p2sh) address 3EktnHQD7RiAE6uzMj2ZifT9YgRrkSgzQX
       {
         "lnbc20m1pvjluezpp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqhp58yjmdan79s6qqdhdzgynm4zwqd5d7xmw5fk98klysy043l2ahrqsfppj3a24vwu6r8ejrss3axul8rxldph2q7z9kk822r8plup77n9yq5ep2dfpcydrjwzxs0la84v3tfw43t3vqhek7f05m6uf8lmfkjn7zv7enn76sq65d8u9lxav2pl6x3xnc2ww3lqpagnh0u",
