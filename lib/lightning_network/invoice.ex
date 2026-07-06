@@ -57,8 +57,6 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
   @sha256_hash_base32_length 52
   @pubkey_base32_length 53
   @hop_hint_length 51
-  # lnd has this limit but BOLT#11 itself does not
-  @max_route_hints 20
   @type error :: atom
 
   @doc """
@@ -124,9 +122,6 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
 
       !is_nil(invoice.description) && !is_nil(invoice.description_hash) ->
         {:error, :both_description_and_description_hash_missing}
-
-      Enum.count(invoice.route_hints) > @max_route_hints ->
-        {:error, :too_many_private_routes}
 
       String.length(invoice.payment_hash) != 64 ->
         {:error, :invalid_payment_hash_length}
@@ -235,15 +230,7 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
             {:ok, acc}
 
           {:ok, hop_hints} ->
-            route_hints = Map.get(acc, :route_hints, [])
-
-            # enforced during parsing so a hostile invoice packed with r fields
-            # is rejected before accumulating unbounded work
-            if Enum.count(route_hints) >= @max_route_hints do
-              {:error, :too_many_private_routes}
-            else
-              {:ok, Map.put(acc, :route_hints, [hop_hints | route_hints])}
-            end
+            {:ok, Map.update(acc, :route_hints, [hop_hints], &[hop_hints | &1])}
 
           {:error, error} ->
             {:error, error}

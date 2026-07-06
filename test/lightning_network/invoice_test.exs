@@ -611,9 +611,10 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
       end
     end
 
-    test "fail to decode an invoice with more than 20 route hints" do
+    test "decode an invoice with 21 route hints" do
       # the 1-hophint test vector with 20 extra single-hop r fields appended
-      # (21 route hints total), re-signed with the BOLT#11 spec test key
+      # (21 route hints total), re-signed with the BOLT#11 spec test key.
+      # BOLT#11 places no limit on the number of r fields.
       invoice =
         "lnbc20m1pvjluezpp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqhp58yjmdan79s6qqdhdzgynm4zwqd5d7xmw5fk98klysy043l2ahrqsfpp3qjmp7lwpagxun9pygexvgpjdc4jdj85frzjq20q82gphp2nflc7jtzrcazrra7wwgzxqc8u7754cdlpfrmccae92qgzqvzq2ps8pqqqqqqqqqqqq9qqqv" <>
           String.duplicate(
@@ -622,7 +623,34 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
           ) <>
           "2s6kt43k6yavner648k8394mdvhuaamke6rp6tueag8h5qczq6w3c9yhq30snnj3httslvh8af2acrdffrmpsrnupjmumuy074378kqp7dqpmh"
 
-      assert {:error, :too_many_private_routes} = Invoice.decode(invoice)
+      assert {:ok, %Invoice{route_hints: route_hints}} = Invoice.decode(invoice)
+      assert Enum.count(route_hints) == 21
+
+      assert hd(route_hints) == [
+               %HopHint{
+                 node_id: "029e03a901b85534ff1e92c43c74431f7ce72046060fcf7a95c37e148f78c77255",
+                 channel_id: 0x0102030405060708,
+                 fee_base_m_sat: 0,
+                 fee_proportional_millionths: 20,
+                 cltv_expiry_delta: 3
+               }
+             ]
+
+      # each appended r field carries the same single-hop route hint
+      assert Enum.drop(route_hints, 1) ==
+               List.duplicate(
+                 [
+                   %HopHint{
+                     node_id:
+                       "039e03a901b85534ff1e92c43c74431f7ce72046060fcf7a95c37e148f78c77255",
+                     channel_id: 0x030405060708090A,
+                     fee_base_m_sat: 2,
+                     fee_proportional_millionths: 30,
+                     cltv_expiry_delta: 4
+                   }
+                 ],
+                 20
+               )
     end
 
     test "fail to decode with invalid segwit addresses in mainnet", %{

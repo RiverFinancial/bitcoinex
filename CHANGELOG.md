@@ -6,8 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Fixed
-- BOLT11 invoice decoding now parses all `r` (route hint) fields instead of only the first. **Breaking:** `Invoice.route_hints` is now a list of route hints, each a list of `HopHint`s (`list(list(HopHint.t()))`), matching the BOLT11 spec where each `r` field is a separate private route. Empty `r` fields (invalid per BOLT11, which requires "one or more entries") are skipped, and invoices with more than 20 route hints are rejected during parsing with `:too_many_private_routes`.
+- BOLT11 invoice decoding now parses all `r` (route hint) fields instead of only the first. **Breaking:** `Invoice.route_hints` is now a list of route hints, each a list of `HopHint`s (`list(list(HopHint.t()))`), matching the BOLT11 spec where each `r` field is a separate private route. Empty `r` fields (invalid per BOLT11, which requires "one or more entries") are skipped.
 - BOLT11 invoice decoding now parses all `f` (fallback address) fields instead of only the first, and correctly skips unknown-version `f` fields without blocking later valid ones. **Breaking:** `Invoice.fallback_address` (a single address or `nil`) is replaced by `Invoice.fallback_addresses`, a list of addresses in order of preference (empty if none).
+### Removed
+- The lnd-specific limit of 20 route hints per invoice (`{:error, :too_many_private_routes}`). BOLT11 places no limit on the number of `r` fields, so invoices with more than 20 route hints now decode successfully.
 
 ## [0.1.8] - 2024-03-01
 ### Added
