@@ -61,6 +61,10 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
 
   @doc """
    Decode accepts a Bech32 encoded string invoice and deserializes it.
+
+   BOLT#11 places no upper bound on invoice length (it lifts BIP-173's
+   90-character limit), so no size limit is enforced here; callers decoding
+   untrusted input should bound the string length themselves.
   """
   @spec decode(String.t()) :: {:ok, t} | {:error, error}
   def decode(invoice) when is_binary(invoice) do
