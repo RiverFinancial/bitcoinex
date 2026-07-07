@@ -281,6 +281,20 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
           min_final_cltv_expiry: 18
         }
       },
+      # an empty f field (no version byte at all) is skipped rather than
+      # failing the decode, leaving no fallback addresses
+      {
+        "lnbc20m1pvjluezhp58yjmdan79s6qqdhdzgynm4zwqd5d7xmw5fk98klysy043l2ahrqspp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqfqqepvrhrm9s57hejg0p662ur5j5cr03890fa7k2pypgttmh4897d3raaq85a293e9jpuqwl0rnfuwzam7yr8e690nd2ypcq9hlkdwdvycqjhlqg5",
+        %Invoice{
+          network: :mainnet,
+          destination: "02700c59a993fbb71ed906159f562f86b73219f97a18de2c65b62bfd0748d5821a",
+          payment_hash: test_payment_hash,
+          amount_msat: 2_000_000_000,
+          timestamp: 1_496_314_658,
+          description_hash: test_description_hash_slice,
+          min_final_cltv_expiry: 18
+        }
+      },
       # three f fields: P2PKH, then one with an unknown version (19, skipped),
       # then P2WPKH. All known-version fallback addresses are collected in order.
       {
@@ -564,8 +578,6 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
       "lnbcm1aaamcu25m",
       # invalid amount
       "lnbc1000000000m1",
-      # empty fallback address field
-      "lnbc20m1pvjluezhp58yjmdan79s6qqdhdzgynm4zwqd5d7xmw5fk98klysy043l2ahrqspp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqfqqepvrhrm9s57hejg0p662ur5j5cr03890fa7k2pypgttmh4897d3raaq85a293e9jpuqwl0rnfuwzam7yr8e690nd2ypcq9hlkdwdvycqjhlqg5",
       # invalid routing info length: not a multiple of 51
       "lnbc20m1pvjluezpp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqhp58yjmdan79s6qqdhdzgynm4zwqd5d7xmw5fk98klysy043l2ahrqsfpp3qjmp7lwpagxun9pygexvgpjdc4jdj85frqg00000000j9n4evl6mr5aj9f58zp6fyjzup6ywn3x6sk8akg5v4tgn2q8g4fhx05wf6juaxu9760yp46454gpg5mtzgerlzezqcqvjnhjh8z3g2qqsj5cgu",
       # no payment hash set

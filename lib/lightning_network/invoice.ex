@@ -178,10 +178,16 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
       # multi-valued fields are accumulated by prepending; restore encounter order
       {:ok,
        acc
-       |> Map.replace_lazy(:route_hints, &Enum.reverse/1)
-       |> Map.replace_lazy(:fallback_addresses, &Enum.reverse/1)}
+       |> reverse_multi_field(:route_hints)
+       |> reverse_multi_field(:fallback_addresses)}
     end
   end
+
+  defp reverse_multi_field(acc, key) when is_map_key(acc, key) do
+    Map.update!(acc, key, &Enum.reverse/1)
+  end
+
+  defp reverse_multi_field(acc, _key), do: acc
 
   defp do_parse_tagged_fields([type, data_length1, data_length2 | rest], acc, network) do
     data_length = data_length1 <<< 5 ||| data_length2
@@ -230,6 +236,8 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
             {:ok, acc}
 
           {:ok, hop_hints} ->
+            # prepended so accumulation stays linear on unbounded invoices;
+            # parse_tagged_fields restores encounter order
             {:ok, Map.update(acc, :route_hints, [hop_hints], &[hop_hints | &1])}
 
           {:error, error} ->
@@ -255,6 +263,8 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
             {:ok, acc}
 
           {:ok, fallback_address} ->
+            # prepended so accumulation stays linear on unbounded invoices;
+            # parse_tagged_fields restores encounter order
             {:ok,
              Map.update(acc, :fallback_addresses, [fallback_address], &[fallback_address | &1])}
 
@@ -387,8 +397,10 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
     end
   end
 
+  # an empty f field carries no version, so there is nothing to decode;
+  # skip it (like an unknown version) rather than fail the whole invoice
   defp parse_fallback_address([], _network) do
-    {:error, :empty_fallback_address}
+    {:ok, nil}
   end
 
   defp parse_fallback_address([version | rest], network) do
