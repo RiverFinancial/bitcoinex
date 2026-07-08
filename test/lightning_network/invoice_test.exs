@@ -706,6 +706,16 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
       assert {:error, :invalid_script_hash_length} = Invoice.decode(version_18_invoice)
     end
 
+    test "fail to decode an invoice longer than 7089 characters" do
+      # 7089 is the capacity of the largest QR code (version 40, numeric
+      # mode, ECC level L), matching rust-lightning's invoice length limit.
+      # The length check runs before any parsing, so the content past the
+      # prefix doesn't matter.
+      invoice = "lnbc20m1" <> String.duplicate("q", 7082)
+      assert String.length(invoice) == 7090
+      assert {:error, :overall_max_length_exceeded} = Invoice.decode(invoice)
+    end
+
     test "fail to decode a bech32 string without the ln prefix" do
       assert {:error, :no_ln_prefix} =
                Invoice.decode("bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4")

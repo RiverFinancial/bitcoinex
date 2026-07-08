@@ -57,18 +57,22 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
   @sha256_hash_base32_length 52
   @pubkey_base32_length 53
   @hop_hint_length 51
+  # BOLT#11 places no upper bound on invoice length (it lifts BIP-173's
+  # 90-character limit), but decoding untrusted input must be bounded, so we
+  # match rust-lightning's limit: 7089 characters, the capacity of the
+  # largest QR code (version 40, numeric mode, error-correction level L).
+  @max_invoice_length 7089
   @type error :: atom
 
   @doc """
    Decode accepts a Bech32 encoded string invoice and deserializes it.
 
-   BOLT#11 places no upper bound on invoice length (it lifts BIP-173's
-   90-character limit), so no size limit is enforced here; callers decoding
-   untrusted input should bound the string length themselves.
+   Invoices longer than #{@max_invoice_length} characters (the capacity of
+   the largest QR code) are rejected with `{:error, :overall_max_length_exceeded}`.
   """
   @spec decode(String.t()) :: {:ok, t} | {:error, error}
   def decode(invoice) when is_binary(invoice) do
-    with {:ok, {_encoding_type, hrp, data}} <- Bech32.decode(invoice, :infinity),
+    with {:ok, {_encoding_type, hrp, data}} <- Bech32.decode(invoice, @max_invoice_length),
          {:ok, {network, amount_msat}} <- parse_hrp(hrp),
          {invoice_data, signature_data} = split_at(data, -@signature_base32_length),
          {:ok, parsed_data} <-
