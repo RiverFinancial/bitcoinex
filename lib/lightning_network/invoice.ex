@@ -407,10 +407,10 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
       17 ->
         case Bech32.convert_bits(rest, 5, 8, false) do
           # a P2PKH fallback address must carry a 20-byte pubkey hash
-          {:ok, pubKeyHash} when length(pubKeyHash) == 20 ->
+          {:ok, pub_key_hash} when length(pub_key_hash) == 20 ->
             {:ok,
              Bitcoinex.Address.encode(
-               pubKeyHash |> :binary.list_to_bin(),
+               pub_key_hash |> :binary.list_to_bin(),
                network,
                :p2pkh
              )}
@@ -425,10 +425,10 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
       18 ->
         case Bech32.convert_bits(rest, 5, 8, false) do
           # a P2SH fallback address must carry a 20-byte script hash
-          {:ok, scriptHash} when length(scriptHash) == 20 ->
+          {:ok, script_hash} when length(script_hash) == 20 ->
             {:ok,
              Bitcoinex.Address.encode(
-               scriptHash |> :binary.list_to_bin(),
+               script_hash |> :binary.list_to_bin(),
                network,
                :p2sh
              )}
