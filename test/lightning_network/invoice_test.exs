@@ -665,6 +665,31 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
                )
     end
 
+    test "fail to decode when a later r field is malformed" do
+      # the 1-hophint test vector with a second r field appended whose data
+      # (10 bytes) is not a multiple of 51. Every r field is parsed, so a
+      # malformed one fails the decode even when an earlier r field is valid.
+      # (Tagged fields are parsed before signature verification, so the
+      # spliced-in field doesn't require re-signing.)
+      invoice =
+        "lnbc20m1pvjluezpp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqhp58yjmdan79s6qqdhdzgynm4zwqd5d7xmw5fk98klysy043l2ahrqsfpp3qjmp7lwpagxun9pygexvgpjdc4jdj85frzjq20q82gphp2nflc7jtzrcazrra7wwgzxqc8u7754cdlpfrmccae92qgzqvzq2ps8pqqqqqqqqqqqq9qqqvrqsppppppppppppppppncsk57n4v9ehw86wq8fzvjejhv9z3w3q5zh6qkql005x9xl240ch23jk79ujzvr4hsmmafyxghpqe79psktnjl668ntaf4ne7ucs5csqp7a8gm"
+
+      assert {:error, :invalid_hop_hint_data_length} = Invoice.decode(invoice)
+    end
+
+    test "fail to decode when a later f field has a known version but invalid payload" do
+      # the 1-hophint test vector with a version-0 f field appended whose
+      # witness program is 25 bytes (must be 20 or 32). Only unknown-version
+      # and empty f fields are skipped; a known-version f field with an
+      # invalid payload fails the decode even when an earlier f field was
+      # valid. (Tagged fields are parsed before signature verification, so
+      # the spliced-in field doesn't require re-signing.)
+      invoice =
+        "lnbc20m1pvjluezpp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqhp58yjmdan79s6qqdhdzgynm4zwqd5d7xmw5fk98klysy043l2ahrqsfpp3qjmp7lwpagxun9pygexvgpjdc4jdj85frzjq20q82gphp2nflc7jtzrcazrra7wwgzxqc8u7754cdlpfrmccae92qgzqvzq2ps8pqqqqqqqqqqqq9qqqvfpfqzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzncsk57n4v9ehw86wq8fzvjejhv9z3w3q5zh6qkql005x9xl240ch23jk79ujzvr4hsmmafyxghpqe79psktnjl668ntaf4ne7ucs5csq0spr8d"
+
+      assert {:error, :invalid_witness_program_length} = Invoice.decode(invoice)
+    end
+
     test "fail to decode with invalid segwit addresses in mainnet", %{
       invalid_encoded_invoices: invalid_encoded_invoices
     } do
