@@ -690,6 +690,27 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
       assert {:error, :invalid_witness_program_length} = Invoice.decode(invoice)
     end
 
+    test "fail to decode when an f field hash payload has the wrong length" do
+      # the 1-hophint test vector with an extra f field appended carrying a
+      # 5-byte payload (P2PKH pubkey hashes and P2SH script hashes must be
+      # 20 bytes). (Tagged fields are parsed before signature verification,
+      # so the spliced-in field doesn't require re-signing.)
+      version_17_invoice =
+        "lnbc20m1pvjluezpp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqhp58yjmdan79s6qqdhdzgynm4zwqd5d7xmw5fk98klysy043l2ahrqsfpp3qjmp7lwpagxun9pygexvgpjdc4jdj85frzjq20q82gphp2nflc7jtzrcazrra7wwgzxqc8u7754cdlpfrmccae92qgzqvzq2ps8pqqqqqqqqqqqq9qqqvfqf3rrrrrrrrncsk57n4v9ehw86wq8fzvjejhv9z3w3q5zh6qkql005x9xl240ch23jk79ujzvr4hsmmafyxghpqe79psktnjl668ntaf4ne7ucs5csqsq58rs"
+
+      assert {:error, :invalid_pubkey_hash_length} = Invoice.decode(version_17_invoice)
+
+      version_18_invoice =
+        "lnbc20m1pvjluezpp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqhp58yjmdan79s6qqdhdzgynm4zwqd5d7xmw5fk98klysy043l2ahrqsfpp3qjmp7lwpagxun9pygexvgpjdc4jdj85frzjq20q82gphp2nflc7jtzrcazrra7wwgzxqc8u7754cdlpfrmccae92qgzqvzq2ps8pqqqqqqqqqqqq9qqqvfqfjrrrrrrrrncsk57n4v9ehw86wq8fzvjejhv9z3w3q5zh6qkql005x9xl240ch23jk79ujzvr4hsmmafyxghpqe79psktnjl668ntaf4ne7ucs5csqjj9mew"
+
+      assert {:error, :invalid_script_hash_length} = Invoice.decode(version_18_invoice)
+    end
+
+    test "fail to decode a bech32 string without the ln prefix" do
+      assert {:error, :no_ln_prefix} =
+               Invoice.decode("bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4")
+    end
+
     test "fail to decode with invalid segwit addresses in mainnet", %{
       invalid_encoded_invoices: invalid_encoded_invoices
     } do

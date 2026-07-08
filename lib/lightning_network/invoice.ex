@@ -95,10 +95,6 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
     end
   end
 
-  def decode(invoice) when is_binary(invoice) do
-    {:error, :no_ln_prefix}
-  end
-
   @doc """
    Returns the expiry of the invoice.
   """
@@ -410,7 +406,8 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
 
       17 ->
         case Bech32.convert_bits(rest, 5, 8, false) do
-          {:ok, pubKeyHash} ->
+          # a P2PKH fallback address must carry a 20-byte pubkey hash
+          {:ok, pubKeyHash} when length(pubKeyHash) == 20 ->
             {:ok,
              Bitcoinex.Address.encode(
                pubKeyHash |> :binary.list_to_bin(),
@@ -418,19 +415,26 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
                :p2pkh
              )}
 
+          {:ok, _} ->
+            {:error, :invalid_pubkey_hash_length}
+
           err ->
             err
         end
 
       18 ->
         case Bech32.convert_bits(rest, 5, 8, false) do
-          {:ok, scriptHash} ->
+          # a P2SH fallback address must carry a 20-byte script hash
+          {:ok, scriptHash} when length(scriptHash) == 20 ->
             {:ok,
              Bitcoinex.Address.encode(
                scriptHash |> :binary.list_to_bin(),
                network,
                :p2sh
              )}
+
+          {:ok, _} ->
+            {:error, :invalid_script_hash_length}
 
           err ->
             err
