@@ -5,8 +5,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.2.0] - 2026-07-10
 ### Changed
-- Widen `decimal` dependency constraint to allow `~> 3.0` in addition to `~> 1.0` and `~> 2.0`.
+- BOLT11 invoice decoding now rejects invoices longer than 7089 characters with `{:error, :overall_max_length_exceeded}`, matching rust-lightning's limit (the capacity of the largest QR code). This bounds the work done decoding untrusted input now that all `r` (route hint) and `f` (fallback address) fields are parsed.
+### Fixed
+- BOLT11 invoice decoding now parses all `r` (route hint) fields instead of only the first. **Breaking:** `Invoice.route_hints` is now a list of route hints, each a list of `HopHint`s (`list(list(HopHint.t()))`), matching the BOLT11 spec where each `r` field is a separate private route. Empty `r` fields (invalid per BOLT11, which requires "one or more entries") are skipped.
+- BOLT11 invoice decoding now parses all `f` (fallback address) fields instead of only the first, and correctly skips unknown-version and empty `f` fields without blocking later valid ones or failing the decode. **Breaking:** `Invoice.fallback_address` (a single address or `nil`) is replaced by `Invoice.fallback_addresses`, a list of addresses in order of preference (empty if none).
+- BOLT11 `f` (fallback address) fields with version 17 (P2PKH) or 18 (P2SH) now require a 20-byte hash payload; any other length fails the decode with `:invalid_pubkey_hash_length` / `:invalid_script_hash_length` instead of encoding a garbage address.
+- Removed an unreachable `Invoice.decode/1` clause that shadowed the `{:error, :no_ln_prefix}` error; the error is (and was) returned by HRP parsing inside the main clause, so behavior is unchanged.
+### Removed
+- The lnd-specific limit of 20 route hints per invoice (`{:error, :too_many_private_routes}`). BOLT11 places no limit on the number of `r` fields, so invoices with more than 20 route hints now decode successfully.
 
 ## [0.1.8] - 2024-03-01
 ### Added
@@ -60,6 +69,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Transaction module.
 
 
+[0.2.0]: https://diff.hex.pm/diff/bitcoinex/0.1.8..0.2.0
 [0.1.4]: https://diff.hex.pm/diff/bitcoinex/0.1.3..0.1.4
 [0.1.3]: https://diff.hex.pm/diff/bitcoinex/0.1.2..0.1.3
 [0.1.2]: https://diff.hex.pm/diff/bitcoinex/0.1.1..0.1.2
