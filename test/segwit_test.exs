@@ -108,19 +108,19 @@ defmodule Bitcoinex.SegwitTest do
     end
   end
 
-  describe "is_valid_segswit_address?/1" do
+  describe "is_valid_segwit_address?/1" do
     test "return true given valid address" do
       for {address, _hexscript} <-
             @valid_segwit_address_hexscript_pairs_mainnet ++
               @valid_segwit_address_hexscript_pairs_testnet ++
               @valid_segwit_address_hexscript_pairs_regtest do
-        assert Segwit.is_valid_segswit_address?(address)
+        assert Segwit.is_valid_segwit_address?(address)
       end
     end
 
     test "return false given invalid address" do
       for address <- @invalid_segwit_addresses do
-        refute Segwit.is_valid_segswit_address?(address)
+        refute Segwit.is_valid_segwit_address?(address)
       end
     end
   end

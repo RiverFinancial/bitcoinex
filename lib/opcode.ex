@@ -227,7 +227,9 @@ defmodule Bitcoinex.Opcode do
       op_codeseparator: 0xAB,
       op_checksig: 0xAC,
       op_checksigverify: 0xAD,
+      # disabled in tapscript
       op_checkmultisig: 0xAE,
+      # disabled in tapscript
       op_checkmultisigverify: 0xAF,
       op_nop1: 0xB0,
       op_nop2: 0xB1,
@@ -240,6 +242,7 @@ defmodule Bitcoinex.Opcode do
       op_nop8: 0xB7,
       op_nop9: 0xB8,
       op_nop10: 0xB9,
+      op_checksigadd: 0xBA,
       op_smallinteger: 0xFA,
       op_pubkeys: 0xFB,
       op_pubkeyhash: 0xFD,

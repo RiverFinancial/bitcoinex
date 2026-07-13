@@ -5,14 +5,17 @@ defmodule Bitcoinex.Script do
 
   import Bitcoinex.Opcode
 
-  alias Bitcoinex.Secp256k1.Point
+  alias Bitcoinex.Secp256k1.{Point, Math, PrivateKey}
 
-  alias Bitcoinex.{Utils, Address, Segwit, Base58, Network}
+  alias Bitcoinex.{Utils, Address, Segwit, Base58, Network, Taproot}
 
   @wsh_length 32
   @tapkey_length 32
   @h160_length 20
-  @pubkey_lengths [33, 65]
+  @pubkey_lengths [@tapkey_length, 33, 65]
+
+  # hash of G.x, used to construct unsolvable internal taproot keys
+  @h 0x50929B74C1A04954B78B4B6035E97A5E078A5A0F28EC96D547BFEE9ACE803AC0
 
   @type script_type :: :p2pk | :p2pkh | :p2sh | :p2wpkh | :p2wsh | :p2tr | :multi | :non_standard
 
@@ -25,7 +28,7 @@ defmodule Bitcoinex.Script do
   ]
   defstruct [:items]
 
-  defguard is_valid_multi(m, pubkeys)
+  defguard is_valid_multisig(m, pubkeys)
            when is_integer(m) and m > 0 and length(pubkeys) > 0 and length(pubkeys) >= m
 
   defp invalid_opcode_error(msg), do: {:error, "invalid opcode: #{msg}"}
@@ -204,6 +207,11 @@ defmodule Bitcoinex.Script do
     serializer(script, <<>>)
   end
 
+  def serialize_with_compact_size(script = %__MODULE__{}) do
+    s = serialize_script(script)
+    Utils.serialize_compact_size_unsigned_int(byte_size(s)) <> s
+  end
+
   @doc """
   	to_hex returns the hex of a serialized script.
   """
@@ -331,7 +339,7 @@ defmodule Bitcoinex.Script do
     true
   end
 
-  def is_p2pk?(%__MODULE__{}), do: false
+  def is_p2pk?(_), do: false
 
   @doc """
   	is_p2pkh? returns whether a given script is of the p2pkh format:
@@ -343,7 +351,7 @@ defmodule Bitcoinex.Script do
       }),
       do: true
 
-  def is_p2pkh?(%__MODULE__{}), do: false
+  def is_p2pkh?(_), do: false
 
   @doc """
   	is_p2sh? returns whether a given script is of the p2sh format:
@@ -353,7 +361,7 @@ defmodule Bitcoinex.Script do
   def is_p2sh?(%__MODULE__{items: [0xA9, @h160_length, <<_::binary-size(@h160_length)>>, 0x87]}),
     do: true
 
-  def is_p2sh?(%__MODULE__{}), do: false
+  def is_p2sh?(_), do: false
 
   @doc """
   	is_p2wpkh? returns whether a given script is of the p2wpkh format:
@@ -363,7 +371,7 @@ defmodule Bitcoinex.Script do
   def is_p2wpkh?(%__MODULE__{items: [0x00, @h160_length, <<_::binary-size(@h160_length)>>]}),
     do: true
 
-  def is_p2wpkh?(%__MODULE__{}), do: false
+  def is_p2wpkh?(_), do: false
 
   @doc """
   	is_p2wsh? returns whether a given script is of the p2wsh format:
@@ -373,7 +381,7 @@ defmodule Bitcoinex.Script do
   def is_p2wsh?(%__MODULE__{items: [0x00, @wsh_length, <<_::binary-size(@wsh_length)>>]}),
     do: true
 
-  def is_p2wsh?(%__MODULE__{}), do: false
+  def is_p2wsh?(_), do: false
 
   @doc """
   	is_p2tr? returns whether a given script is of the p2tr format:
@@ -383,39 +391,39 @@ defmodule Bitcoinex.Script do
   def is_p2tr?(%__MODULE__{items: [0x51, @tapkey_length, <<_::binary-size(@tapkey_length)>>]}),
     do: true
 
-  def is_p2tr?(%__MODULE__{}), do: false
+  def is_p2tr?(_), do: false
 
   @doc """
-  	is_multi? returns whether a given script is of the raw multisig format:
+  	is_multisig? returns whether a given script is of the raw multisig format:
   	OP_(INT) [Public Keys] OP_(INT) OP_CHECKMULTISIG
   """
-  @spec is_multi?(t()) :: boolean
-  def is_multi?(%__MODULE__{items: [op_m | rest]})
+  @spec is_multisig?(t()) :: boolean
+  def is_multisig?(%__MODULE__{items: [op_m | rest]})
       when op_m > 0x50 and op_m <= 0x60 and length(rest) > 3 do
-    test_multi(rest, 0, op_m)
+    test_multisig(rest, 0, op_m)
   end
 
-  def is_multi?(_), do: false
+  def is_multisig?(_), do: false
 
-  defp test_multi([op_n, 0xAE], n, m) when op_n == 0x50 + n and m <= op_n, do: true
+  defp test_multisig([op_n, 0xAE], n, m) when op_n == 0x50 + n and m <= op_n, do: true
 
-  defp test_multi([op_push | [pk | rest]], n, m) when op_push in @pubkey_lengths do
+  defp test_multisig([op_push | [pk | rest]], n, m) when op_push in @pubkey_lengths do
     case Point.parse_public_key(pk) do
-      {:ok, _pk} -> test_multi(rest, n + 1, m)
+      {:ok, _pk} -> test_multisig(rest, n + 1, m)
       {:error, _msg} -> false
     end
   end
 
-  defp test_multi(_, _, _), do: false
+  defp test_multisig(_, _, _), do: false
 
   @doc """
-    extract_multi_policy takes in a raw multisig script and returns the m, the
+    extract_multisig_policy takes in a raw multisig script and returns the m, the
     number of signatures required and the n authorized public keys.
   """
-  @spec extract_multi_policy(t()) ::
+  @spec extract_multisig_policy(t()) ::
           {:ok, non_neg_integer(), list(Point.t())} | {:error, String.t()}
-  def extract_multi_policy(script = %__MODULE__{items: [op_m | items]}) do
-    if is_multi?(script) do
+  def extract_multisig_policy(script = %__MODULE__{items: [op_m | items]}) do
+    if is_multisig?(script) do
       {:ok, op_m - 0x50, extractor(items, [])}
     else
       {:error, "invalid raw multisig script"}
@@ -445,7 +453,7 @@ defmodule Bitcoinex.Script do
       is_p2wsh?(script) -> :p2wsh
       is_p2pk?(script) -> :p2pk
       is_p2tr?(script) -> :p2tr
-      is_multi?(script) -> :multi
+      is_multisig?(script) -> :multi
       true -> :non_standard
     end
   end
@@ -456,12 +464,13 @@ defmodule Bitcoinex.Script do
   	create_p2pk creates a p2pk script using the passed public key
   """
   @spec create_p2pk(binary) :: {:ok, t()} | {:error, String.t()}
-  def create_p2pk(pk) when is_binary(pk) and byte_size(pk) in [33, 65] do
+  def create_p2pk(pk) when is_binary(pk) and byte_size(pk) in @pubkey_lengths do
     {:ok, s} = push_op(new(), 0xAC)
     push_data(s, pk)
   end
 
-  def create_p2pk(_), do: {:error, "pubkey must be 33 or 65 bytes compressed or uncompressed SEC"}
+  def create_p2pk(_),
+    do: {:error, "pubkey must be 32, 33, 65 bytes compressed or uncompressed SEC"}
 
   @doc """
   	create_p2pkh creates a p2pkh script using the passed 20-byte public key hash
@@ -501,44 +510,44 @@ defmodule Bitcoinex.Script do
   end
 
   @doc """
-    create_multi creates a raw multisig script using m and the list of public keys.
+    create_multisig creates a raw multisig script using m and the list of public keys.
   """
-  @spec create_multi(non_neg_integer(), list(Point.t())) :: {:ok, t()} | {:error, String.t()}
-  def create_multi(m, pubkeys) when is_valid_multi(m, pubkeys) do
+  @spec create_multisig(non_neg_integer(), list(Point.t())) :: {:ok, t()} | {:error, String.t()}
+  def create_multisig(m, pubkeys) when is_valid_multisig(m, pubkeys) do
     try do
       # checkmultisig
       {:ok, s} = push_op(new(), 0xAE)
       {:ok, s} = push_op(s, 0x50 + length(pubkeys))
-      s = fill_multi_keys(s, pubkeys)
+      s = fill_multisig_keys(s, pubkeys)
       push_op(s, 0x50 + m)
     rescue
       _ -> {:error, "invalid public key."}
     end
   end
 
-  def create_multi(_, _), do: {:error, "invalid multisig: must be of form: (int, list(%Point)"}
+  def create_multisig(_, _), do: {:error, "invalid multisig: must be of form: (int, list(%Point)"}
 
-  defp fill_multi_keys(s, []), do: s
+  defp fill_multisig_keys(s, []), do: s
 
-  defp fill_multi_keys(s, [pk = %Point{} | pubkeys]) do
-    {:ok, s} = push_data(fill_multi_keys(s, pubkeys), Point.sec(pk))
+  defp fill_multisig_keys(s, [pk = %Point{} | pubkeys]) do
+    {:ok, s} = push_data(fill_multisig_keys(s, pubkeys), Point.sec(pk))
     s
   end
 
-  defp fill_multi_keys(_, _), do: raise(ArgumentError)
+  defp fill_multisig_keys(_, _), do: raise(ArgumentError)
 
   @doc """
-    create_p2sh_multi returns both a P2SH-wrapped multisig script
+    create_p2sh_multisig returns both a P2SH-wrapped multisig script
     and the underlying raw multisig script using m and the list of public keys.
   """
-  @spec create_p2sh_multi(non_neg_integer(), list(Point.t())) ::
+  @spec create_p2sh_multisig(non_neg_integer(), list(Point.t())) ::
           {:ok, t(), t()} | {:error, String.t()}
-  def create_p2sh_multi(m, pubkeys) do
-    case create_multi(m, pubkeys) do
-      {:ok, multi} ->
-        h160 = hash160(multi)
+  def create_p2sh_multisig(m, pubkeys) do
+    case create_multisig(m, pubkeys) do
+      {:ok, multisig} ->
+        h160 = hash160(multisig)
         {:ok, p2sh} = create_p2sh(h160)
-        {:ok, p2sh, multi}
+        {:ok, p2sh, multisig}
 
       {:error, msg} ->
         {:error, msg}
@@ -546,17 +555,17 @@ defmodule Bitcoinex.Script do
   end
 
   @doc """
-    create_p2wsh_multi returns both a P2WSH-wrapped multisig script
+    create_p2wsh_multisig returns both a P2WSH-wrapped multisig script
     and the underlying raw multisig script using m and the list of public keys.
   """
-  @spec create_p2wsh_multi(non_neg_integer(), list(Point.t())) ::
+  @spec create_p2wsh_multisig(non_neg_integer(), list(Point.t())) ::
           {:ok, t(), t()} | {:error, String.t()}
-  def create_p2wsh_multi(m, pubkeys) do
-    case create_multi(m, pubkeys) do
-      {:ok, multi} ->
-        h256 = sha256(multi)
+  def create_p2wsh_multisig(m, pubkeys) do
+    case create_multisig(m, pubkeys) do
+      {:ok, multisig} ->
+        h256 = sha256(multisig)
         {:ok, p2wsh} = create_p2wsh(h256)
-        {:ok, p2wsh, multi}
+        {:ok, p2wsh, multisig}
 
       {:error, msg} ->
         {:error, msg}
@@ -603,13 +612,62 @@ defmodule Bitcoinex.Script do
 
   @doc """
   	create_p2tr creates a p2tr script using the passed 32-byte public key
-    or Point. If a point is passed, it's interpreted as q, the full witness
-    program or taproot output key per BIP 341 rather than the keyspend pubkey.
+    or Point. If a point is passed, it's interpreted as p, the internal key.
+    If only p is passed, the script_tree is assumed to be empty.
   """
-  @spec create_p2tr(binary | Point.t()) :: {:ok, t()}
-  def create_p2tr(<<pk::binary-size(@tapkey_length)>>), do: create_witness_scriptpubkey(1, pk)
-  def create_p2tr(q = %Point{}), do: create_witness_scriptpubkey(1, Point.x_bytes(q))
-  def create_p2tr(_), do: {:error, "public key must be #{@tapkey_length}-bytes"}
+  @spec create_p2tr(<<_::256>> | Point.t() | nil, Taproot.script_tree()) ::
+          {:ok, Bitcoinex.Script.t()}
+          | {:ok, Bitcoinex.Script.t(), non_neg_integer()}
+          | {:error, String.t()}
+  def create_p2tr(p \\ nil, script_tree \\ nil)
+  def create_p2tr(nil, nil), do: {:error, "script_tree or internal pubkey must be non-nil"}
+  def create_p2tr(p = %Point{}, script_tree), do: create_p2tr(Point.x_bytes(p), script_tree)
+
+  def create_p2tr(<<px::binary-size(@tapkey_length)>>, script_tree) do
+    {_, hash} = Taproot.merkelize_script_tree(script_tree)
+    {:ok, p} = Point.lift_x(px)
+    q = Taproot.tweak_pubkey(p, hash)
+    create_witness_scriptpubkey(1, Point.x_bytes(q))
+  end
+
+  def create_p2tr(nil, script_tree) do
+    r =
+      32
+      |> :crypto.strong_rand_bytes()
+      |> :binary.decode_unsigned()
+
+    create_p2tr_script_only(script_tree, r)
+  end
+
+  @spec create_p2tr_script_only(Taproot.script_tree(), non_neg_integer()) ::
+          {:ok, Bitcoinex.Script.t(), non_neg_integer()}
+  def create_p2tr_script_only(script_tree, r) do
+    p = calculate_unsolvable_internal_key(r)
+    {:ok, script} = create_p2tr(p, script_tree)
+    {:ok, script, r}
+  end
+
+  @spec calculate_unsolvable_internal_key(non_neg_integer) ::
+          {:error, String.t()} | Bitcoinex.Secp256k1.Point.t()
+  def calculate_unsolvable_internal_key(r) do
+    case PrivateKey.new(r) do
+      {:error, msg} ->
+        {:error, msg}
+
+      {:ok, sk} ->
+        {:ok, hk} = Point.lift_x(@h)
+
+        sk
+        |> PrivateKey.to_point()
+        |> Math.add(hk)
+    end
+  end
+
+  @spec validate_unsolvable_internal_key(t(), Taproot.script_tree(), non_neg_integer) :: boolean
+  def validate_unsolvable_internal_key(p2tr_script, script_tree, r) do
+    {:ok, script, _} = create_p2tr_script_only(script_tree, r)
+    script == p2tr_script
+  end
 
   @doc """
   	create_p2sh_p2wpkh creates a p2wsh script using the passed 20-byte public key hash
