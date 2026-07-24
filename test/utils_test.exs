@@ -57,6 +57,22 @@ defmodule Bitcoinex.UtilsTest do
       assert Utils.int_list_to_bits([], 10) == <<>>
     end
 
+    test "raises when a value does not fit in width bits" do
+      assert_raise ArgumentError, "integer 2048 does not fit in 11 bits", fn ->
+        Utils.int_list_to_bits([2048], 11)
+      end
+
+      assert_raise ArgumentError, "integer 1024 does not fit in 10 bits", fn ->
+        Utils.int_list_to_bits([0, 1024], 10)
+      end
+    end
+
+    test "raises on negative values" do
+      assert_raise ArgumentError, "integer -1 does not fit in 11 bits", fn ->
+        Utils.int_list_to_bits([-1], 11)
+      end
+    end
+
     property "round-trips against the bitstring comprehension" do
       check all(
               width <- StreamData.member_of([10, 11]),
