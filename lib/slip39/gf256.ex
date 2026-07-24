@@ -74,7 +74,10 @@ defmodule Bitcoinex.SLIP39.GF256 do
   def mul(_a, 0), do: 0
 
   def mul(a, b) do
-    elem(@exp_table, rem(elem(@log_table, a) + elem(@log_table, b), 255))
+    # Integer.mod (not rem) to stay consistent with divide/2 and pow/2, whose
+    # operands can go negative; the sum here is always non-negative, so the two
+    # would agree, but a uniform reduction avoids a future copy-paste footgun.
+    elem(@exp_table, Integer.mod(elem(@log_table, a) + elem(@log_table, b), 255))
   end
 
   @doc """

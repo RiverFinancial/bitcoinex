@@ -88,15 +88,27 @@ defmodule Bitcoinex.SLIP39.Shamir do
 
   When `threshold == 1` the single share's value is the secret. Otherwise the
   secret (index 255) and digest share (index 254) are interpolated from the
-  given points and the digest is verified. Rejections, checked in order:
+  given points and the digest is verified. *Every* passed share is used in the
+  interpolation, so the caller decides which shares to hand in: supplying more
+  than `threshold` shares works only if all of them lie on the polynomial — one
+  corrupt extra share fails the whole recovery with `{:error, :invalid_digest}`
+  rather than falling back to a valid `threshold`-sized subset. Rejections,
+  checked in order:
 
   - fewer than `threshold` shares yields `{:error, :insufficient_shares}`;
+  - an index outside the valid share range `0..#{@max_share_count - 1}` (which
+    includes the reserved digest/secret anchor indices 254/255) yields
+    `{:error, :invalid_share_index}`;
   - duplicate share indices yield `{:error, :duplicate_share_indices}`;
   - a wrong or corrupted share set yields `{:error, :invalid_digest}`.
   """
   @spec recover_secret(1..16, [{byte(), binary()}]) ::
           {:ok, binary()}
-          | {:error, :invalid_digest | :duplicate_share_indices | :insufficient_shares}
+          | {:error,
+             :invalid_digest
+             | :duplicate_share_indices
+             | :insufficient_shares
+             | :invalid_share_index}
   def recover_secret(1, [{_index, value} | _rest]), do: {:ok, value}
   def recover_secret(1, []), do: {:error, :insufficient_shares}
 
@@ -106,6 +118,14 @@ defmodule Bitcoinex.SLIP39.Shamir do
     cond do
       length(shares) < threshold ->
         {:error, :insufficient_shares}
+
+      # Real share indices are always 0..count-1 with count <= @max_share_count.
+      # Rejecting anything outside that range keeps a caller-supplied index from
+      # colliding with the reserved anchors (254/255): such an index would make
+      # GF256.interpolate short-circuit on its keyfind fast path and hand back a
+      # share's raw value in place of a genuinely interpolated secret/digest.
+      Enum.any?(indices, &(&1 not in 0..(@max_share_count - 1))) ->
+        {:error, :invalid_share_index}
 
       indices != Enum.uniq(indices) ->
         {:error, :duplicate_share_indices}

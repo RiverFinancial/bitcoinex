@@ -146,6 +146,19 @@ defmodule Bitcoinex.SLIP39.ShamirTest do
       assert Shamir.recover_secret(2, [share_a, {index_a, value_b}]) ==
                {:error, :duplicate_share_indices}
     end
+
+    test "share index outside 0..15 -> {:error, :invalid_share_index}" do
+      rng = make_rng(41)
+      [share_a, {_index_b, value_b} | _] = Shamir.split_secret(2, 3, @secret_16, rng)
+
+      # the reserved anchor indices (digest 254, secret 255) must not be usable
+      # as share indices: interpolate/2's keyfind fast path would otherwise hand
+      # back a raw share value in place of an interpolated secret/digest.
+      for bad_index <- [16, 254, 255] do
+        assert Shamir.recover_secret(2, [share_a, {bad_index, value_b}]) ==
+                 {:error, :invalid_share_index}
+      end
+    end
   end
 
   describe "split_secret/4 contract guards" do
@@ -244,6 +257,10 @@ defmodule Bitcoinex.SLIP39.ShamirTest do
       end
     end
 
+    # A corrupted subset could in principle pass the digest check by chance,
+    # but the digest is 4 bytes so that false-accept probability is ~2^-32 per
+    # generated case; across the property's runs a spurious failure here is
+    # astronomically unlikely, not a real flake.
     property "corrupting one byte of one share in the subset -> {:error, :invalid_digest}" do
       check all(
               secret_length <- member_of([16, 32]),
