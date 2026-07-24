@@ -89,7 +89,7 @@ defmodule Bitcoinex.SLIP39.GF256 do
       0x57
   """
   @spec divide(byte(), byte()) :: byte()
-  def divide(_a, 0), do: raise(ArithmeticError)
+  def divide(_a, 0), do: raise(ArithmeticError, message: "GF(256) division by zero")
   def divide(0, _b), do: 0
 
   def divide(a, b) do
@@ -111,7 +111,7 @@ defmodule Bitcoinex.SLIP39.GF256 do
   @spec pow(byte(), integer()) :: byte()
   def pow(_a, 0), do: 1
   def pow(0, n) when n > 0, do: 0
-  def pow(0, _n), do: raise(ArithmeticError)
+  def pow(0, _n), do: raise(ArithmeticError, message: "GF(256) 0 raised to a negative power")
 
   def pow(a, n) do
     elem(@exp_table, Integer.mod(elem(@log_table, a) * n, 255))
@@ -124,7 +124,8 @@ defmodule Bitcoinex.SLIP39.GF256 do
   `points` is a list of `{x_i, y_i}` where each `y_i` is a binary of the same
   length `n`; the return value is the `n`-byte binary `f(x)`. All `x_i` must
   be distinct (caller-guaranteed). If `x` equals one of the `x_i`, the
-  corresponding `y_i` is returned directly.
+  corresponding `y_i` is returned directly. Raises `ArgumentError` if the
+  `y_i` do not all share the same byte length.
 
   ## Examples
 
@@ -140,8 +141,14 @@ defmodule Bitcoinex.SLIP39.GF256 do
   end
 
   defp lagrange_interpolate([{_x0, y0} | _] = points, x) do
+    lane_count = byte_size(y0)
+
+    unless Enum.all?(points, fn {_xi, yi} -> byte_size(yi) == lane_count end) do
+      raise ArgumentError, "interpolation points must all have the same byte length"
+    end
+
     xs = Enum.map(points, fn {xi, _yi} -> xi end)
-    zero_lanes = List.duplicate(0, byte_size(y0))
+    zero_lanes = List.duplicate(0, lane_count)
 
     points
     |> Enum.map(fn {xi, yi} ->

@@ -179,6 +179,16 @@ defmodule Bitcoinex.SLIP39.GF256Test do
       points = [{5, <<1, 2, 3>>}, {9, <<4, 5, 6>>}]
       assert GF256.interpolate(points, 9) == <<4, 5, 6>>
     end
+
+    test "points with unequal byte lengths raise ArgumentError" do
+      points = [{1, <<1, 2, 3>>}, {2, <<4, 5>>}]
+
+      assert_raise ArgumentError, fn -> GF256.interpolate(points, 0) end
+
+      # but the early keyfind path still returns a matching y directly,
+      # without needing the other lanes to line up
+      assert GF256.interpolate(points, 2) == <<4, 5>>
+    end
   end
 
   describe "field properties" do

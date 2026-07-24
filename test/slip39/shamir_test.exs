@@ -98,13 +98,17 @@ defmodule Bitcoinex.SLIP39.ShamirTest do
   end
 
   describe "recover_secret/2 failure modes" do
-    test "fewer than threshold shares -> {:error, :invalid_digest}" do
+    test "fewer than threshold shares -> {:error, :insufficient_shares}" do
       rng = make_rng(11)
       shares = Shamir.split_secret(3, 5, @secret_16, rng)
 
       for subset <- combinations(shares, 2) do
-        assert Shamir.recover_secret(3, subset) == {:error, :invalid_digest}
+        assert Shamir.recover_secret(3, subset) == {:error, :insufficient_shares}
       end
+
+      # empty share sets are rejected the same way, at both threshold branches
+      assert Shamir.recover_secret(3, []) == {:error, :insufficient_shares}
+      assert Shamir.recover_secret(1, []) == {:error, :insufficient_shares}
     end
 
     test "one corrupted share byte -> {:error, :invalid_digest}" do
@@ -160,6 +164,26 @@ defmodule Bitcoinex.SLIP39.ShamirTest do
       assert_raise FunctionClauseError, fn ->
         Shamir.split_secret(1, 17, @secret_16, rng)
       end
+    end
+
+    test "secret shorter than the digest length raises for threshold >= 2" do
+      rng = make_rng(31)
+
+      # threshold >= 2 needs a random_part of byte_size(secret) - 4 bytes;
+      # a secret shorter than 4 bytes would demand a negative-length draw
+      for tiny <- [<<>>, <<1>>, <<1, 2, 3>>] do
+        assert_raise FunctionClauseError, fn ->
+          Shamir.split_secret(2, 3, tiny, rng)
+        end
+      end
+
+      # exactly the digest length is the boundary and is allowed
+      assert [_ | _] = Shamir.split_secret(2, 3, <<1, 2, 3, 4>>, rng)
+    end
+
+    test "threshold == 1 accepts an arbitrarily short secret (no digest used)" do
+      rng = make_rng(37)
+      assert Shamir.split_secret(1, 3, <<9>>, rng) == [{0, <<9>>}, {1, <<9>>}, {2, <<9>>}]
     end
   end
 

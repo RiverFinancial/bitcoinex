@@ -11,8 +11,10 @@ defmodule Bitcoinex.SLIP39.Shamir do
     `x = 255` and a digest share at `x = 254`. The digest share is
     `HMAC-SHA256(random_part, secret)` truncated to its first 4 bytes,
     concatenated with the `n - 4`-byte `random_part`. On recovery the digest
-    is recomputed and verified, rejecting wrong or insufficient share sets
-    with `{:error, :invalid_digest}` (false-accept probability ~2^-32).
+    is recomputed and verified, rejecting wrong share sets with
+    `{:error, :invalid_digest}` (false-accept probability ~2^-32). Share sets
+    with fewer than `threshold` shares are rejected deterministically up front
+    with `{:error, :insufficient_shares}`.
   - `threshold == 1` is a special case: every share is the secret verbatim.
 
   Randomness is injected via an `rng` function (`byte_count -> binary`).
@@ -36,6 +38,10 @@ defmodule Bitcoinex.SLIP39.Shamir do
   secret anchor points are placed at indices 254 and 255, and the remaining
   share indices are interpolated from those `threshold` points.
 
+  For `threshold >= 2` the secret must be at least
+  #{@digest_length_bytes} bytes long (so the digest share's random part is
+  non-negative); a shorter secret raises `FunctionClauseError`.
+
   ## Examples
 
       iex> rng = fn byte_count -> :binary.copy(<<7>>, byte_count) end
@@ -54,7 +60,8 @@ defmodule Bitcoinex.SLIP39.Shamir do
   # and secret (255) anchor indices; an uncapped count would emit the secret
   # verbatim as the share at index 255
   def split_secret(threshold, count, secret, rng)
-      when threshold >= 2 and threshold <= count and count <= @max_share_count do
+      when threshold >= 2 and threshold <= count and count <= @max_share_count and
+             byte_size(secret) >= @digest_length_bytes do
     random_share_count = threshold - 2
 
     base_shares =
@@ -81,29 +88,37 @@ defmodule Bitcoinex.SLIP39.Shamir do
 
   When `threshold == 1` the single share's value is the secret. Otherwise the
   secret (index 255) and digest share (index 254) are interpolated from the
-  given points and the digest is verified; a wrong, corrupted, or
-  under-threshold share set yields `{:error, :invalid_digest}`. Share
-  indices must be distinct; duplicates yield
-  `{:error, :duplicate_share_indices}`.
+  given points and the digest is verified. Rejections, checked in order:
+
+  - fewer than `threshold` shares yields `{:error, :insufficient_shares}`;
+  - duplicate share indices yield `{:error, :duplicate_share_indices}`;
+  - a wrong or corrupted share set yields `{:error, :invalid_digest}`.
   """
   @spec recover_secret(1..16, [{byte(), binary()}]) ::
-          {:ok, binary()} | {:error, :invalid_digest | :duplicate_share_indices}
+          {:ok, binary()}
+          | {:error, :invalid_digest | :duplicate_share_indices | :insufficient_shares}
   def recover_secret(1, [{_index, value} | _rest]), do: {:ok, value}
+  def recover_secret(1, []), do: {:error, :insufficient_shares}
 
   def recover_secret(threshold, shares) when threshold >= 2 do
     indices = Enum.map(shares, fn {index, _value} -> index end)
 
-    if indices == Enum.uniq(indices) do
-      secret = GF256.interpolate(shares, @secret_index)
-      digest_share = GF256.interpolate(shares, @digest_index)
+    cond do
+      length(shares) < threshold ->
+        {:error, :insufficient_shares}
 
-      if valid_digest?(digest_share, secret) do
-        {:ok, secret}
-      else
-        {:error, :invalid_digest}
-      end
-    else
-      {:error, :duplicate_share_indices}
+      indices != Enum.uniq(indices) ->
+        {:error, :duplicate_share_indices}
+
+      true ->
+        secret = GF256.interpolate(shares, @secret_index)
+        digest_share = GF256.interpolate(shares, @digest_index)
+
+        if valid_digest?(digest_share, secret) do
+          {:ok, secret}
+        else
+          {:error, :invalid_digest}
+        end
     end
   end
 
