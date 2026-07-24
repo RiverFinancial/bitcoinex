@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+### Added
+- BIP-39 mnemonic support (`Bitcoinex.BIP39`): entropy-to-mnemonic encoding and decoding with checksum validation, NFKD-normalized seed derivation via PBKDF2-HMAC-SHA512, and master extended private key derivation.
+
 ## [0.1.8] - 2024-03-01
 ### Added
 - Fix warning emitted from String.slice with negative step when parsing amountful BOLT11 invoices.
