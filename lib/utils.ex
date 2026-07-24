@@ -38,6 +38,49 @@ defmodule Bitcoinex.Utils do
     )
   end
 
+  @doc """
+  pbkdf2 derives a key of key_len bytes from the password and salt using
+  PBKDF2-HMAC (RFC 2898). Callers own any string normalization and salt
+  construction (e.g. BIP-39 NFKD, SLIP-39 salt prefixes).
+  """
+  @spec pbkdf2(:sha256 | :sha512, binary, binary, pos_integer(), pos_integer()) :: binary
+  def pbkdf2(digest, password, salt, iterations, key_len) do
+    :crypto.pbkdf2_hmac(digest, password, salt, iterations, key_len)
+  end
+
+  @doc """
+  int_list_to_bits packs a list of non-negative integers into a bitstring,
+  MSB-first, using width bits per integer. Each integer must fit in width
+  bits; raises ArgumentError on any negative value or value >= 2^width so
+  that over-width inputs surface loudly rather than being silently truncated.
+
+  ## Examples
+
+      iex> Bitcoinex.Utils.int_list_to_bits([1, 2, 3], 11)
+      <<0, 32, 8, 1, 1::size(1)>>
+
+      iex> Bitcoinex.Utils.int_list_to_bits([1023, 0], 10)
+      <<255, 192, 0::size(4)>>
+
+      iex> Bitcoinex.Utils.int_list_to_bits([], 10)
+      <<>>
+
+      iex> Bitcoinex.Utils.int_list_to_bits([2048], 11)
+      ** (ArgumentError) integer 2048 does not fit in 11 bits
+  """
+  @spec int_list_to_bits(list(non_neg_integer()), pos_integer()) :: bitstring
+  def int_list_to_bits(ints, width) do
+    max = Bitwise.bsl(1, width)
+
+    for i <- ints, into: <<>> do
+      if i < 0 or i >= max do
+        raise ArgumentError, "integer #{i} does not fit in #{width} bits"
+      end
+
+      <<i::size(width)>>
+    end
+  end
+
   @typedoc """
     The pad_type describes the padding to use.
   """
