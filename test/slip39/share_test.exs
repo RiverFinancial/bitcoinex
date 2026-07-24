@@ -222,6 +222,67 @@ defmodule Bitcoinex.SLIP39.ShareTest do
       share_256 = %Share{base | share_value: :binary.copy(<<0>>, 32)}
       assert share_256 |> Share.encode() |> String.split() |> length() == 33
     end
+
+    test "20-byte (160-bit) share value round-trips with zero padding (23 words)" do
+      # rem((23 - 7) * 10, 16) == 0, so this exercises the pad_bits == 0
+      # branch (a zero-width padding match) that the official 128-/256-bit
+      # vectors never hit.
+      share = %Share{
+        identifier: 0x1234,
+        extendable: false,
+        iteration_exponent: 3,
+        group_index: 1,
+        group_threshold: 2,
+        group_count: 3,
+        member_index: 4,
+        member_threshold: 2,
+        share_value: :binary.copy(<<0xAB>>, 20)
+      }
+
+      mnemonic = Share.encode(share)
+      assert length(String.split(mnemonic)) == 23
+      assert Share.decode(mnemonic) == {:ok, share}
+    end
+  end
+
+  describe "encode/1 guard" do
+    setup do
+      valid = %Share{
+        identifier: 1,
+        extendable: false,
+        iteration_exponent: 0,
+        group_index: 0,
+        group_threshold: 1,
+        group_count: 1,
+        member_index: 0,
+        member_threshold: 1,
+        share_value: :binary.copy(<<0>>, 16)
+      }
+
+      %{valid: valid}
+    end
+
+    test "accepts a well-formed struct", %{valid: valid} do
+      assert is_binary(Share.encode(valid))
+    end
+
+    test "raises on an out-of-range field", %{valid: valid} do
+      assert_raise FunctionClauseError, fn -> Share.encode(%Share{valid | identifier: 0x8000}) end
+      assert_raise FunctionClauseError, fn -> Share.encode(%Share{valid | group_threshold: 0}) end
+      assert_raise FunctionClauseError, fn -> Share.encode(%Share{valid | member_index: 16}) end
+    end
+
+    test "raises on a share_value that is not a SLIP-39-valid length", %{valid: valid} do
+      # too short (< 128 bits)
+      assert_raise FunctionClauseError, fn ->
+        Share.encode(%Share{valid | share_value: :binary.copy(<<0>>, 8)})
+      end
+
+      # odd byte count (not a multiple of 16 bits) — would not round-trip
+      assert_raise FunctionClauseError, fn ->
+        Share.encode(%Share{valid | share_value: :binary.copy(<<0>>, 17)})
+      end
+    end
   end
 
   defp share_generator do
@@ -234,7 +295,7 @@ defmodule Bitcoinex.SLIP39.ShareTest do
           group_threshold <- integer(1..group_count),
           member_index <- integer(0..15),
           member_threshold <- integer(1..16),
-          value_length <- member_of([16, 32]),
+          value_length <- member_of([16, 20, 32]),
           share_value <- binary(length: value_length)
         ) do
       %Share{

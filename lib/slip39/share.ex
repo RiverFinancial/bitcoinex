@@ -54,25 +54,47 @@ defmodule Bitcoinex.SLIP39.Share do
         }
 
   @doc """
-  encode serializes a share to its space-joined mnemonic string. It cannot
-  fail on a well-formed struct: all fields are range-constrained and
-  `share_value` is a whole number of bytes.
+  encode serializes a share to its space-joined mnemonic string.
+
+  It cannot fail on a well-formed struct, and the guard enforces exactly
+  what "well-formed" means: every field is within the range its wire
+  encoding allows, and `share_value` is a SLIP-39-valid length — a whole
+  number of bytes, at least 128 bits (16 bytes), and a multiple of 16 bits
+  (even byte count). An out-of-range struct is a programmer error and
+  raises `FunctionClauseError` rather than silently truncating a field or
+  emitting a mnemonic that cannot be decoded back.
   """
   @spec encode(t()) :: String.t()
-  def encode(%__MODULE__{} = share) do
-    pad_bits = rem(@radix_bits - rem(bit_size(share.share_value), @radix_bits), @radix_bits)
-    ext_bit = if share.extendable, do: 1, else: 0
-    group_threshold_minus1 = share.group_threshold - 1
-    group_count_minus1 = share.group_count - 1
-    member_threshold_minus1 = share.member_threshold - 1
+  def encode(%__MODULE__{
+        identifier: identifier,
+        extendable: extendable,
+        iteration_exponent: iteration_exponent,
+        group_index: group_index,
+        group_threshold: group_threshold,
+        group_count: group_count,
+        member_index: member_index,
+        member_threshold: member_threshold,
+        share_value: share_value
+      })
+      when identifier in 0..0x7FFF and is_boolean(extendable) and
+             iteration_exponent in 0..15 and group_index in 0..15 and
+             group_threshold in 1..16 and group_count in 1..16 and
+             member_index in 0..15 and member_threshold in 1..16 and
+             is_binary(share_value) and byte_size(share_value) >= 16 and
+             rem(byte_size(share_value), 2) == 0 do
+    pad_bits = rem(@radix_bits - rem(bit_size(share_value), @radix_bits), @radix_bits)
+    ext_bit = if extendable, do: 1, else: 0
+    group_threshold_minus1 = group_threshold - 1
+    group_count_minus1 = group_count - 1
+    member_threshold_minus1 = member_threshold - 1
 
     data_bits =
-      <<share.identifier::15, ext_bit::1, share.iteration_exponent::4, share.group_index::4,
-        group_threshold_minus1::4, group_count_minus1::4, share.member_index::4,
-        member_threshold_minus1::4, 0::size(pad_bits), share.share_value::binary>>
+      <<identifier::15, ext_bit::1, iteration_exponent::4, group_index::4,
+        group_threshold_minus1::4, group_count_minus1::4, member_index::4,
+        member_threshold_minus1::4, 0::size(pad_bits), share_value::binary>>
 
     data_words = for <<idx::10 <- data_bits>>, do: idx
-    words = data_words ++ Encoding.rs1024_create_checksum(data_words, share.extendable)
+    words = data_words ++ Encoding.rs1024_create_checksum(data_words, extendable)
 
     words
     |> Encoding.indices_to_words()
