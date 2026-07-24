@@ -96,6 +96,10 @@ defmodule Bitcoinex.SLIP39.CipherTest do
     end
   end
 
+  # TODO(S5): replace this hand-rolled extraction with the real Share codec
+  # once it lands, so the known-answer test exercises production parsing rather
+  # than a test-local reimplementation of the wire layout.
+  #
   # Hand-extracts (identifier, extendable, iteration_exponent, ems) from a
   # 20-word 1-of-1 SLIP-39 share mnemonic, following the wire layout in the
   # SLIP-39 spec (each word is a 10-bit index into priv/slip39_english.txt):
