@@ -69,10 +69,38 @@ defmodule Bitcoinex.SLIP39.CipherTest do
 
       ms = Base.decode16!("bb54aac4b89dc868ba37d9cc21b2cece", case: :lower)
 
-      {identifier, extendable, iteration_exponent, ems} = extract_share_params(mnemonic)
+      {identifier, extendable, iteration_exponent, ems} =
+        extract_share_params(mnemonic, byte_size(ms))
 
       # Lock down the extraction itself so a helper bug cannot mask a cipher bug.
       assert identifier == 7945
+      assert extendable == false
+      assert iteration_exponent == 0
+
+      assert Cipher.decrypt(ems, "TREZOR", iteration_exponent, identifier, extendable) == ms
+      # encryption is the exact inverse
+      assert Cipher.encrypt(ms, "TREZOR", iteration_exponent, identifier, extendable) == ems
+    end
+
+    # Official vector index 19 from test/data/slip39_vectors.json:
+    # "20. Valid mnemonic without sharing (256 bits)", passphrase "TREZOR".
+    # A 33-word share exercises a longer EMS and a different pad width (4 bits)
+    # than the 128-bit vector, catching half-splitting or length bugs that a
+    # same-length round-trip cannot.
+    test "known-answer: decrypts the EMS embedded in official vector 20 (256 bits)" do
+      mnemonic =
+        "theory painting academic academic armed sweater year military elder discuss " <>
+          "acne wildlife boring employer fused large satoshi bundle carbon diagnose " <>
+          "anatomy hamster leaves tracks paces beyond phantom capital marvel lips " <>
+          "brave detect luck"
+
+      ms = @ms32
+
+      {identifier, extendable, iteration_exponent, ems} =
+        extract_share_params(mnemonic, byte_size(ms))
+
+      # Lock down the extraction itself so a helper bug cannot mask a cipher bug.
+      assert identifier == 29_172
       assert extendable == false
       assert iteration_exponent == 0
 
@@ -101,21 +129,24 @@ defmodule Bitcoinex.SLIP39.CipherTest do
   # than a test-local reimplementation of the wire layout.
   #
   # Hand-extracts (identifier, extendable, iteration_exponent, ems) from a
-  # 20-word 1-of-1 SLIP-39 share mnemonic, following the wire layout in the
-  # SLIP-39 spec (each word is a 10-bit index into priv/slip39_english.txt):
+  # 1-of-1 SLIP-39 share mnemonic, following the wire layout in the SLIP-39
+  # spec (each word is a 10-bit index into priv/slip39_english.txt):
   #
-  #   20 words * 10 bits = 200 bits; the last 3 words (30 bits) are the
-  #   RS1024 checksum, leaving 170 data bits:
+  #   N words * 10 bits total; the last 3 words (30 bits) are the RS1024
+  #   checksum, leaving (N - 3) * 10 data bits:
   #
   #   <<identifier::15, ext::1, iteration_exponent::4,
   #     group_index::4, group_threshold-1::4, group_count-1::4,
-  #     member_index::4, member_threshold-1::4,        # 40 metadata bits
-  #     padding::2, share_value::binary-size(16)>>     # 130 value bits
+  #     member_index::4, member_threshold-1::4,          # 40 metadata bits
+  #     padding::pad_bits, share_value::binary-size(n)>>  # padded share value
   #
-  #   The 130 value bits carry pad_bits = rem(130, 16) = 2 leading zero bits,
-  #   so the share value is the trailing 128 bits (16 bytes). For a 1-of-1
-  #   share the share value IS the encrypted master secret (EMS).
-  defp extract_share_params(mnemonic) do
+  #   The share value is left-padded with zero bits to word-align the mnemonic.
+  #   For a 1-of-1 share the share value IS the encrypted master secret (EMS),
+  #   whose byte length equals the master secret's, so the caller passes
+  #   `ems_bytes` and the padding width is whatever remains. (The pad width is
+  #   not always < 8 — a 24-byte secret pads with 8 bits — so it cannot be
+  #   inferred from the value length alone; the caller-supplied size is exact.)
+  defp extract_share_params(mnemonic, ems_bytes) do
     indices =
       mnemonic
       |> String.split()
@@ -123,9 +154,12 @@ defmodule Bitcoinex.SLIP39.CipherTest do
       |> Enum.drop(-3)
       |> Enum.map(&Map.fetch!(word_index(), &1))
 
+    bits = Utils.int_list_to_bits(indices, 10)
+    pad_bits = bit_size(bits) - 40 - ems_bytes * 8
+
     <<identifier::15, ext_bit::1, iteration_exponent::4, _group_index::4, _group_threshold_m1::4,
-      _group_count_m1::4, _member_index::4, _member_threshold_m1::4, 0::2,
-      ems::binary-size(16)>> = Utils.int_list_to_bits(indices, 10)
+      _group_count_m1::4, _member_index::4, _member_threshold_m1::4, 0::size(pad_bits),
+      ems::binary-size(ems_bytes)>> = bits
 
     {identifier, ext_bit == 1, iteration_exponent, ems}
   end
