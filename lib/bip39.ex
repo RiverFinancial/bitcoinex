@@ -94,8 +94,12 @@ defmodule Bitcoinex.BIP39 do
     Per BIP-39, seed derivation accepts any string, so the checksum is
     not validated here. Use `valid?/1` or `to_master_private_key/3` when
     validation is required.
+
+    Unlike the other functions in this module, which return result tuples,
+    this raises `ArgumentError` if the mnemonic or passphrase is not valid
+    UTF-8 (NFKD normalization is undefined otherwise).
   """
-  @spec to_seed(String.t(), binary) :: binary
+  @spec to_seed(String.t(), String.t()) :: binary
   def to_seed(mnemonic, passphrase \\ "") when is_binary(mnemonic) and is_binary(passphrase) do
     Utils.pbkdf2(
       :sha512,
@@ -111,9 +115,11 @@ defmodule Bitcoinex.BIP39 do
     from a mnemonic sentence and an optional passphrase. The mnemonic's
     checksum is validated before derivation.
   """
+  # Intentionally mirrors the private-key prefixes ExtendedKey supports; a new
+  # prv prefix must be added here too, otherwise it is rejected before derivation.
   @prv_prefix_atoms [:xprv, :tprv]
 
-  @spec to_master_private_key(String.t(), binary, atom) ::
+  @spec to_master_private_key(String.t(), String.t(), atom) ::
           {:ok, ExtendedKey.t()} | {:error, error() | String.t()}
   def to_master_private_key(mnemonic, passphrase \\ "", prefix \\ :xprv)
       when is_binary(mnemonic) and is_binary(passphrase) do
