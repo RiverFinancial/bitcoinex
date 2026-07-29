@@ -173,6 +173,63 @@ defmodule Bitcoinex.SLIP39.ShareTest do
 
       assert Share.decode(mutated) == {:error, :word_not_in_list}
     end
+
+    test "group_index >= group_count returns {:error, :invalid_group_index}" do
+      # A correctly-checksummed 1-of-1 mnemonic claiming group_count 1 but
+      # group_index 15 — a share SLIP-39 generation can never produce (group
+      # x-coordinates are 0..G-1). Without the check this recovers a secret.
+      # id=7945, ext=0, e=0, group_index=15, gt-1=0, gc-1=0, mi=0, mt-1=0,
+      # 2 pad bits, 16-byte value = 170 bits = 17 words.
+      data_bits = <<7945::15, 0::1, 0::4, 15::4, 0::4, 0::4, 0::4, 0::4, 0::2, 0::128>>
+
+      assert Share.decode(mnemonic_from_data_bits(data_bits)) ==
+               {:error, :invalid_group_index}
+    end
+
+    test "forbidden padding remainders (10/12/14 bits) return {:error, :invalid_secret_length}" do
+      # value_words = word_count - 7; pad_bits = rem(value_words * 10, 16). Any
+      # remainder > 8 is forbidden and can only come from an invalid-length
+      # secret. 21 words -> 12, 24 words -> 10, 26 words -> 14.
+      for word_count <- [21, 24, 26] do
+        data = List.duplicate(0, word_count - 3)
+        assert rem((word_count - 7) * 10, 16) > 8
+
+        mnemonic =
+          (data ++ Encoding.rs1024_create_checksum(data, false))
+          |> Encoding.indices_to_words()
+          |> Enum.join(" ")
+
+        assert length(String.split(mnemonic)) == word_count
+        assert Share.decode(mnemonic) == {:error, :invalid_secret_length}
+      end
+    end
+
+    test "non-zero padding at every valid width returns {:error, :invalid_padding}" do
+      # {pad_width, value_bytes}: the four non-zero valid padding widths.
+      for {pad_width, value_bytes} <- [{2, 16}, {4, 32}, {6, 18}, {8, 24}] do
+        nonzero_padding = 1
+
+        data_bits =
+          <<0::15, 0::1, 0::4, 0::4, 0::4, 0::4, 0::4, 0::4, nonzero_padding::size(pad_width),
+            0::size(value_bytes * 8)>>
+
+        assert rem(bit_size(data_bits), 10) == 0
+
+        assert Share.decode(mnemonic_from_data_bits(data_bits)) == {:error, :invalid_padding},
+               "expected :invalid_padding for #{pad_width}-bit padding / #{value_bytes}-byte value"
+      end
+    end
+  end
+
+  # Builds a checksum-valid, non-extendable mnemonic from raw data bits
+  # (a multiple of 10 bits), bypassing Share.encode/1's struct guard so that
+  # deliberately-malformed metadata can be exercised through decode/1.
+  defp mnemonic_from_data_bits(data_bits) do
+    data_words = for <<idx::10 <- data_bits>>, do: idx
+
+    (data_words ++ Encoding.rs1024_create_checksum(data_words, false))
+    |> Encoding.indices_to_words()
+    |> Enum.join(" ")
   end
 
   describe "wire format" do
@@ -181,9 +238,9 @@ defmodule Bitcoinex.SLIP39.ShareTest do
         identifier: 0x1234,
         extendable: true,
         iteration_exponent: 5,
-        group_index: 7,
+        group_index: 6,
         group_threshold: 2,
-        group_count: 3,
+        group_count: 8,
         member_index: 9,
         member_threshold: 4,
         share_value: :binary.copy(<<0xAB>>, 16)
@@ -198,9 +255,9 @@ defmodule Bitcoinex.SLIP39.ShareTest do
       assert identifier == 0x1234
       assert ext_bit == 1
       assert iteration_exponent == 5
-      assert group_index == 7
+      assert group_index == 6
       assert group_threshold_wire == 1
-      assert group_count_wire == 2
+      assert group_count_wire == 7
       assert member_index == 9
       assert member_threshold_wire == 3
     end
@@ -244,6 +301,46 @@ defmodule Bitcoinex.SLIP39.ShareTest do
       assert length(String.split(mnemonic)) == 23
       assert Share.decode(mnemonic) == {:ok, share}
     end
+
+    test "18-byte (144-bit) share value round-trips with 6-bit padding (22 words)" do
+      # rem((22 - 7) * 10, 16) == 6 — the largest-but-one valid padding width,
+      # not hit by the official 128-/256-bit vectors.
+      share = %Share{
+        identifier: 0x1234,
+        extendable: false,
+        iteration_exponent: 3,
+        group_index: 1,
+        group_threshold: 2,
+        group_count: 3,
+        member_index: 4,
+        member_threshold: 2,
+        share_value: :binary.copy(<<0xAB>>, 18)
+      }
+
+      mnemonic = Share.encode(share)
+      assert length(String.split(mnemonic)) == 22
+      assert Share.decode(mnemonic) == {:ok, share}
+    end
+
+    test "24-byte (192-bit) share value round-trips with maximal 8-bit padding (27 words)" do
+      # rem((27 - 7) * 10, 16) == 8 — the maximum padding width SLIP-39 allows;
+      # one more bit would trip the pad_bits > 8 rejection.
+      share = %Share{
+        identifier: 0x1234,
+        extendable: false,
+        iteration_exponent: 3,
+        group_index: 1,
+        group_threshold: 2,
+        group_count: 3,
+        member_index: 4,
+        member_threshold: 2,
+        share_value: :binary.copy(<<0xCD>>, 24)
+      }
+
+      mnemonic = Share.encode(share)
+      assert length(String.split(mnemonic)) == 27
+      assert Share.decode(mnemonic) == {:ok, share}
+    end
   end
 
   describe "encode/1 guard" do
@@ -284,6 +381,26 @@ defmodule Bitcoinex.SLIP39.ShareTest do
         Share.encode(%Share{valid | share_value: :binary.copy(<<0>>, 17)})
       end
     end
+
+    test "raises when group_index >= group_count (share never produced by SLIP-39)", %{
+      valid: valid
+    } do
+      assert_raise FunctionClauseError, fn ->
+        Share.encode(%Share{valid | group_index: 1, group_count: 1})
+      end
+
+      assert_raise FunctionClauseError, fn ->
+        Share.encode(%Share{valid | group_index: 15, group_count: 1})
+      end
+    end
+
+    test "raises when group_threshold > group_count (would not round-trip)", %{valid: valid} do
+      # decode/1 rejects group_threshold > group_count with
+      # :invalid_group_threshold, so encode/1 must refuse to emit it.
+      assert_raise FunctionClauseError, fn ->
+        Share.encode(%Share{valid | group_threshold: 2, group_count: 1})
+      end
+    end
   end
 
   defp share_generator do
@@ -291,12 +408,12 @@ defmodule Bitcoinex.SLIP39.ShareTest do
           identifier <- integer(0..0x7FFF),
           extendable <- boolean(),
           iteration_exponent <- integer(0..15),
-          group_index <- integer(0..15),
           group_count <- integer(1..16),
           group_threshold <- integer(1..group_count),
+          group_index <- integer(0..(group_count - 1)),
           member_index <- integer(0..15),
           member_threshold <- integer(1..16),
-          value_length <- member_of([16, 20, 32]),
+          value_length <- member_of([16, 18, 20, 24, 32]),
           share_value <- binary(length: value_length)
         ) do
       %Share{

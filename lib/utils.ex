@@ -143,11 +143,18 @@ defmodule Bitcoinex.Utils do
 
   # todo: better to just convert to ints and XOR them?
   @spec xor_bytes(binary, binary) :: binary
-  def xor_bytes(bin0, bin1) do
+  def xor_bytes(bin0, bin1) when byte_size(bin0) == byte_size(bin1) do
     {bl0, bl1} = {:binary.bin_to_list(bin0), :binary.bin_to_list(bin1)}
 
     Enum.zip(bl0, bl1)
     |> Enum.map(fn {b0, b1} -> Bitwise.bxor(b0, b1) end)
     |> :binary.list_to_bin()
+  end
+
+  # Reject unequal lengths rather than silently truncating to the shorter
+  # operand (Enum.zip would drop the tail), which would corrupt callers.
+  def xor_bytes(bin0, bin1) when is_binary(bin0) and is_binary(bin1) do
+    raise ArgumentError,
+          "xor_bytes/2 requires equal-length binaries, got #{byte_size(bin0)} and #{byte_size(bin1)} bytes"
   end
 end

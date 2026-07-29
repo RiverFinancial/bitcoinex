@@ -20,6 +20,15 @@ defmodule Bitcoinex.SLIP39.Shamir do
   Randomness is injected via an `rng` function (`byte_count -> binary`).
   Production callers MUST pass a CSPRNG such as `&:crypto.strong_rand_bytes/1`;
   a deterministic rng is intended only for tests.
+
+  This is a **general** GF(256) Shamir primitive, not a SLIP-39-conformant
+  entry point. It intentionally accepts any secret long enough for the digest
+  scheme (>= 4 bytes for `threshold >= 2`, any non-empty secret for
+  `threshold == 1`); it does NOT enforce SLIP-39's master-secret
+  rule that the secret be at least 128 bits and a multiple of 16 bits. That
+  constraint is enforced one level up, by `Bitcoinex.SLIP39.generate_mnemonics/4`
+  (`validate_secret/1`), which is the only SLIP-39-safe way to split a master
+  secret. Call this module directly only when you want raw Shamir sharing.
   """
 
   alias Bitcoinex.SLIP39.GF256

@@ -4,6 +4,7 @@ defmodule Bitcoinex.SLIP39Test do
 
   alias Bitcoinex.ExtendedKey
   alias Bitcoinex.SLIP39
+  alias Bitcoinex.SLIP39.Encoding
   alias Bitcoinex.SLIP39.Share
 
   doctest Bitcoinex.SLIP39
@@ -342,6 +343,25 @@ defmodule Bitcoinex.SLIP39Test do
                SLIP39.generate_mnemonics(1, [{2, 2}], @secret_16, rng: make_rng(13))
 
       assert SLIP39.combine_mnemonics([share_a, share_b]) == {:error, :mismatching_shares}
+    end
+
+    test "a share with group_index >= group_count returns {:error, :invalid_group_index}" do
+      # Hand-build a checksum-valid 1-of-1 mnemonic claiming group_count 1 but
+      # group_index 15 — SLIP-39 generation assigns group x-coordinates
+      # 0..G-1, so this share can never be produced legitimately. Before the
+      # group-index check it decoded and recovered a master secret.
+      # id=7945, ext=0, e=0, group_index=15, gt-1=0, gc-1=0, mi=0, mt-1=0,
+      # 2 pad bits, 16-byte value = 170 bits = 17 words.
+      data_bits = <<7945::15, 0::1, 0::4, 15::4, 0::4, 0::4, 0::4, 0::4, 0::2, 0::128>>
+      data_words = for <<idx::10 <- data_bits>>, do: idx
+
+      mnemonic =
+        (data_words ++ Encoding.rs1024_create_checksum(data_words, false))
+        |> Encoding.indices_to_words()
+        |> Enum.join(" ")
+
+      assert Share.decode(mnemonic) == {:error, :invalid_group_index}
+      assert SLIP39.combine_mnemonics([mnemonic]) == {:error, :invalid_group_index}
     end
   end
 

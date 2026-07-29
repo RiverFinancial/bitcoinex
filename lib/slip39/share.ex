@@ -58,11 +58,14 @@ defmodule Bitcoinex.SLIP39.Share do
 
   It cannot fail on a well-formed struct, and the guard enforces exactly
   what "well-formed" means: every field is within the range its wire
-  encoding allows, and `share_value` is a SLIP-39-valid length — a whole
-  number of bytes, at least 128 bits (16 bytes), and a multiple of 16 bits
-  (even byte count). An out-of-range struct is a programmer error and
-  raises `FunctionClauseError` rather than silently truncating a field or
-  emitting a mnemonic that cannot be decoded back.
+  encoding allows, `group_index < group_count` and
+  `group_threshold <= group_count` (the relational constraints SLIP-39
+  generation always satisfies — so `encode/1` never emits a mnemonic its
+  own `decode/1` would reject), and `share_value` is a SLIP-39-valid
+  length — a whole number of bytes, at least 128 bits (16 bytes), and a
+  multiple of 16 bits (even byte count). An out-of-range struct is a
+  programmer error and raises `FunctionClauseError` rather than silently
+  truncating a field or emitting a mnemonic that cannot be decoded back.
   """
   @spec encode(t()) :: String.t()
   def encode(%__MODULE__{
@@ -80,6 +83,7 @@ defmodule Bitcoinex.SLIP39.Share do
              iteration_exponent in 0..15 and group_index in 0..15 and
              group_threshold in 1..16 and group_count in 1..16 and
              member_index in 0..15 and member_threshold in 1..16 and
+             group_index < group_count and group_threshold <= group_count and
              is_binary(share_value) and byte_size(share_value) >= 16 and
              rem(byte_size(share_value), 2) == 0 do
     pad_bits = rem(@radix_bits - rem(bit_size(share_value), @radix_bits), @radix_bits)
@@ -103,7 +107,9 @@ defmodule Bitcoinex.SLIP39.Share do
 
   @doc """
   decode parses a space-joined mnemonic string into a share, verifying the
-  RS1024 checksum, minimum length, padding, and group threshold.
+  RS1024 checksum, minimum length, padding, group index
+  (`group_index < group_count`), and group threshold
+  (`group_threshold <= group_count`).
   """
   @spec decode(String.t()) :: {:ok, t()} | {:error, atom()}
   def decode(mnemonic) when is_binary(mnemonic) do
@@ -152,6 +158,7 @@ defmodule Bitcoinex.SLIP39.Share do
         share_value::binary>> = Utils.int_list_to_bits(data_words, @radix_bits)
 
       with :ok <- validate_padding(padding),
+           :ok <- validate_group_index(group_index, group_count_minus1),
            :ok <- validate_group_threshold(group_threshold_minus1, group_count_minus1) do
         {:ok,
          %__MODULE__{
@@ -171,6 +178,15 @@ defmodule Bitcoinex.SLIP39.Share do
 
   defp validate_padding(0), do: :ok
   defp validate_padding(_padding), do: {:error, :invalid_padding}
+
+  # SLIP-39 assigns group x-coordinates 0..group_count-1, so a share whose
+  # group index is >= its group count was never produced by a conforming
+  # generator; reject it rather than interpolate a group that cannot exist.
+  defp validate_group_index(group_index, group_count_minus1)
+       when group_index > group_count_minus1,
+       do: {:error, :invalid_group_index}
+
+  defp validate_group_index(_group_index, _group_count_minus1), do: :ok
 
   defp validate_group_threshold(group_threshold_minus1, group_count_minus1)
        when group_threshold_minus1 > group_count_minus1,

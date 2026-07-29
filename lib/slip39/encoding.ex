@@ -43,7 +43,7 @@ defmodule Bitcoinex.SLIP39.Encoding do
       1,
       fn value, acc ->
         b = acc >>> 20
-        acc = Bitwise.bxor((acc &&& 0xFFFFF) <<< 10, value)
+        acc = bxor((acc &&& 0xFFFFF) <<< 10, value)
 
         @gen
         |> Enum.with_index()
@@ -55,7 +55,7 @@ defmodule Bitcoinex.SLIP39.Encoding do
               0
             end
 
-          Bitwise.bxor(in_acc, right_side)
+          bxor(in_acc, right_side)
         end)
       end
     )
@@ -69,7 +69,7 @@ defmodule Bitcoinex.SLIP39.Encoding do
   @spec rs1024_create_checksum(list(0..1023), boolean()) :: list(0..1023)
   def rs1024_create_checksum(data, ext) do
     values = customization_values(ext) ++ data ++ [0, 0, 0]
-    poly = values |> rs1024_polymod() |> Bitwise.bxor(1)
+    poly = values |> rs1024_polymod() |> bxor(1)
     for i <- 0..2, do: poly >>> (10 * (2 - i)) &&& 1023
   end
 
