@@ -224,7 +224,7 @@ Note thresholds/counts are stored **1-based** in the struct; the wire format sto
 ```
 
 **`generate_mnemonics/4`.**
-1. Validate: `master_secret` byte length even and `≥ 16` (`:invalid_secret_length`); `1 ≤ group_threshold ≤ length(groups) ≤ 16` (`:invalid_group_threshold`); each `{t,n}` with `1 ≤ t ≤ n ≤ 16`, and **not** (`t == 1 and n > 1`) (`:invalid_member_threshold`); passphrase contains only printable ASCII (code points 32–126, per SLIP-39 — `String.to_charlist |> Enum.all?(&(&1 in 32..126))`) (`:invalid_passphrase`).
+1. Validate: `master_secret` byte length even and `≥ 16` (`:invalid_secret_length`); `1 ≤ group_threshold ≤ length(groups) ≤ 16` (`:invalid_group_threshold`); each `{t,n}` with `1 ≤ t ≤ n ≤ 16`, and **not** (`t == 1 and n > 1`) (`:invalid_member_threshold`); passphrase contains only printable ASCII (code points 32–126, per SLIP-39 — `String.to_charlist |> Enum.all?(&(&1 in 32..126))`) (`:invalid_passphrase`). Additionally, `identifier` opt must be `nil` or an integer in `0..0x7FFF` (`:invalid_identifier`) and `iteration_exponent` an integer in `0..15` (`:invalid_iteration_exponent`) — the wire format truncates these to 15/4 bits, so unvalidated out-of-range values would encode shares whose recombination silently yields a different master secret.
 2. `identifier` = opt or `:rand`-free draw of 15 bits from `rng` (`<<id::15, _::1>> = rng.(2)`).
 3. `ems = Cipher.encrypt(master_secret, passphrase, e, id, ext)`.
 4. `group_shares = Shamir.split_secret(group_threshold, length(groups), ems, rng)` → `[{group_index, group_value}]`.
@@ -301,7 +301,7 @@ Word lists and checksum logic otherwise stay scheme-specific (RS1024 ≠ bech32 
 - All `@`-constants from §3.3.
 - `@type group_spec`, `generate_mnemonics/4`, `combine_mnemonics/2` (§3.9).
 - private validators (`validate_secret/1`, `validate_groups/2`), grouping/consistency helpers.
-- Error atoms: `:invalid_secret_length`, `:invalid_group_threshold`, `:invalid_member_threshold`, `:invalid_passphrase`, `:mismatching_shares`, `:insufficient_groups`, `:too_many_groups`, `:insufficient_member_shares`, `:too_many_member_shares`, `:duplicate_member_index`, `:empty_mnemonic_set`.
+- Error atoms: `:invalid_secret_length`, `:invalid_group_threshold`, `:invalid_member_threshold`, `:invalid_passphrase`, `:mismatching_shares`, `:insufficient_groups`, `:too_many_groups`, `:insufficient_member_shares`, `:too_many_member_shares`, `:duplicate_member_index`, `:empty_mnemonic_set`, `:invalid_identifier`, `:invalid_iteration_exponent`.
 
 ### `lib/slip39/gf256.ex` — `Bitcoinex.SLIP39.GF256` (new)
 - `@exp_table`, `@log_table` (generated in the module body per §3.4 — not via a same-module `defp`; generator 3, poly `0x11B`).

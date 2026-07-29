@@ -4,7 +4,7 @@ defmodule Bitcoinex.MixProject do
   def project do
     [
       app: :bitcoinex,
-      version: "0.1.8",
+      version: "0.2.0",
       elixir: "~> 1.11",
       package: package(),
       start_permanent: Mix.env() == :prod,
