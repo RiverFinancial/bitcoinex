@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- BIP-39 mnemonic support (`Bitcoinex.BIP39`): entropy-to-mnemonic encoding and decoding with checksum validation, NFKD-normalized seed derivation via PBKDF2-HMAC-SHA512, and master extended private key derivation.
+- SLIP-39 Shamir's Secret-Sharing mnemonic support (`Bitcoinex.SLIP39`): two-level (group/member) secret splitting via `generate_mnemonics/4` and recovery via `combine_mnemonics/2`, with passphrase encryption (four-round Feistel over PBKDF2-HMAC-SHA256), GF(256) Shamir sharing with digest verification, RS1024 checksums, and the extendable share-set flag. Verified against all 45 official SLIP-0039 test vectors.
+
 ## [0.2.0] - 2026-07-10
 ### Changed
 - BOLT11 invoice decoding now rejects invoices longer than 7089 characters with `{:error, :overall_max_length_exceeded}`, matching rust-lightning's limit (the capacity of the largest QR code). This bounds the work done decoding untrusted input now that all `r` (route hint) and `f` (fallback address) fields are parsed.

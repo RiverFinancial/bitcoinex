@@ -11,6 +11,8 @@ Documentation is available on [hexdocs.pm](https://hexdocs.pm/bitcoinex/api-refe
 * Support for standard on-chain scripts (P2PKH..P2WPKH) and Bolt#11 Lightning Invoices.
 * Transaction serialization.
 * Basic PSBT (BIP174) parsing.
+* BIP39 mnemonic seed phrases: entropy encoding/decoding and seed derivation.
+* SLIP39 Shamir's Secret-Sharing mnemonics: split and recover master secrets.
 
 ## Usage
 

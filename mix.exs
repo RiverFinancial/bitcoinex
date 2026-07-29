@@ -28,7 +28,7 @@ defmodule Bitcoinex.MixProject do
       {:credo, "~> 1.6", only: [:dev, :test], runtime: false},
       {:excoveralls, "~> 0.10", only: :test},
       {:mix_test_watch, "~> 1.1", only: :dev, runtime: false},
-      {:stream_data, "~> 0.1", only: :test},
+      {:stream_data, "~> 1.1", only: :test},
       {:decimal, "~> 1.0 or ~> 2.0"},
       {:ex_doc, ">= 0.0.0", only: :dev, runtime: false},
       {:benchee, ">= 1.0.0", only: :dev}
@@ -47,7 +47,8 @@ defmodule Bitcoinex.MixProject do
 
   defp package do
     [
-      files: ~w(lib test .formatter.exs mix.exs README.md UNLICENSE CHANGELOG.md SECURITY.md),
+      files:
+        ~w(lib priv test .formatter.exs mix.exs README.md UNLICENSE CHANGELOG.md SECURITY.md),
       licenses: ["Unlicense"],
       links: %{"GitHub" => "https://github.com/RiverFinancial/bitcoinex"}
     ]
