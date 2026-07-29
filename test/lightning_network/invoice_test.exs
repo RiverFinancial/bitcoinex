@@ -149,7 +149,7 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
           amount_msat: 2_000_000_000,
           timestamp: 1_496_314_658,
           description_hash: test_description_hash_slice,
-          fallback_address: test_address_testnet_P2PKH,
+          fallback_addresses: [test_address_testnet_P2PKH],
           min_final_cltv_expiry: 18
         }
       },
@@ -176,8 +176,8 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
           amount_msat: 2_000_000_000,
           timestamp: 1_496_314_658,
           description_hash: test_description_hash_slice,
-          fallback_address: test_address_mainnet_P2PKH,
-          route_hints: testSingleHop,
+          fallback_addresses: [test_address_mainnet_P2PKH],
+          route_hints: [testSingleHop],
           min_final_cltv_expiry: 18
         }
       },
@@ -191,8 +191,123 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
           amount_msat: 2_000_000_000,
           timestamp: 1_496_314_658,
           description_hash: test_description_hash_slice,
-          fallback_address: test_address_mainnet_P2PKH,
-          route_hints: testDoubleHop,
+          fallback_addresses: [test_address_mainnet_P2PKH],
+          route_hints: [testDoubleHop],
+          min_final_cltv_expiry: 18
+        }
+      },
+      # two r fields (two route hints of one hop each), signed with the BOLT#11
+      # spec test key. All r fields must be parsed, not just the first.
+      {
+        "lnbc20m1pvjluezpp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqhp58yjmdan79s6qqdhdzgynm4zwqd5d7xmw5fk98klysy043l2ahrqsfpp3qjmp7lwpagxun9pygexvgpjdc4jdj85frzjq20q82gphp2nflc7jtzrcazrra7wwgzxqc8u7754cdlpfrmccae92qgzqvzq2ps8pqqqqqqqqqqqq9qqqvrzjqw0q82gphp2nflc7jtzrcazrra7wwgzxqc8u7754cdlpfrmccae92qcyq5rqwzqfpgqqqqqzqqqqq8sqqst07cl8ma7yr3zn0pucpf3e85nxrhzpsnsdldmzhgr29u7586h60se4jazfls8u9py6g3clfd8ljrsvq7d6s2pwesmkwnaayvplyr2scpnqyw9d",
+        %Invoice{
+          network: :mainnet,
+          destination: test_pubkey,
+          payment_hash: test_payment_hash,
+          amount_msat: 2_000_000_000,
+          timestamp: 1_496_314_658,
+          description_hash: test_description_hash_slice,
+          fallback_addresses: [test_address_mainnet_P2PKH],
+          route_hints: [
+            testSingleHop,
+            [
+              %HopHint{
+                node_id: testHopHintPubkey2,
+                channel_id: 0x030405060708090A,
+                fee_base_m_sat: 2,
+                fee_proportional_millionths: 30,
+                cltv_expiry_delta: 4
+              }
+            ]
+          ],
+          min_final_cltv_expiry: 18
+        }
+      },
+      # real-world invoice with three r fields (three single-hop route hints)
+      {
+        "lnbc1p4ycf36pp5tg2m82kyfskhrgjdjerue486v5hhkrvz6nh8hgwh32s2n9t026dqdqlf35kw6r5de5kueeqv3jhqmmnd96zqvqcqzzsxqrrssrzjqw4t06fjwutwa9rt37l6uqumpku9x4j5neevtn9pz04x0zfapqs72r9kdyqqvcsqqyqqqqqqqqqqqqqq2qrzjqvphmsywntrrhqjcraumvc4y6r8v4z5v593trte429v4hredj7ms5rdxngqqgecqqyqqqqqqqqqqqqqq2qrzjqvphmsywntrrhqjcraumvc4y6r8v4z5v593trte429v4hredj7ms5rpeeqqqt9cqqyqqqqqqqqqqqqqq2qsp5yl9unpjreynlvuzmdq9z4ln700kufrk6lcsg2pe8cvzm0lu2alus9qxpqysgqzjkvm4js03nff029qlvk34hnw3g97nrkerllqrfehyqcwcwvps89y8q78qptjnn5kv28f62zkmvyj52u6ls6xeytxes630l0ke5qpccq8dd6nl",
+        %Invoice{
+          network: :mainnet,
+          destination: "0294774ee02a9faa5a5870061f7f4833686184ad14a0b163c49442516c9edac1db",
+          payment_hash: "5a15b3aac44c2d71a24d9647ccd4fa652f7b0d82d4ee7ba1d78aa0a9956f569a",
+          timestamp: 1_783_375_418,
+          description: "Lightning deposit 0",
+          expiry: 3600,
+          route_hints: [
+            [
+              %HopHint{
+                node_id: "03aab7e9327716ee946b8fbfae039b0db85356549e72c5cca113ea67893d0821e5",
+                channel_id: 0x0CB6690006620001,
+                fee_base_m_sat: 0,
+                fee_proportional_millionths: 0,
+                cltv_expiry_delta: 80
+              }
+            ],
+            [
+              %HopHint{
+                node_id: "03037dc08e9ac63b82581f79b662a4d0ceca8a8ca162b1af3551595b8f2d97b70a",
+                channel_id: 0x0DA69A0004670001,
+                fee_base_m_sat: 0,
+                fee_proportional_millionths: 0,
+                cltv_expiry_delta: 80
+              }
+            ],
+            [
+              %HopHint{
+                node_id: "03037dc08e9ac63b82581f79b662a4d0ceca8a8ca162b1af3551595b8f2d97b70a",
+                channel_id: 0x0C39C80005970001,
+                fee_base_m_sat: 0,
+                fee_proportional_millionths: 0,
+                cltv_expiry_delta: 80
+              }
+            ]
+          ],
+          min_final_cltv_expiry: 80
+        }
+      },
+      # 1 hophint followed by an empty r field. BOLT#11 requires each r field to
+      # contain one or more entries, so the empty r field is skipped.
+      {
+        "lnbc20m1pvjluezpp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqhp58yjmdan79s6qqdhdzgynm4zwqd5d7xmw5fk98klysy043l2ahrqsfpp3qjmp7lwpagxun9pygexvgpjdc4jdj85frzjq20q82gphp2nflc7jtzrcazrra7wwgzxqc8u7754cdlpfrmccae92qgzqvzq2ps8pqqqqqqqqqqqq9qqqvrqqtc7hun0s30rh0gq0a975wcudnzvsphujjyhtw3ten8xkur5ms8qpcjxfk4sty093gtrhfqsxsns8lf8ge7twyx6ve80wd0xhsglardcpfzqtth",
+        %Invoice{
+          network: :mainnet,
+          destination: test_pubkey,
+          payment_hash: test_payment_hash,
+          amount_msat: 2_000_000_000,
+          timestamp: 1_496_314_658,
+          description_hash: test_description_hash_slice,
+          fallback_addresses: [test_address_mainnet_P2PKH],
+          route_hints: [testSingleHop],
+          min_final_cltv_expiry: 18
+        }
+      },
+      # an empty f field (no version byte at all) is skipped rather than
+      # failing the decode, leaving no fallback addresses
+      {
+        "lnbc20m1pvjluezhp58yjmdan79s6qqdhdzgynm4zwqd5d7xmw5fk98klysy043l2ahrqspp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqfqqepvrhrm9s57hejg0p662ur5j5cr03890fa7k2pypgttmh4897d3raaq85a293e9jpuqwl0rnfuwzam7yr8e690nd2ypcq9hlkdwdvycqjhlqg5",
+        %Invoice{
+          network: :mainnet,
+          destination: "02700c59a993fbb71ed906159f562f86b73219f97a18de2c65b62bfd0748d5821a",
+          payment_hash: test_payment_hash,
+          amount_msat: 2_000_000_000,
+          timestamp: 1_496_314_658,
+          description_hash: test_description_hash_slice,
+          min_final_cltv_expiry: 18
+        }
+      },
+      # three f fields: P2PKH, then one with an unknown version (19, skipped),
+      # then P2WPKH. All known-version fallback addresses are collected in order.
+      {
+        "lnbc20m1pvjluezpp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqhp58yjmdan79s6qqdhdzgynm4zwqd5d7xmw5fk98klysy043l2ahrqsfpp3qjmp7lwpagxun9pygexvgpjdc4jdj85frzjq20q82gphp2nflc7jtzrcazrra7wwgzxqc8u7754cdlpfrmccae92qgzqvzq2ps8pqqqqqqqqqqqq9qqqvfqynpzrfppqw508d6qejxtdg4y5r3zarvary0c5xw7kyjc3xmnnm03spelf55p7jd4z9rdlj7zenmlr5hd96s8f939me8gytjt4rzcg4x4gz8z8hssrzk8e20q89qnrngz274vswzl2rg0w3hgp6wrvs7",
+        %Invoice{
+          network: :mainnet,
+          destination: test_pubkey,
+          payment_hash: test_payment_hash,
+          amount_msat: 2_000_000_000,
+          timestamp: 1_496_314_658,
+          description_hash: test_description_hash_slice,
+          fallback_addresses: [test_address_mainnet_P2PKH, test_address_mainnet_P2WPKH],
+          route_hints: [testSingleHop],
           min_final_cltv_expiry: 18
         }
       },
@@ -206,7 +321,7 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
           amount_msat: 2_000_000_000,
           timestamp: 1_496_314_658,
           description_hash: test_description_hash_slice,
-          fallback_address: test_address_mainnet_P2SH,
+          fallback_addresses: [test_address_mainnet_P2SH],
           min_final_cltv_expiry: 18
         }
       },
@@ -220,7 +335,7 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
           amount_msat: 2_000_000_000,
           timestamp: 1_496_314_658,
           description_hash: test_description_hash_slice,
-          fallback_address: test_address_mainnet_P2WPKH,
+          fallback_addresses: [test_address_mainnet_P2WPKH],
           min_final_cltv_expiry: 18
         }
       },
@@ -234,7 +349,7 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
           amount_msat: 2_000_000_000,
           timestamp: 1_496_314_658,
           description_hash: test_description_hash_slice,
-          fallback_address: test_address_mainnet_P2WSH,
+          fallback_addresses: [test_address_mainnet_P2WSH],
           min_final_cltv_expiry: 18
         }
       },
@@ -289,13 +404,15 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
           min_final_cltv_expiry: 10,
           expiry: 604_800,
           route_hints: [
-            %HopHint{
-              node_id: testHopHintPubkey3,
-              channel_id: 0x08FE4E000CF00001,
-              fee_base_m_sat: 1000,
-              fee_proportional_millionths: 2500,
-              cltv_expiry_delta: 40
-            }
+            [
+              %HopHint{
+                node_id: testHopHintPubkey3,
+                channel_id: 0x08FE4E000CF00001,
+                fee_base_m_sat: 1000,
+                fee_proportional_millionths: 2500,
+                cltv_expiry_delta: 40
+              }
+            ]
           ]
         }
       },
@@ -361,7 +478,7 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
           timestamp: 1_496_314_658,
           description_hash: "3925b6f67e2c340036ed12093dd44e0368df1b6ea26c53dbe4811f58fd5db8c1",
           min_final_cltv_expiry: 18,
-          fallback_address: "3EktnHQD7RiAE6uzMj2ZifT9YgRrkSgzQX"
+          fallback_addresses: ["3EktnHQD7RiAE6uzMj2ZifT9YgRrkSgzQX"]
         }
       },
       {
@@ -374,7 +491,7 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
           timestamp: 1_496_314_658,
           description_hash: "3925b6f67e2c340036ed12093dd44e0368df1b6ea26c53dbe4811f58fd5db8c1",
           min_final_cltv_expiry: 18,
-          fallback_address: "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"
+          fallback_addresses: ["bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"]
         }
       },
       {
@@ -387,7 +504,7 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
           timestamp: 1_496_314_658,
           description_hash: "3925b6f67e2c340036ed12093dd44e0368df1b6ea26c53dbe4811f58fd5db8c1",
           min_final_cltv_expiry: 18,
-          fallback_address: "bc1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3qccfmv3"
+          fallback_addresses: ["bc1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3qccfmv3"]
         }
       },
       {
@@ -461,8 +578,6 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
       "lnbcm1aaamcu25m",
       # invalid amount
       "lnbc1000000000m1",
-      # empty fallback address field
-      "lnbc20m1pvjluezhp58yjmdan79s6qqdhdzgynm4zwqd5d7xmw5fk98klysy043l2ahrqspp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqfqqepvrhrm9s57hejg0p662ur5j5cr03890fa7k2pypgttmh4897d3raaq85a293e9jpuqwl0rnfuwzam7yr8e690nd2ypcq9hlkdwdvycqjhlqg5",
       # invalid routing info length: not a multiple of 51
       "lnbc20m1pvjluezpp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqhp58yjmdan79s6qqdhdzgynm4zwqd5d7xmw5fk98klysy043l2ahrqsfpp3qjmp7lwpagxun9pygexvgpjdc4jdj85frqg00000000j9n4evl6mr5aj9f58zp6fyjzup6ywn3x6sk8akg5v4tgn2q8g4fhx05wf6juaxu9760yp46454gpg5mtzgerlzezqcqvjnhjh8z3g2qqsj5cgu",
       # no payment hash set
@@ -506,6 +621,104 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
         assert {:ok, decoded_invoice} = Invoice.decode(valid_encoded_invoice)
         assert decoded_invoice == invoice
       end
+    end
+
+    test "decode an invoice with 21 route hints" do
+      # the 1-hophint test vector with 20 extra single-hop r fields appended
+      # (21 route hints total), re-signed with the BOLT#11 spec test key.
+      # BOLT#11 places no limit on the number of r fields.
+      invoice =
+        "lnbc20m1pvjluezpp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqhp58yjmdan79s6qqdhdzgynm4zwqd5d7xmw5fk98klysy043l2ahrqsfpp3qjmp7lwpagxun9pygexvgpjdc4jdj85frzjq20q82gphp2nflc7jtzrcazrra7wwgzxqc8u7754cdlpfrmccae92qgzqvzq2ps8pqqqqqqqqqqqq9qqqv" <>
+          String.duplicate(
+            "rzjqw0q82gphp2nflc7jtzrcazrra7wwgzxqc8u7754cdlpfrmccae92qcyq5rqwzqfpgqqqqqzqqqqq8sqqs",
+            20
+          ) <>
+          "2s6kt43k6yavner648k8394mdvhuaamke6rp6tueag8h5qczq6w3c9yhq30snnj3httslvh8af2acrdffrmpsrnupjmumuy074378kqp7dqpmh"
+
+      assert {:ok, %Invoice{route_hints: route_hints}} = Invoice.decode(invoice)
+      assert Enum.count(route_hints) == 21
+
+      assert hd(route_hints) == [
+               %HopHint{
+                 node_id: "029e03a901b85534ff1e92c43c74431f7ce72046060fcf7a95c37e148f78c77255",
+                 channel_id: 0x0102030405060708,
+                 fee_base_m_sat: 0,
+                 fee_proportional_millionths: 20,
+                 cltv_expiry_delta: 3
+               }
+             ]
+
+      # each appended r field carries the same single-hop route hint
+      assert Enum.drop(route_hints, 1) ==
+               List.duplicate(
+                 [
+                   %HopHint{
+                     node_id:
+                       "039e03a901b85534ff1e92c43c74431f7ce72046060fcf7a95c37e148f78c77255",
+                     channel_id: 0x030405060708090A,
+                     fee_base_m_sat: 2,
+                     fee_proportional_millionths: 30,
+                     cltv_expiry_delta: 4
+                   }
+                 ],
+                 20
+               )
+    end
+
+    test "fail to decode when a later r field is malformed" do
+      # the 1-hophint test vector with a second r field appended whose data
+      # (10 bytes) is not a multiple of 51. Every r field is parsed, so a
+      # malformed one fails the decode even when an earlier r field is valid.
+      # (Tagged fields are parsed before signature verification, so the
+      # spliced-in field doesn't require re-signing.)
+      invoice =
+        "lnbc20m1pvjluezpp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqhp58yjmdan79s6qqdhdzgynm4zwqd5d7xmw5fk98klysy043l2ahrqsfpp3qjmp7lwpagxun9pygexvgpjdc4jdj85frzjq20q82gphp2nflc7jtzrcazrra7wwgzxqc8u7754cdlpfrmccae92qgzqvzq2ps8pqqqqqqqqqqqq9qqqvrqsppppppppppppppppncsk57n4v9ehw86wq8fzvjejhv9z3w3q5zh6qkql005x9xl240ch23jk79ujzvr4hsmmafyxghpqe79psktnjl668ntaf4ne7ucs5csqp7a8gm"
+
+      assert {:error, :invalid_hop_hint_data_length} = Invoice.decode(invoice)
+    end
+
+    test "fail to decode when a later f field has a known version but invalid payload" do
+      # the 1-hophint test vector with a version-0 f field appended whose
+      # witness program is 25 bytes (must be 20 or 32). Only unknown-version
+      # and empty f fields are skipped; a known-version f field with an
+      # invalid payload fails the decode even when an earlier f field was
+      # valid. (Tagged fields are parsed before signature verification, so
+      # the spliced-in field doesn't require re-signing.)
+      invoice =
+        "lnbc20m1pvjluezpp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqhp58yjmdan79s6qqdhdzgynm4zwqd5d7xmw5fk98klysy043l2ahrqsfpp3qjmp7lwpagxun9pygexvgpjdc4jdj85frzjq20q82gphp2nflc7jtzrcazrra7wwgzxqc8u7754cdlpfrmccae92qgzqvzq2ps8pqqqqqqqqqqqq9qqqvfpfqzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzncsk57n4v9ehw86wq8fzvjejhv9z3w3q5zh6qkql005x9xl240ch23jk79ujzvr4hsmmafyxghpqe79psktnjl668ntaf4ne7ucs5csq0spr8d"
+
+      assert {:error, :invalid_witness_program_length} = Invoice.decode(invoice)
+    end
+
+    test "fail to decode when an f field hash payload has the wrong length" do
+      # the 1-hophint test vector with an extra f field appended carrying a
+      # 5-byte payload (P2PKH pubkey hashes and P2SH script hashes must be
+      # 20 bytes). (Tagged fields are parsed before signature verification,
+      # so the spliced-in field doesn't require re-signing.)
+      version_17_invoice =
+        "lnbc20m1pvjluezpp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqhp58yjmdan79s6qqdhdzgynm4zwqd5d7xmw5fk98klysy043l2ahrqsfpp3qjmp7lwpagxun9pygexvgpjdc4jdj85frzjq20q82gphp2nflc7jtzrcazrra7wwgzxqc8u7754cdlpfrmccae92qgzqvzq2ps8pqqqqqqqqqqqq9qqqvfqf3rrrrrrrrncsk57n4v9ehw86wq8fzvjejhv9z3w3q5zh6qkql005x9xl240ch23jk79ujzvr4hsmmafyxghpqe79psktnjl668ntaf4ne7ucs5csqsq58rs"
+
+      assert {:error, :invalid_pubkey_hash_length} = Invoice.decode(version_17_invoice)
+
+      version_18_invoice =
+        "lnbc20m1pvjluezpp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqhp58yjmdan79s6qqdhdzgynm4zwqd5d7xmw5fk98klysy043l2ahrqsfpp3qjmp7lwpagxun9pygexvgpjdc4jdj85frzjq20q82gphp2nflc7jtzrcazrra7wwgzxqc8u7754cdlpfrmccae92qgzqvzq2ps8pqqqqqqqqqqqq9qqqvfqfjrrrrrrrrncsk57n4v9ehw86wq8fzvjejhv9z3w3q5zh6qkql005x9xl240ch23jk79ujzvr4hsmmafyxghpqe79psktnjl668ntaf4ne7ucs5csqjj9mew"
+
+      assert {:error, :invalid_script_hash_length} = Invoice.decode(version_18_invoice)
+    end
+
+    test "fail to decode an invoice longer than 7089 characters" do
+      # 7089 is the capacity of the largest QR code (version 40, numeric
+      # mode, ECC level L), matching rust-lightning's invoice length limit.
+      # The length check runs before any parsing, so the content past the
+      # prefix doesn't matter.
+      invoice = "lnbc20m1" <> String.duplicate("q", 7082)
+      assert String.length(invoice) == 7090
+      assert {:error, :overall_max_length_exceeded} = Invoice.decode(invoice)
+    end
+
+    test "fail to decode a bech32 string without the ln prefix" do
+      assert {:error, :no_ln_prefix} =
+               Invoice.decode("bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4")
     end
 
     test "fail to decode with invalid segwit addresses in mainnet", %{

@@ -24,7 +24,7 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
     :timestamp,
     :description,
     :description_hash,
-    :fallback_address,
+    fallback_addresses: [],
     route_hints: [],
     expiry: @default_expiry,
     min_final_cltv_expiry: @default_min_final_cltv_expiry
@@ -40,9 +40,11 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
           # description and description_hash are either both non-nil or nil
           description: String.t() | nil,
           description_hash: String.t() | nil,
-          fallback_address: String.t() | nil,
+          # one per f field with a known version, most-preferred first
+          fallback_addresses: list(String.t()),
           min_final_cltv_expiry: non_neg_integer,
-          route_hints: list(HopHint.t())
+          # each route hint (one per r field) is a list of one or more hops
+          route_hints: list(list(HopHint.t()))
         }
 
   @prefix "ln"
@@ -55,14 +57,22 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
   @sha256_hash_base32_length 52
   @pubkey_base32_length 53
   @hop_hint_length 51
+  # BOLT#11 places no upper bound on invoice length (it lifts BIP-173's
+  # 90-character limit), but decoding untrusted input must be bounded, so we
+  # match rust-lightning's limit: 7089 characters, the capacity of the
+  # largest QR code (version 40, numeric mode, error-correction level L).
+  @max_invoice_length 7089
   @type error :: atom
 
   @doc """
    Decode accepts a Bech32 encoded string invoice and deserializes it.
+
+   Invoices longer than #{@max_invoice_length} characters (the capacity of
+   the largest QR code) are rejected with `{:error, :overall_max_length_exceeded}`.
   """
   @spec decode(String.t()) :: {:ok, t} | {:error, error}
   def decode(invoice) when is_binary(invoice) do
-    with {:ok, {_encoding_type, hrp, data}} <- Bech32.decode(invoice, :infinity),
+    with {:ok, {_encoding_type, hrp, data}} <- Bech32.decode(invoice, @max_invoice_length),
          {:ok, {network, amount_msat}} <- parse_hrp(hrp),
          {invoice_data, signature_data} = split_at(data, -@signature_base32_length),
          {:ok, parsed_data} <-
@@ -87,10 +97,6 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
       )
       |> validate_invoice()
     end
-  end
-
-  def decode(invoice) when is_binary(invoice) do
-    {:error, :no_ln_prefix}
   end
 
   @doc """
@@ -120,10 +126,6 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
 
       !is_nil(invoice.description) && !is_nil(invoice.description_hash) ->
         {:error, :both_description_and_description_hash_missing}
-
-      # lnd have this but not in Bolt11. do we need to enforce this?
-      Enum.count(invoice.route_hints) > 20 ->
-        {:error, :too_many_private_routes}
 
       String.length(invoice.payment_hash) != 64 ->
         {:error, :invalid_payment_hash_length}
@@ -216,18 +218,20 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
           end
         end
 
-      # r field HopHints
+      # r field HopHints. BOLT#11 allows multiple r fields, each containing
+      # one full route hint (a list of one or more hops), so accumulate them.
       3 ->
-        if Map.has_key?(acc, :route_hints) do
-          {:ok, acc}
-        else
-          case parse_hop_hints(data) do
-            {:ok, hop_hints} ->
-              {:ok, Map.put(acc, :route_hints, hop_hints)}
+        case parse_hop_hints(data) do
+          # BOLT#11 requires an r field to contain "one or more entries",
+          # so an empty one is invalid; skip it rather than fail
+          {:ok, []} ->
+            {:ok, acc}
 
-            {:error, error} ->
-              {:error, error}
-          end
+          {:ok, hop_hints} ->
+            {:ok, Map.update(acc, :route_hints, [hop_hints], &(&1 ++ [hop_hints]))}
+
+          {:error, error} ->
+            {:error, error}
         end
 
       # x field
@@ -239,18 +243,21 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
           {:ok, Map.put(acc, :expiry, expiry)}
         end
 
-      # f field fallback address
+      # f field fallback address. BOLT#11 allows one or more f fields
+      # (most-preferred first), so accumulate them.
       9 ->
-        if Map.has_key?(acc, :fallback_address) do
-          {:ok, acc}
-        else
-          case parse_fallback_address(data, network) do
-            {:ok, fallback_address} ->
-              {:ok, Map.put(acc, :fallback_address, fallback_address)}
+        case parse_fallback_address(data, network) do
+          # BOLT#11 readers "MUST skip over f fields that use an unknown version";
+          # a later f field may still carry a known version
+          {:ok, nil} ->
+            {:ok, acc}
 
-            {:error, error} ->
-              {:error, error}
-          end
+          {:ok, fallback_address} ->
+            {:ok,
+             Map.update(acc, :fallback_addresses, [fallback_address], &(&1 ++ [fallback_address]))}
+
+          {:error, error} ->
+            {:error, error}
         end
 
       # d field
@@ -378,8 +385,10 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
     end
   end
 
+  # an empty f field carries no version, so there is nothing to decode;
+  # skip it (like an unknown version) rather than fail the whole invoice
   defp parse_fallback_address([], _network) do
-    {:error, :empty_fallback_address}
+    {:ok, nil}
   end
 
   defp parse_fallback_address([version | rest], network) do
@@ -401,13 +410,17 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
 
       17 ->
         case Bech32.convert_bits(rest, 5, 8, false) do
-          {:ok, pubKeyHash} ->
+          # a P2PKH fallback address must carry a 20-byte pubkey hash
+          {:ok, pub_key_hash} when length(pub_key_hash) == 20 ->
             {:ok,
              Bitcoinex.Address.encode(
-               pubKeyHash |> :binary.list_to_bin(),
+               pub_key_hash |> :binary.list_to_bin(),
                network,
                :p2pkh
              )}
+
+          {:ok, _} ->
+            {:error, :invalid_pubkey_hash_length}
 
           err ->
             err
@@ -415,13 +428,17 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
 
       18 ->
         case Bech32.convert_bits(rest, 5, 8, false) do
-          {:ok, scriptHash} ->
+          # a P2SH fallback address must carry a 20-byte script hash
+          {:ok, script_hash} when length(script_hash) == 20 ->
             {:ok,
              Bitcoinex.Address.encode(
-               scriptHash |> :binary.list_to_bin(),
+               script_hash |> :binary.list_to_bin(),
                network,
                :p2sh
              )}
+
+          {:ok, _} ->
+            {:error, :invalid_script_hash_length}
 
           err ->
             err

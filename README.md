@@ -39,7 +39,7 @@ Decode a Lightning Network invoice:
       description_hash: nil,
       destination: "03e7156ae33b0a208d0744199163177e909e80176e55d97a2f221ede0f934dd9ad",
       expiry: 60,
-      fallback_address: nil,
+      fallback_addresses: [],
       min_final_cltv_expiry: 18,
       network: :mainnet,
       payment_hash: "0001020304050607080900010203040506070809000102030405060708090102",
