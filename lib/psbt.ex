@@ -524,8 +524,7 @@ defmodule Bitcoinex.PSBT.Global do
   """
   @spec combine(t(), t()) :: {:ok, t()} | {:error, atom()}
   def combine(%Global{} = global_a, %Global{} = global_b) do
-    with {:ok, version} <- PsbtUtils.combine_singleton(global_a.version, global_b.version),
-         {:ok, xpub} <- PsbtUtils.combine_repeatable(global_a.xpub, global_b.xpub, &xpub_key/1),
+    with {:ok, xpub} <- PsbtUtils.combine_repeatable(global_a.xpub, global_b.xpub, &xpub_key/1),
          {:ok, proprietary} <-
            PsbtUtils.combine_repeatable(global_a.proprietary, global_b.proprietary, &record_key/1),
          {:ok, unknown} <-
@@ -533,13 +532,19 @@ defmodule Bitcoinex.PSBT.Global do
       {:ok,
        %Global{
          global_a
-         | version: version,
+         | version: combine_version(global_a.version, global_b.version),
            xpub: xpub,
            proprietary: proprietary,
            unknown: unknown
        }}
     end
   end
+
+  # BIP-174: when two PSBTs for the same tx carry different PSBT versions, the
+  # combiner keeps the higher version rather than treating it as a conflict.
+  defp combine_version(nil, version), do: version
+  defp combine_version(version, nil), do: version
+  defp combine_version(version_a, version_b), do: max(version_a, version_b)
 
   defp xpub_key(%{xkey: xkey}), do: PsbtUtils.serialize_xpub_keydata(xkey)
   defp record_key(%{key: key}), do: key
@@ -721,7 +726,7 @@ defmodule Bitcoinex.PSBT.In do
     * `:bip32_derivation` — `%{public_key: Point.t(), origin: KeyOrigin.t()}` (repeatable)
     * `:final_scriptwitness` — a `Transaction.Witness.t()`
     * `:por_commitment` — a binary
-    * `:ripemd160` / `:sha256` / `:hash160` / `:hash256` — `%{hash: binary(), preimage: binary()}` (repeatable)
+    * `:ripemd160` / `:sha256` / `:hash160` / `:hash256` — `%{hash: binary(), preimage: binary()}` (repeatable); the hash must be the digest of the preimage under the named algorithm, else `{:error, :invalid_hash_preimage}`
     * `:proprietary` / `:unknown` — `%{key: binary(), value: binary()}` (repeatable)
   """
   @spec add_field(t(), atom(), any()) :: {:ok, t()} | {:error, atom()}
@@ -780,24 +785,20 @@ defmodule Bitcoinex.PSBT.In do
     {:ok, %In{input | por_commitment: por_commitment}}
   end
 
-  def add_field(%In{} = input, :ripemd160, %{hash: hash, preimage: preimage} = record)
-      when byte_size(hash) == 20 and is_binary(preimage) do
-    {:ok, %In{input | ripemd160: PsbtUtils.append(input.ripemd160, record)}}
+  def add_field(%In{} = input, :ripemd160, %{hash: _, preimage: _} = record) do
+    put_hash_preimage(input, :ripemd160, record, &:crypto.hash(:ripemd160, &1))
   end
 
-  def add_field(%In{} = input, :sha256, %{hash: hash, preimage: preimage} = record)
-      when byte_size(hash) == 32 and is_binary(preimage) do
-    {:ok, %In{input | sha256: PsbtUtils.append(input.sha256, record)}}
+  def add_field(%In{} = input, :sha256, %{hash: _, preimage: _} = record) do
+    put_hash_preimage(input, :sha256, record, &Bitcoinex.Utils.sha256/1)
   end
 
-  def add_field(%In{} = input, :hash160, %{hash: hash, preimage: preimage} = record)
-      when byte_size(hash) == 20 and is_binary(preimage) do
-    {:ok, %In{input | hash160: PsbtUtils.append(input.hash160, record)}}
+  def add_field(%In{} = input, :hash160, %{hash: _, preimage: _} = record) do
+    put_hash_preimage(input, :hash160, record, &Bitcoinex.Utils.hash160/1)
   end
 
-  def add_field(%In{} = input, :hash256, %{hash: hash, preimage: preimage} = record)
-      when byte_size(hash) == 32 and is_binary(preimage) do
-    {:ok, %In{input | hash256: PsbtUtils.append(input.hash256, record)}}
+  def add_field(%In{} = input, :hash256, %{hash: _, preimage: _} = record) do
+    put_hash_preimage(input, :hash256, record, &Bitcoinex.Utils.double_sha256/1)
   end
 
   def add_field(%In{} = input, :proprietary, %{key: _, value: _} = record) do
@@ -809,6 +810,21 @@ defmodule Bitcoinex.PSBT.In do
   end
 
   def add_field(%In{}, _field, _value), do: {:error, :invalid_field}
+
+  # BIP-174 hash-preimage fields (ripemd160/sha256/hash160/hash256) require the
+  # hash to be the digest of the preimage. Validate that before appending, so
+  # the Updater never records a preimage a finalizer could not use.
+  defp put_hash_preimage(input, field, %{hash: hash, preimage: preimage}, hash_fun)
+       when is_binary(hash) and is_binary(preimage) do
+    if hash_fun.(preimage) == hash do
+      record = %{hash: hash, preimage: preimage}
+      {:ok, Map.put(input, field, PsbtUtils.append(Map.get(input, field), record))}
+    else
+      {:error, :invalid_hash_preimage}
+    end
+  end
+
+  defp put_hash_preimage(_input, _field, _record, _hash_fun), do: {:error, :invalid_field}
 
   @doc """
   Combines two input maps (BIP-174 Combiner).
@@ -947,7 +963,12 @@ defmodule Bitcoinex.PSBT.In do
   defp parse(<<@psbt_in_sighash_type::big-size(8)>>, psbt, input) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
     <<sighash_type::little-unsigned-32>> = value
-    {%In{input | sighash_type: sighash_type}, psbt}
+
+    if sighash_type in @valid_sighash_flags do
+      {%In{input | sighash_type: sighash_type}, psbt}
+    else
+      {:error, :invalid_sighash_type}
+    end
   end
 
   defp parse(<<@psbt_in_redeem_script::big-size(8)>>, psbt, input) do
@@ -1037,12 +1058,18 @@ defmodule Bitcoinex.PSBT.In do
     signature_length = byte_size(value) - 1
     <<der_signature::binary-size(signature_length), sighash::8>> = value
 
-    case Signature.der_parse_signature(der_signature) do
-      {:ok, signature} ->
-        {:ok, %{public_key: public_key, signature: signature, sighash: sighash}}
+    cond do
+      sighash not in @valid_sighash_flags ->
+        {:error, :invalid_sighash_type}
 
-      {:error, reason} ->
-        {:error, reason}
+      true ->
+        case Signature.der_parse_signature(der_signature) do
+          {:ok, signature} ->
+            {:ok, %{public_key: public_key, signature: signature, sighash: sighash}}
+
+          {:error, reason} ->
+            {:error, reason}
+        end
     end
   end
 
