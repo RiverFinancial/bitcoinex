@@ -168,10 +168,24 @@ defmodule Bitcoinex.PSBTTest do
     end
   end
 
+  # Synthetic PSBTs whose sighash values are out of the valid ECDSA set
+  # ({0x01,0x02,0x03,0x81,0x82,0x83}): a sighash_type field of 4, and a
+  # partial_sig whose trailing flag byte is 4.
+  @invalid_sighash_type_field "cHNidP8BADwCAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/////AegDAAAAAAAAAAAAAAAAAQMEBAAAAAAA"
+  @invalid_partial_sig_sighash "cHNidP8BADwCAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/////AegDAAAAAAAAAAAAAAAAIgIDsTQcy6doO2r08SOM1ul+cWfVafrEfx5I1HVBhENVvUZHMEQCIGLrelVhB6fHP0WsSrWh3d9vcHX7EnWWmn84Pv/3hLyyAiAMBdu3Rw2/LwhVfdNWxzJcHtMJE+mWzThAlF2xIijaXwQAAA=="
+
   describe "typed field representations" do
     test "sighash_type is decoded as an integer" do
       {:ok, psbt} = PSBT.decode(valid_vector(@sighash_vector_index))
       assert hd(psbt.inputs).sighash_type == 1
+    end
+
+    test "rejects a sighash_type field outside the valid ECDSA set" do
+      assert {:error, :invalid_sighash_type} = PSBT.decode(@invalid_sighash_type_field)
+    end
+
+    test "rejects a partial_sig whose trailing sighash flag is invalid" do
+      assert {:error, :invalid_partial_sig} = PSBT.decode(@invalid_partial_sig_sighash)
     end
 
     test "partial_sig uses Point and Signature structs" do
@@ -352,6 +366,26 @@ defmodule Bitcoinex.PSBTTest do
       {:ok, expected} = Script.parse_script(script_hex)
       assert hd(psbt.outputs).witness_script == expected
     end
+
+    test "accepts a hash-preimage record whose hash matches the preimage", %{psbt: psbt} do
+      preimage = "preimage bytes"
+
+      for {field, hash} <- [
+            {:ripemd160, :crypto.hash(:ripemd160, preimage)},
+            {:sha256, Bitcoinex.Utils.sha256(preimage)},
+            {:hash160, Bitcoinex.Utils.hash160(preimage)},
+            {:hash256, Bitcoinex.Utils.double_sha256(preimage)}
+          ] do
+        record = %{hash: hash, preimage: preimage}
+        assert {:ok, updated} = PSBT.add_input_field(psbt, 0, field, record)
+        assert Map.get(hd(updated.inputs), field) == [record]
+      end
+    end
+
+    test "rejects a hash-preimage record whose hash does not match the preimage", %{psbt: psbt} do
+      wrong = %{hash: :binary.copy(<<0>>, 32), preimage: "preimage bytes"}
+      assert {:error, :invalid_hash_preimage} = PSBT.add_input_field(psbt, 0, :sha256, wrong)
+    end
   end
 
   # BIP-174 Combiner worked examples.
@@ -397,6 +431,15 @@ defmodule Bitcoinex.PSBTTest do
     test "is idempotent for a canonical PSBT" do
       {:ok, a} = PSBT.decode(@combine_signer_a)
       assert PSBT.combine(a, a) == {:ok, a}
+    end
+
+    test "keeps the higher PSBT version when the two differ" do
+      {:ok, base} = PSBT.decode(valid_vector(@p2sh_p2wsh_vector_index))
+      {:ok, a} = PSBT.add_global_field(base, :version, 1)
+      {:ok, b} = PSBT.add_global_field(base, :version, 2)
+
+      assert {:ok, combined} = PSBT.combine(a, b)
+      assert combined.global.version == 2
     end
 
     test "rejects PSBTs describing different transactions" do
@@ -585,6 +628,25 @@ defmodule Bitcoinex.PSBTTest do
                @finalize_sig_a <> "01",
                @finalize_pubkey_a
              ]
+    end
+
+    test "does not finalize an input whose signature sighash disagrees with its sighash_type" do
+      {:ok, p2pkh} =
+        Script.create_p2pkh(Bitcoinex.Utils.hash160(Point.sec(point(@finalize_pubkey_a))))
+
+      # signature_record uses SIGHASH_ALL (0x01).
+      psbt =
+        non_witness_psbt(Script.to_hex(p2pkh), [
+          signature_record(@finalize_pubkey_a, @finalize_sig_a)
+        ])
+
+      # Requiring SIGHASH_SINGLE (0x03) contradicts the SIGHASH_ALL signature.
+      {:ok, mismatched} = PSBT.add_input_field(psbt, 0, :sighash_type, 0x03)
+      refute PSBT.finalized?(PSBT.finalize(mismatched))
+
+      # Requiring the matching SIGHASH_ALL finalizes.
+      {:ok, matched} = PSBT.add_input_field(psbt, 0, :sighash_type, 0x01)
+      assert PSBT.finalized?(PSBT.finalize(matched))
     end
   end
 
