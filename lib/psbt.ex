@@ -19,6 +19,7 @@ defmodule Bitcoinex.PSBT do
   alias Bitcoinex.PSBT.In
   alias Bitcoinex.PSBT.Out
   alias Bitcoinex.Transaction
+  alias Bitcoinex.Transaction.Utils, as: TxUtils
   alias Bitcoinex.Transaction.Witness
 
   @type t() :: %__MODULE__{
@@ -200,11 +201,14 @@ defmodule Bitcoinex.PSBT do
     end
   end
 
-  # BIP-174 identifies a PSBT by its unsigned transaction. Compare by txid so
-  # two PSBTs built for the same tx (e.g. one via decode, one via from_tx/1)
-  # match regardless of incidental struct differences such as witnesses nil vs [].
+  # BIP-174 Combiner precondition: the two PSBTs must describe the same unsigned
+  # transaction. Compare the full serialization byte-for-byte (not just the txid)
+  # so a hand-built PSBT carrying stray witnesses or scriptSigs that happen to
+  # collide on txid is still rejected. `TxUtils.serialize/1` emits legacy form
+  # when there are no witnesses, so the genuine "witnesses nil vs []" difference
+  # between a decoded and a from_tx/1-built unsigned tx does not cause a mismatch.
   defp same_unsigned_tx?(tx_a, tx_b) do
-    Transaction.transaction_id(tx_a) == Transaction.transaction_id(tx_b)
+    TxUtils.serialize(tx_a) == TxUtils.serialize(tx_b)
   end
 
   @doc """
@@ -867,7 +871,7 @@ defmodule Bitcoinex.PSBT.In do
 
     * `:non_witness_utxo` — a `Transaction.t()`
     * `:witness_utxo` — a `Transaction.Out.t()`
-    * `:partial_sig` — `%{public_key: Point.t(), signature: Signature.t(), sighash_flag: flag}` (repeatable), where `flag` (like `:sighash_type`) must be one of the valid sighash flags `0x01`/`0x02`/`0x03` optionally `| 0x80`
+    * `:partial_sig` — `%{public_key: Point.t(), signature: binary(), sighash_flag: flag}` (repeatable), where `signature` is the raw DER-encoded ECDSA signature (stored verbatim, so it round-trips byte-for-byte) and `flag` (like `:sighash_type`) must be one of the valid sighash flags `0x01`/`0x02`/`0x03` optionally `| 0x80`
     * `:sighash_type` — one of the valid sighash flag integers
     * `:redeem_script` / `:witness_script` / `:final_scriptsig` — a `Script.t()` or its hex/binary
     * `:bip32_derivation` — `%{public_key: Point.t(), origin: KeyOrigin.t()}` (repeatable)
@@ -893,12 +897,21 @@ defmodule Bitcoinex.PSBT.In do
         :partial_sig,
         %{
           public_key: %Point{},
-          signature: %Signature{},
+          signature: signature,
           sighash_flag: sighash_flag
         } = record
       )
-      when sighash_flag in @valid_sighash_flags do
-    {:ok, %In{input | partial_sig: PsbtUtils.append(input.partial_sig, record)}}
+      when is_binary(signature) and sighash_flag in @valid_sighash_flags do
+    # Signatures are kept as their raw DER bytes so they round-trip verbatim, but
+    # still validate that those bytes are well-formed DER so a garbage partial_sig
+    # is rejected rather than stored.
+    case Signature.der_parse_signature(signature) do
+      {:ok, _signature} ->
+        {:ok, %In{input | partial_sig: PsbtUtils.append(input.partial_sig, record)}}
+
+      {:error, _reason} ->
+        {:error, :invalid_partial_sig}
+    end
   end
 
   def add_field(%In{} = input, :sighash_type, sighash_type)
@@ -1228,29 +1241,24 @@ defmodule Bitcoinex.PSBT.In do
     end
   end
 
-  # Extracts exactly one signature and its pubkey for single-key script types.
-  defp single_signature(%In{partial_sig: [partial_sig]}) do
-    {:ok, signature_bytes(partial_sig), Point.sec(partial_sig.public_key)}
-  end
-
-  defp single_signature(_input), do: :cannot_finalize
-
-  # Like single_signature/1, but also enforces the BIP-174 Signer key-hash check:
-  # HASH160(pubkey) must equal the 20-byte hash committed to by the scriptPubKey
-  # (p2pkh/p2wpkh) or redeemScript (nested p2wpkh). `builder` rebuilds that script
-  # from the pubkey hash. Without this a signature from an unrelated key would
-  # finalize into a provably-invalid input.
-  defp single_signature_for(input, expected_script, builder) do
-    case single_signature(input) do
-      {:ok, signature, public_key} ->
-        if builder.(Bitcoinex.Utils.hash160(public_key)) == {:ok, expected_script} do
-          {:ok, signature, public_key}
-        else
-          :cannot_finalize
-        end
-
-      :cannot_finalize ->
+  # Finds the one partial_sig whose pubkey matches `expected_script` for a
+  # single-key script type, returning its raw signature bytes and SEC pubkey.
+  # `builder` rebuilds the expected script from HASH160(pubkey) — the p2pkh/p2wpkh
+  # scriptPubKey, or the redeemScript for nested p2wpkh. This enforces the BIP-174
+  # Signer key-hash check (without it a signature from an unrelated key would
+  # finalize into a provably-invalid input) and, since the input may legitimately
+  # carry signatures for several keys, also selects the correct one rather than
+  # requiring exactly a single partial_sig.
+  defp single_signature_for(%In{partial_sig: partial_sigs}, expected_script, builder) do
+    case Enum.find(partial_sigs || [], fn partial_sig ->
+           public_key = Point.sec(partial_sig.public_key)
+           builder.(Bitcoinex.Utils.hash160(public_key)) == {:ok, expected_script}
+         end) do
+      nil ->
         :cannot_finalize
+
+      partial_sig ->
+        {:ok, signature_bytes(partial_sig), Point.sec(partial_sig.public_key)}
     end
   end
 
@@ -1282,8 +1290,10 @@ defmodule Bitcoinex.PSBT.In do
     end)
   end
 
+  # partial_sig signatures are stored as their raw DER bytes; the finalized
+  # scriptSig/witness pushes those bytes followed by the 1-byte sighash flag.
   defp signature_bytes(%{signature: signature, sighash_flag: sighash_flag}) do
-    Signature.der_serialize_signature(signature) <> <<sighash_flag>>
+    signature <> <<sighash_flag>>
   end
 
   # Builds a witness stack from raw byte items.
@@ -1510,7 +1520,11 @@ defmodule Bitcoinex.PSBT.In do
   end
 
   # Splits a PSBT partial_sig value into its DER signature and trailing 1-byte
-  # sighash flag.
+  # sighash flag. The DER signature is stored as raw bytes rather than parsed into
+  # a Signature struct: re-serializing a parsed ECDSA signature yields canonical
+  # DER, which is not guaranteed to reproduce a non-canonically-encoded input, so
+  # storing the raw bytes is what makes partial_sig round-trip losslessly. The
+  # bytes are still validated as well-formed DER so a malformed value is rejected.
   defp parse_partial_sig(public_key, value) do
     signature_length = byte_size(value) - 1
     <<der_signature::binary-size(signature_length), sighash_flag::8>> = value
@@ -1521,8 +1535,8 @@ defmodule Bitcoinex.PSBT.In do
 
       true ->
         case Signature.der_parse_signature(der_signature) do
-          {:ok, signature} ->
-            {:ok, %{public_key: public_key, signature: signature, sighash_flag: sighash_flag}}
+          {:ok, _signature} ->
+            {:ok, %{public_key: public_key, signature: der_signature, sighash_flag: sighash_flag}}
 
           {:error, reason} ->
             {:error, reason}
@@ -1633,7 +1647,7 @@ defmodule Bitcoinex.PSBT.In do
          sighash_flag: sighash_flag
        }) do
     key = <<@psbt_in_partial_sig::big-size(8)>> <> Point.sec(public_key)
-    value = Signature.der_serialize_signature(signature) <> <<sighash_flag>>
+    value = signature <> <<sighash_flag>>
     PsbtUtils.serialize_kv(key, value)
   end
 
