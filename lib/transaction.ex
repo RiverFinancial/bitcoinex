@@ -254,6 +254,27 @@ defmodule Bitcoinex.Transaction.Witness do
     witness
   end
 
+  @doc """
+  Parses a binary that must contain exactly one serialized witness stack:
+  trailing bytes after the last stack item make it invalid.
+  """
+  @spec parse_witness(binary()) :: {:ok, t()} | {:error, :invalid_witness}
+  def parse_witness(witness_bytes) do
+    {stack_size, witness_bytes} = TxUtils.get_counter(witness_bytes)
+
+    if stack_size == 0 do
+      case witness_bytes do
+        <<>> -> {:ok, %Witness{txinwitness: []}}
+        _ -> {:error, :invalid_witness}
+      end
+    else
+      case parse_stack(witness_bytes, [], stack_size) do
+        {stack_items, <<>>} -> {:ok, %Witness{txinwitness: stack_items}}
+        _ -> {:error, :invalid_witness}
+      end
+    end
+  end
+
   @spec serialize_witness(list(Witness.t())) :: binary
   def serialize_witness(witnesses) do
     serialize_witness(witnesses, <<>>)
@@ -450,6 +471,25 @@ defmodule Bitcoinex.Transaction.Out do
     <<script_pub_key::binary-size(script_len)>> = out_bytes
     %Out{value: value, script_pub_key: Base.encode16(script_pub_key, case: :lower)}
   end
+
+  @doc """
+  Parses a binary that must contain exactly one serialized transaction output:
+  trailing bytes after the scriptPubKey make it invalid.
+  """
+  @spec parse_output(binary()) :: {:ok, t()} | {:error, :invalid_output}
+  def parse_output(<<value::little-size(64), out_bytes::binary>>) do
+    {script_len, out_bytes} = TxUtils.get_counter(out_bytes)
+
+    case out_bytes do
+      <<script_pub_key::binary-size(script_len)>> ->
+        {:ok, %Out{value: value, script_pub_key: Base.encode16(script_pub_key, case: :lower)}}
+
+      _ ->
+        {:error, :invalid_output}
+    end
+  end
+
+  def parse_output(_), do: {:error, :invalid_output}
 
   def parse_outputs(counter, outputs) do
     parse(outputs, [], counter)
