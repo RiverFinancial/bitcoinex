@@ -277,18 +277,25 @@ defmodule Bitcoinex.PSBT do
   each finalizable input it builds the `final_scriptsig` and/or
   `final_scriptwitness` from the collected signatures and scripts and removes
   the now-redundant fields.
+
+  Supported spend types: p2pkh, p2wpkh, p2sh-p2wpkh, bare/p2sh/p2wsh multisig,
+  and p2sh-p2wsh. Anything else — bare p2pk, p2sh-wrapped p2pkh, arbitrary
+  scripts, taproot — is left unfinalized (not an error), so an untouched input
+  can mean "unsupported spend type" as well as "missing signatures".
+  A non-witness spend type additionally requires a `non_witness_utxo` whose
+  txid matches the input's outpoint; a `witness_utxo` alone cannot be verified
+  and is never trusted to finalize a non-witness input (BIP-174 Signer checks).
   """
   @spec finalize(t()) :: t()
-  def finalize(%PSBT{} = psbt) do
-    tx_inputs = psbt.global.unsigned_tx.inputs
-
+  def finalize(%PSBT{global: %{unsigned_tx: %Transaction{} = tx}, inputs: inputs} = psbt)
+      when is_list(inputs) do
     # A well-formed PSBT has exactly one input map per unsigned-tx input. If a
     # (hand-built) PSBT desyncs them, `Enum.zip` would finalize only the common
     # prefix and silently drop the rest, so leave the PSBT untouched instead.
-    if length(psbt.inputs) == length(tx_inputs) do
+    if length(inputs) == length(tx.inputs) do
       inputs =
-        psbt.inputs
-        |> Enum.zip(tx_inputs)
+        inputs
+        |> Enum.zip(tx.inputs)
         |> Enum.map(fn {input, tx_input} -> In.finalize(input, tx_input) end)
 
       %PSBT{psbt | inputs: inputs}
@@ -297,11 +304,21 @@ defmodule Bitcoinex.PSBT do
     end
   end
 
+  # Nothing to finalize on a hand-built PSBT with no unsigned tx, no global
+  # map, or no input list; best-effort means returning it untouched, not
+  # raising.
+  def finalize(%PSBT{} = psbt), do: psbt
+
   @doc """
-  Returns true if every input has been finalized.
+  Returns true if every input has been finalized. A PSBT with no inputs at all
+  (or a hand-built one with `inputs: nil`) is not considered finalized — there
+  is nothing extractable in it.
   """
   @spec finalized?(t()) :: boolean()
-  def finalized?(%PSBT{} = psbt), do: Enum.all?(psbt.inputs, &In.finalized?/1)
+  def finalized?(%PSBT{inputs: inputs}) when is_list(inputs) and inputs != [],
+    do: Enum.all?(inputs, &In.finalized?/1)
+
+  def finalized?(%PSBT{}), do: false
 
   @doc """
   Extracts the fully-signed network transaction from a finalized PSBT (the
@@ -309,10 +326,8 @@ defmodule Bitcoinex.PSBT do
   every input is finalized.
   """
   @spec extract_tx(t()) :: {:ok, Transaction.t()} | {:error, :not_finalized}
-  def extract_tx(%PSBT{} = psbt) do
-    if finalized?(psbt) and length(psbt.inputs) == length(psbt.global.unsigned_tx.inputs) do
-      tx = psbt.global.unsigned_tx
-
+  def extract_tx(%PSBT{global: %{unsigned_tx: %Transaction{} = tx}} = psbt) do
+    if finalized?(psbt) and length(psbt.inputs) == length(tx.inputs) do
       inputs =
         psbt.inputs
         |> Enum.zip(tx.inputs)
@@ -325,6 +340,8 @@ defmodule Bitcoinex.PSBT do
       {:error, :not_finalized}
     end
   end
+
+  def extract_tx(%PSBT{}), do: {:error, :not_finalized}
 
   defp extracted_script_sig(%{final_scriptsig: nil}), do: ""
   defp extracted_script_sig(%{final_scriptsig: script}), do: Bitcoinex.Script.to_hex(script)
@@ -1304,36 +1321,35 @@ defmodule Bitcoinex.PSBT.In do
   @spec finalize(t(), Transaction.In.t()) :: t()
   def finalize(%In{} = input, tx_input) do
     with false <- finalized?(input),
-         :ok <- signatures_match_sighash_type(input),
          {:ok, script_pub_key} <- script_pub_key(input, tx_input),
-         {:ok, final_scriptsig, final_scriptwitness} <- build_finalization(input, script_pub_key) do
+         {:ok, final_scriptsig, final_scriptwitness} <-
+           build_finalization(eligible_signatures(input), script_pub_key) do
       finalized_input(input, final_scriptsig, final_scriptwitness)
     else
       _ -> input
     end
   end
 
-  # BIP-174: a finalizer must not finalize an input whose signatures do not match
-  # the sighash type the input requires. When no sighash_type is specified, any
-  # signature is acceptable.
-  defp signatures_match_sighash_type(%In{sighash_type: nil}), do: :ok
+  # BIP-174: a finalizer must not finalize an input with a signature that does
+  # not match the sighash type the input requires. Signatures with a different
+  # flag are simply not eligible for selection — they may belong to keys not in
+  # this input's script at all (e.g. after combining PSBTs from several
+  # signers), so their presence alone must not block finalization.
+  defp eligible_signatures(%In{sighash_type: nil} = input), do: input
 
-  defp signatures_match_sighash_type(%In{sighash_type: sighash_type, partial_sig: partial_sigs}) do
-    if Enum.all?(partial_sigs || [], fn partial_sig ->
-         partial_sig.sighash_flag == sighash_type
-       end) do
-      :ok
-    else
-      :sighash_mismatch
-    end
+  defp eligible_signatures(%In{sighash_type: sighash_type, partial_sig: partial_sigs} = input) do
+    eligible =
+      Enum.filter(partial_sigs || [], fn partial_sig ->
+        partial_sig.sighash_flag == sighash_type
+      end)
+
+    %In{input | partial_sig: eligible}
   end
 
-  # Resolves the scriptPubKey being spent, from the witness UTXO or, for a
-  # non-witness UTXO, the referenced output (after checking the txid matches).
-  defp script_pub_key(%In{witness_utxo: %Out{} = utxo}, _tx_input) do
-    Script.parse_script(utxo.script_pub_key)
-  end
-
+  # Resolves the scriptPubKey being spent. The non-witness UTXO is preferred:
+  # it is the full previous transaction, verifiable against the input's
+  # outpoint (txid + index), whereas a witness_utxo is a bare output that
+  # cannot be cross-checked at all.
   defp script_pub_key(%In{non_witness_utxo: %Transaction{} = tx}, tx_input) do
     if Transaction.transaction_id(tx) == tx_input.prev_txid do
       case Enum.at(tx.outputs, tx_input.prev_vout) do
@@ -1345,6 +1361,10 @@ defmodule Bitcoinex.PSBT.In do
     end
   end
 
+  defp script_pub_key(%In{witness_utxo: %Out{} = utxo}, _tx_input) do
+    Script.parse_script(utxo.script_pub_key)
+  end
+
   defp script_pub_key(_input, _tx_input), do: :error
 
   # Builds {final_scriptsig, final_scriptwitness} for the input's script type, or
@@ -1352,19 +1372,28 @@ defmodule Bitcoinex.PSBT.In do
   # unsupported.
   defp build_finalization(input, script_pub_key) do
     case Script.get_script_type(script_pub_key) do
-      :p2pkh -> finalize_p2pkh(input, script_pub_key)
+      :p2pkh -> with_non_witness_utxo(input, &finalize_p2pkh(&1, script_pub_key))
       :p2wpkh -> finalize_p2wpkh(input, script_pub_key)
       :p2sh -> finalize_p2sh(input, script_pub_key)
       :p2wsh -> finalize_p2wsh(input, input.witness_script, script_pub_key)
-      :multi -> finalize_bare_multisig(input, script_pub_key)
+      :multi -> with_non_witness_utxo(input, &finalize_bare_multisig(&1, script_pub_key))
       _other -> :cannot_finalize
     end
   end
 
+  # BIP-174 Signer check: "A Witness UTXO is provided for a non-witness input"
+  # must fail. A non-witness spend path may only be finalized from a
+  # non_witness_utxo (whose txid the caller verified against the outpoint) —
+  # a lying witness_utxo must not steer a legacy finalization.
+  defp with_non_witness_utxo(%In{non_witness_utxo: %Transaction{}} = input, finalize_fun),
+    do: finalize_fun.(input)
+
+  defp with_non_witness_utxo(%In{}, _finalize_fun), do: :cannot_finalize
+
   defp finalize_p2pkh(input, script_pub_key) do
     case single_signature_for(input, script_pub_key, &Script.create_p2pkh/1) do
       {:ok, signature, public_key} ->
-        {:ok, script_from_bytes(push_data(signature) <> push_data(public_key)), nil}
+        {:ok, script_with_pushes([signature, public_key]), nil}
 
       :cannot_finalize ->
         :cannot_finalize
@@ -1396,7 +1425,7 @@ defmodule Bitcoinex.PSBT.In do
       Script.is_p2wpkh?(redeem_script) ->
         case single_signature_for(input, redeem_script, &Script.create_p2wpkh/1) do
           {:ok, signature, public_key} ->
-            {:ok, script_from_bytes(push_data(redeem_bytes)), witness([signature, public_key])}
+            {:ok, script_with_pushes([redeem_bytes]), witness([signature, public_key])}
 
           :cannot_finalize ->
             :cannot_finalize
@@ -1405,24 +1434,25 @@ defmodule Bitcoinex.PSBT.In do
       Script.is_p2wsh?(redeem_script) ->
         case finalize_p2wsh(input, input.witness_script, redeem_script) do
           {:ok, nil, final_scriptwitness} ->
-            {:ok, script_from_bytes(push_data(redeem_bytes)), final_scriptwitness}
+            {:ok, script_with_pushes([redeem_bytes]), final_scriptwitness}
 
           :cannot_finalize ->
             :cannot_finalize
         end
 
       Script.is_multi?(redeem_script) ->
-        case multisig_signatures(redeem_script, input.partial_sig) do
-          {:ok, signatures} ->
-            scriptsig =
-              <<0x00>> <>
-                Enum.map_join(signatures, &push_data/1) <> push_data(redeem_bytes)
+        # A legacy (non-witness) spend path: like p2pkh, it may only be
+        # finalized from a verifiable non_witness_utxo (see
+        # with_non_witness_utxo/2).
+        with_non_witness_utxo(input, fn input ->
+          case multisig_signatures(redeem_script, input.partial_sig) do
+            {:ok, signatures} ->
+              {:ok, script_with_op0_dummy(signatures ++ [redeem_bytes]), nil}
 
-            {:ok, script_from_bytes(scriptsig), nil}
-
-          :cannot_finalize ->
-            :cannot_finalize
-        end
+            :cannot_finalize ->
+              :cannot_finalize
+          end
+        end)
 
       true ->
         :cannot_finalize
@@ -1454,7 +1484,7 @@ defmodule Bitcoinex.PSBT.In do
   defp finalize_bare_multisig(input, script_pub_key) do
     case multisig_signatures(script_pub_key, input.partial_sig) do
       {:ok, signatures} ->
-        {:ok, script_from_bytes(<<0x00>> <> Enum.map_join(signatures, &push_data/1)), nil}
+        {:ok, script_with_op0_dummy(signatures), nil}
 
       :cannot_finalize ->
         :cannot_finalize
@@ -1521,21 +1551,19 @@ defmodule Bitcoinex.PSBT.In do
     %Witness{txinwitness: Enum.map(items, &Base.encode16(&1, case: :lower))}
   end
 
-  defp script_from_bytes(bytes) do
-    {:ok, script} = Script.parse_script(Base.encode16(bytes, case: :lower))
-    script
+  # Builds a Script pushing the given data items in order (Script items are
+  # built back to front, so items are pushed in reverse).
+  defp script_with_pushes(items) do
+    Enum.reduce(Enum.reverse(items), Script.new(), fn item, acc ->
+      {:ok, acc} = Script.push_data(acc, item)
+      acc
+    end)
   end
 
-  # Minimal Bitcoin script data push for the given bytes.
-  defp push_data(data) do
-    data_size = byte_size(data)
-
-    cond do
-      data_size < 0x4C -> <<data_size>> <> data
-      data_size <= 0xFF -> <<0x4C, data_size>> <> data
-      data_size <= 0xFFFF -> <<0x4D, data_size::little-size(16)>> <> data
-      true -> <<0x4E, data_size::little-size(32)>> <> data
-    end
+  # Same, preceded by the OP_0 dummy that OP_CHECKMULTISIG's off-by-one pops.
+  defp script_with_op0_dummy(items) do
+    {:ok, script} = Script.push_op(script_with_pushes(items), 0x00)
+    script
   end
 
   # Keeps only the fields a finalized input retains (BIP-174): the UTXO records,

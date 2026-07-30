@@ -1244,6 +1244,176 @@ defmodule Bitcoinex.PSBTTest do
       assert finalized == PSBT.finalize(only_matching)
     end
 
+    test "does not finalize a non-witness input from a witness_utxo alone" do
+      # BIP-174 Signer check: "A Witness UTXO is provided for a non-witness
+      # input" must fail. A witness_utxo cannot be verified against the
+      # outpoint, so it must never steer a legacy (here: p2pkh) finalization.
+      {:ok, p2pkh} =
+        Script.create_p2pkh(Bitcoinex.Utils.hash160(Point.sec(point(@finalize_pubkey_a))))
+
+      {:ok, tx} = Transaction.decode(single_input_tx_hex())
+      {:ok, psbt} = PSBT.from_tx(tx)
+
+      utxo = %Bitcoinex.Transaction.Out{value: 1000, script_pub_key: Script.to_hex(p2pkh)}
+      {:ok, psbt} = PSBT.add_input_field(psbt, 0, :witness_utxo, utxo)
+
+      {:ok, psbt} =
+        PSBT.add_input_field(
+          psbt,
+          0,
+          :partial_sig,
+          signature_record(@finalize_pubkey_a, @finalize_sig_a)
+        )
+
+      finalized = PSBT.finalize(psbt)
+      refute PSBT.finalized?(finalized)
+      assert finalized == psbt
+
+      # The same input finalizes once the verifiable non_witness_utxo is there.
+      verifiable =
+        non_witness_psbt(
+          Script.to_hex(p2pkh),
+          [signature_record(@finalize_pubkey_a, @finalize_sig_a)]
+        )
+
+      assert PSBT.finalized?(PSBT.finalize(verifiable))
+    end
+
+    test "a signature with a different sighash flag does not block finalization" do
+      # Key A's SIGHASH_ALL signature must finalize this input even though an
+      # unrelated key B contributed a signature with a different flag (e.g.
+      # after combining PSBTs from several signers).
+      {:ok, p2pkh} =
+        Script.create_p2pkh(Bitcoinex.Utils.hash160(Point.sec(point(@finalize_pubkey_a))))
+
+      unrelated = %{signature_record(@finalize_pubkey_b, @finalize_sig_a) | sighash_flag: 0x83}
+
+      psbt =
+        non_witness_psbt(Script.to_hex(p2pkh), [
+          signature_record(@finalize_pubkey_a, @finalize_sig_a),
+          unrelated
+        ])
+
+      {:ok, psbt} = PSBT.add_input_field(psbt, 0, :sighash_type, 0x01)
+
+      assert PSBT.finalized?(PSBT.finalize(psbt))
+    end
+
+    test "does not finalize with a signature whose flag mismatches sighash_type" do
+      {:ok, p2pkh} =
+        Script.create_p2pkh(Bitcoinex.Utils.hash160(Point.sec(point(@finalize_pubkey_a))))
+
+      psbt =
+        non_witness_psbt(
+          Script.to_hex(p2pkh),
+          [signature_record(@finalize_pubkey_a, @finalize_sig_a)]
+        )
+
+      # The only available signature carries flag 0x01; the input demands 0x03.
+      {:ok, psbt} = PSBT.add_input_field(psbt, 0, :sighash_type, 0x03)
+
+      finalized = PSBT.finalize(psbt)
+      refute PSBT.finalized?(finalized)
+      assert finalized == psbt
+    end
+
+    test "finalizes a native p2wsh 2-of-2 multisig to (OP_0, sigs, witnessScript)" do
+      {:ok, witness_script} =
+        Script.create_multi(2, [point(@finalize_pubkey_a), point(@finalize_pubkey_b)])
+
+      {:ok, script_pub_key} = Script.to_p2wsh(witness_script)
+
+      {:ok, tx} = Transaction.decode(single_input_tx_hex())
+      {:ok, psbt} = PSBT.from_tx(tx)
+
+      utxo = %Bitcoinex.Transaction.Out{
+        value: 1000,
+        script_pub_key: Script.to_hex(script_pub_key)
+      }
+
+      {:ok, psbt} = PSBT.add_input_field(psbt, 0, :witness_utxo, utxo)
+      {:ok, psbt} = PSBT.add_input_field(psbt, 0, :witness_script, witness_script)
+
+      # Insertion order is B then A; the witness must follow script order A, B.
+      {:ok, psbt} =
+        PSBT.add_input_field(
+          psbt,
+          0,
+          :partial_sig,
+          signature_record(@finalize_pubkey_b, @finalize_sig_a)
+        )
+
+      {:ok, psbt} =
+        PSBT.add_input_field(
+          psbt,
+          0,
+          :partial_sig,
+          signature_record(@finalize_pubkey_a, @finalize_sig_a)
+        )
+
+      finalized = PSBT.finalize(psbt)
+      input = hd(finalized.inputs)
+      sig_hex = @finalize_sig_a <> "01"
+
+      assert PSBT.finalized?(finalized)
+      assert input.final_scriptsig == nil
+
+      assert input.final_scriptwitness.txinwitness == [
+               "",
+               sig_hex,
+               sig_hex,
+               Script.to_hex(witness_script)
+             ]
+    end
+
+    test "selects the first m signatures in script order when more are present" do
+      # Bare 2-of-3 multisig holding all three signatures: the scriptSig must
+      # take the first two in the script's pubkey order (A, B), like Core.
+      {:ok, multi} =
+        Script.create_multi(2, [
+          point(@finalize_pubkey_a),
+          point(@finalize_pubkey_b),
+          point(@finalize_pubkey_c)
+        ])
+
+      psbt =
+        non_witness_psbt(Script.to_hex(multi), [
+          signature_record(@finalize_pubkey_c, @finalize_sig_a),
+          signature_record(@finalize_pubkey_b, @finalize_sig_a),
+          signature_record(@finalize_pubkey_a, @finalize_sig_a)
+        ])
+
+      finalized = PSBT.finalize(psbt)
+      input = hd(finalized.inputs)
+      sig_bytes = Base.decode16!(@finalize_sig_a, case: :lower) <> <<0x01>>
+      sig_push = <<byte_size(sig_bytes)>> <> sig_bytes
+
+      assert PSBT.finalized?(finalized)
+
+      assert Script.serialize_script(input.final_scriptsig) ==
+               <<0x00>> <> sig_push <> sig_push
+    end
+
+    test "handles hand-built PSBTs without inputs or an unsigned tx safely" do
+      no_tx = %PSBT{global: %Bitcoinex.PSBT.Global{}, inputs: nil, outputs: nil}
+      assert PSBT.finalize(no_tx) == no_tx
+      refute PSBT.finalized?(no_tx)
+      assert {:error, :not_finalized} = PSBT.extract_tx(no_tx)
+
+      # A zero-input PSBT has nothing extractable; it must not report finalized.
+      {:ok, tx} = Transaction.decode(single_input_tx_hex())
+      empty_tx = %Transaction{tx | inputs: []}
+
+      zero_input = %PSBT{
+        global: %Bitcoinex.PSBT.Global{unsigned_tx: empty_tx},
+        inputs: [],
+        outputs: []
+      }
+
+      refute PSBT.finalized?(zero_input)
+      assert {:error, :not_finalized} = PSBT.extract_tx(zero_input)
+    end
+
     test "skips an input whose non-witness UTXO txid does not match" do
       {:ok, p2pkh} =
         Script.create_p2pkh(Bitcoinex.Utils.hash160(Point.sec(point(@finalize_pubkey_a))))
