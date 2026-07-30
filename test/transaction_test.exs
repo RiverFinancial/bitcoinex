@@ -261,9 +261,9 @@ defmodule Bitcoinex.TransactionTest do
       end
     end
 
-    test "encodes values above 0xFFFFFFFF without raising (uint64 branch)" do
-      # Regression: the final cond branch previously read `<= 0xFF`, which is
-      # unreachable, so any value above 0xFFFFFFFF raised CondClauseError.
+    test "encodes values above 0xFFFFFFFF with the 8-byte (0xFF) CompactSize form" do
+      # Values in (0xFFFFFFFF, 0xFFFFFFFFFFFFFFFF] serialize as 0xFF followed by
+      # a little-endian uint64.
       assert <<0xFF, _::binary-size(8)>> =
                TxUtils.serialize_compact_size_unsigned_int(0x1_0000_0000)
     end
