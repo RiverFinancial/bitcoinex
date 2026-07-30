@@ -105,6 +105,12 @@ defmodule Bitcoinex.PSBTTest do
 
       assert {:error, :duplicate_key} = PSBT.decode(base64)
     end
+
+    test "trailing bytes after the output maps are rejected" do
+      {:ok, valid_bytes} = Base.decode64(hd(@bip174_valid_vectors))
+      tampered = Base.encode64(valid_bytes <> <<0xFF>>)
+      assert {:error, :trailing_bytes} = PSBT.decode(tampered)
+    end
   end
 
   describe "to_file/2 & from_file/1" do
@@ -225,7 +231,10 @@ defmodule Bitcoinex.PSBTTest do
                | _rest
              ] = psbt.global.xpub
 
-      assert byte_size(fingerprint) == 4
+      # Fingerprint is the raw 4 wire bytes, not reversed. The wire encodes the
+      # master fingerprint 0x3119694f (little-endian value 1_332_350_169); a
+      # byte-reversing parse would yield <<0x4f, 0x69, 0x19, 0x31>> instead.
+      assert fingerprint == <<1_332_350_169::little-size(32)>>
 
       assert ExtendedKey.display_extended_key(xkey) ==
                "tpubDBkJeJo2X94Yq3RVz65DoUgyLUkaDrkfyrn2VcgyCRSKCRonvKvCF2FpYDGJWDkdRHBajXJGpc63GnumUt63ySvqCu2XaTRGVTKMYGuFk9H"
@@ -253,6 +262,11 @@ defmodule Bitcoinex.PSBTTest do
       signed_tx = %{tx | inputs: [signed_input | tl(tx.inputs)]}
 
       assert {:error, :tx_not_unsigned} = PSBT.from_tx(signed_tx)
+    end
+
+    test "rejects a tx that carries witnesses", %{unsigned_tx: tx} do
+      witness_tx = %{tx | witnesses: [%Bitcoinex.Transaction.Witness{txinwitness: ["00"]}]}
+      assert {:error, :tx_not_unsigned} = PSBT.from_tx(witness_tx)
     end
   end
 
@@ -396,6 +410,22 @@ defmodule Bitcoinex.PSBTTest do
       {:ok, a} = PSBT.add_input_field(base, 0, :sighash_type, 0x01)
       {:ok, b} = PSBT.add_input_field(base, 0, :sighash_type, 0x02)
       assert {:error, :conflicting_field} = PSBT.combine(a, b)
+    end
+
+    test "rejects a repeatable record with the same key but a different value" do
+      {:ok, base} = PSBT.decode(valid_vector(@p2sh_p2wsh_vector_index))
+      {:ok, a} = PSBT.add_input_field(base, 0, :proprietary, %{key: <<0xFC, "x">>, value: "one"})
+      {:ok, b} = PSBT.add_input_field(base, 0, :proprietary, %{key: <<0xFC, "x">>, value: "two"})
+      assert {:error, :conflicting_field} = PSBT.combine(a, b)
+    end
+
+    test "merges a repeatable record shared identically by both sides" do
+      {:ok, base} = PSBT.decode(valid_vector(@p2sh_p2wsh_vector_index))
+      record = %{key: <<0xFC, "x">>, value: "same"}
+      {:ok, a} = PSBT.add_input_field(base, 0, :proprietary, record)
+      {:ok, b} = PSBT.add_input_field(base, 0, :proprietary, record)
+      assert {:ok, combined} = PSBT.combine(a, b)
+      assert hd(combined.inputs).proprietary == [record]
     end
 
     test "unions repeatable fields (partial signatures) from both inputs" do
