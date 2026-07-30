@@ -168,10 +168,24 @@ defmodule Bitcoinex.PSBTTest do
     end
   end
 
+  # Synthetic PSBTs whose sighash values are out of the valid ECDSA set
+  # ({0x01,0x02,0x03,0x81,0x82,0x83}): a sighash_type field of 4, and a
+  # partial_sig whose trailing flag byte is 4.
+  @invalid_sighash_type_field "cHNidP8BADwCAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/////AegDAAAAAAAAAAAAAAAAAQMEBAAAAAAA"
+  @invalid_partial_sig_sighash "cHNidP8BADwCAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/////AegDAAAAAAAAAAAAAAAAIgIDsTQcy6doO2r08SOM1ul+cWfVafrEfx5I1HVBhENVvUZHMEQCIGLrelVhB6fHP0WsSrWh3d9vcHX7EnWWmn84Pv/3hLyyAiAMBdu3Rw2/LwhVfdNWxzJcHtMJE+mWzThAlF2xIijaXwQAAA=="
+
   describe "typed field representations" do
     test "sighash_type is decoded as an integer" do
       {:ok, psbt} = PSBT.decode(valid_vector(@sighash_vector_index))
       assert hd(psbt.inputs).sighash_type == 1
+    end
+
+    test "rejects a sighash_type field outside the valid ECDSA set" do
+      assert {:error, :invalid_sighash_type} = PSBT.decode(@invalid_sighash_type_field)
+    end
+
+    test "rejects a partial_sig whose trailing sighash flag is invalid" do
+      assert {:error, :invalid_partial_sig} = PSBT.decode(@invalid_partial_sig_sighash)
     end
 
     test "partial_sig uses Point and Signature structs" do

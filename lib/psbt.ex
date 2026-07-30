@@ -774,7 +774,12 @@ defmodule Bitcoinex.PSBT.In do
   defp parse(<<@psbt_in_sighash_type::big-size(8)>>, psbt, input) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
     <<sighash_type::little-unsigned-32>> = value
-    {%In{input | sighash_type: sighash_type}, psbt}
+
+    if sighash_type in @valid_sighash_flags do
+      {%In{input | sighash_type: sighash_type}, psbt}
+    else
+      {:error, :invalid_sighash_type}
+    end
   end
 
   defp parse(<<@psbt_in_redeem_script::big-size(8)>>, psbt, input) do
@@ -864,12 +869,18 @@ defmodule Bitcoinex.PSBT.In do
     signature_length = byte_size(value) - 1
     <<der_signature::binary-size(signature_length), sighash::8>> = value
 
-    case Signature.der_parse_signature(der_signature) do
-      {:ok, signature} ->
-        {:ok, %{public_key: public_key, signature: signature, sighash: sighash}}
+    cond do
+      sighash not in @valid_sighash_flags ->
+        {:error, :invalid_sighash_type}
 
-      {:error, reason} ->
-        {:error, reason}
+      true ->
+        case Signature.der_parse_signature(der_signature) do
+          {:ok, signature} ->
+            {:ok, %{public_key: public_key, signature: signature, sighash: sighash}}
+
+          {:error, reason} ->
+            {:error, reason}
+        end
     end
   end
 
