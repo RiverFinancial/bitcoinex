@@ -1,5 +1,6 @@
 defmodule Bitcoinex.PSBTTest do
   use ExUnit.Case
+  use ExUnitProperties
   doctest Bitcoinex.PSBT
 
   alias Bitcoinex.PSBT
@@ -843,6 +844,84 @@ defmodule Bitcoinex.PSBTTest do
     test "a global version value that is not 4 bytes is rejected" do
       psbt_b64 = psbt_with_records(record(<<0xFB>>, <<0x02, 0x00>>), :global)
       assert {:error, :invalid_version} = PSBT.decode(psbt_b64)
+    end
+  end
+
+  # BIP-174 defines each value's encoding exactly; bytes beyond it are
+  # malformed. Accepting them would also break losslessness: the parsers drop
+  # them, so decode |> encode_b64 would silently emit a different PSBT.
+  describe "trailing bytes inside a value payload" do
+    test "witness_utxo with bytes after the scriptPubKey is rejected" do
+      # value = 8-byte amount, scriptPubKey [len=1, OP_TRUE], 2 junk bytes
+      value = <<1000::little-size(64), 0x01, 0x51, 0xDE, 0xAD>>
+      psbt_b64 = psbt_with_records(record(<<0x01>>, value), :input)
+      assert {:error, :invalid_witness_utxo} = PSBT.decode(psbt_b64)
+    end
+
+    test "final_scriptwitness with bytes after the stack is rejected" do
+      # value = 1 stack item [len=1, OP_TRUE], 1 junk byte
+      value = <<0x01, 0x01, 0x51, 0xBB>>
+      psbt_b64 = psbt_with_records(record(<<0x08>>, value), :input)
+      assert {:error, :invalid_final_scriptwitness} = PSBT.decode(psbt_b64)
+
+      # empty stack followed by a junk byte
+      psbt_b64 = psbt_with_records(record(<<0x08>>, <<0x00, 0xFF>>), :input)
+      assert {:error, :invalid_final_scriptwitness} = PSBT.decode(psbt_b64)
+    end
+
+    test "derivation values with a trailing partial index are rejected" do
+      pubkey = <<0x02>> <> :binary.copy(<<0xAB>>, 32)
+      xpub = :binary.copy(<<0x01>>, 78)
+      # fingerprint + one full index + one stray byte (length ≢ 0 mod 4)
+      value = <<0, 0, 0, 0>> <> <<84::little-size(32)>> <> <<0xAA>>
+
+      assert {:error, :invalid_derivation} =
+               PSBT.decode(psbt_with_records(record(<<0x01>> <> xpub, value), :global))
+
+      assert {:error, :invalid_derivation} =
+               PSBT.decode(psbt_with_records(record(<<0x06>> <> pubkey, value), :input))
+
+      assert {:error, :invalid_derivation} =
+               PSBT.decode(psbt_with_records(record(<<0x02>> <> pubkey, value), :output))
+    end
+  end
+
+  describe "duplicate keys in the global and output maps" do
+    test "a repeated global key is rejected with :duplicate_key" do
+      records = record(<<0xFB>>, <<2, 0, 0, 0>>) <> record(<<0xFB>>, <<2, 0, 0, 0>>)
+      assert {:error, :duplicate_key} = PSBT.decode(psbt_with_records(records, :global))
+    end
+
+    test "a repeated output key is rejected with :duplicate_key" do
+      pubkey = <<0x02>> <> :binary.copy(<<0xAB>>, 32)
+      bip32 = record(<<0x02>> <> pubkey, <<0, 0, 0, 0>>)
+      assert {:error, :duplicate_key} = PSBT.decode(psbt_with_records(bip32 <> bip32, :output))
+    end
+  end
+
+  describe "unknown record round-trip property" do
+    test "any set of unknown input records survives decode |> encode_b64 byte-for-byte" do
+      # Key type bytes outside every known input type (0x00-0x0d) and the
+      # proprietary prefix (0xFC), so each record lands in :unknown.
+      key_gen =
+        gen all(
+              type <- StreamData.integer(0x20..0xF0),
+              suffix <- StreamData.binary(max_length: 40)
+            ) do
+          <<type>> <> suffix
+        end
+
+      check all(
+              keys <- StreamData.uniq_list_of(key_gen, min_length: 1, max_length: 5),
+              values <-
+                StreamData.list_of(StreamData.binary(max_length: 60), length: length(keys))
+            ) do
+        records = Enum.zip(keys, values) |> Enum.map_join(fn {k, v} -> record(k, v) end)
+        psbt_b64 = psbt_with_records(records, :input)
+
+        assert {:ok, psbt} = PSBT.decode(psbt_b64)
+        assert PSBT.encode_b64(psbt) == psbt_b64
+      end
     end
   end
 
