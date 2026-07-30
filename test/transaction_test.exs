@@ -89,7 +89,7 @@ defmodule Bitcoinex.TransactionTest do
       assert 4_294_967_295 == in_2.sequence_no
 
       witness_in_0 = Enum.at(txn.witnesses, 0)
-      assert 0 == witness_in_0.txinwitness
+      assert [] == witness_in_0.txinwitness
 
       witness_in_1 = Enum.at(txn.witnesses, 1)
 
@@ -137,7 +137,7 @@ defmodule Bitcoinex.TransactionTest do
       assert 4_294_967_295 == in_1.sequence_no
 
       witness_in_0 = Enum.at(txn.witnesses, 0)
-      assert 0 == witness_in_0.txinwitness
+      assert [] == witness_in_0.txinwitness
 
       witness_in_1 = Enum.at(txn.witnesses, 1)
 
@@ -232,6 +232,19 @@ defmodule Bitcoinex.TransactionTest do
       out_1 = Enum.at(txn.outputs, 1)
       assert 87_000_000 == out_1.value
       assert "76a9147480a33f950689af511e6e84c138dbbd3c3ee41588ac" == out_1.script_pub_key
+    end
+  end
+
+  describe "serialize/1" do
+    test "round-trips a segwit transaction containing an empty witness stack" do
+      # Input 0 of this tx is a legacy spend, so its witness stack is empty
+      # (stack size 0x00 on the wire). Serialization previously raised
+      # Protocol.UndefinedError because the empty stack was decoded as the
+      # integer 0 rather than [].
+      tx_hex = @txn_segwit_serialization_1.tx_hex
+      {:ok, txn} = Transaction.decode(tx_hex)
+      assert [] == Enum.at(txn.witnesses, 0).txinwitness
+      assert Base.encode16(TxUtils.serialize(txn), case: :lower) == tx_hex
     end
   end
 

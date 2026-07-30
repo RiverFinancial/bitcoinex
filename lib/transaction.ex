@@ -199,9 +199,11 @@ defmodule Bitcoinex.Transaction.Utils do
     `0xFFFFFFFFFFFFFFFF` even though the counts bitcoinex serializes in practice
     (input/output/witness counts, script and value lengths) never approach it.
   """
-  def serialize_compact_size_unsigned_int(compact_size) do
+  def serialize_compact_size_unsigned_int(compact_size)
+      when is_integer(compact_size) and compact_size >= 0 and
+             compact_size <= 0xFFFFFFFFFFFFFFFF do
     cond do
-      compact_size >= 0 and compact_size <= 0xFC ->
+      compact_size <= 0xFC ->
         <<compact_size::little-size(8)>>
 
       compact_size <= 0xFFFF ->
@@ -294,7 +296,7 @@ defmodule Bitcoinex.Transaction.Witness do
 
     {witness, remaining} =
       if stack_size == 0 do
-        {%Witness{txinwitness: 0}, remaining}
+        {%Witness{txinwitness: []}, remaining}
       else
         {stack_items, remaining} = parse_stack(remaining, [], stack_size)
         {%Witness{txinwitness: stack_items}, remaining}
