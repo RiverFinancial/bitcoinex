@@ -615,6 +615,25 @@ defmodule Bitcoinex.PSBTTest do
       assert {:error, :mismatched_tx} = PSBT.combine(a, b)
     end
 
+    test "rejects same-txid unsigned txs that differ byte-for-byte (stray witnesses)" do
+      {:ok, a} = PSBT.decode(@combine_signer_a)
+
+      # Same unsigned tx but carrying stray witnesses: the txid is unchanged
+      # (witnesses are stripped when computing it) yet the full serialization
+      # differs. A txid-only precondition would wrongly accept these as the same
+      # tx; the byte-for-byte comparison rejects them.
+      tx = a.global.unsigned_tx
+
+      witnesses =
+        Enum.map(tx.inputs, fn _ -> %Bitcoinex.Transaction.Witness{txinwitness: ["00"]} end)
+
+      tampered = %{tx | witnesses: witnesses}
+      b = %{a | global: %{a.global | unsigned_tx: tampered}}
+
+      assert Transaction.transaction_id(tx) == Transaction.transaction_id(tampered)
+      assert {:error, :mismatched_tx} = PSBT.combine(a, b)
+    end
+
     test "rejects conflicting singleton fields" do
       {:ok, base} = PSBT.decode(valid_vector(@p2sh_p2wsh_vector_index))
       {:ok, a} = PSBT.add_input_field(base, 0, :sighash_type, 0x01)

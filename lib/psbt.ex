@@ -19,6 +19,7 @@ defmodule Bitcoinex.PSBT do
   alias Bitcoinex.PSBT.In
   alias Bitcoinex.PSBT.Out
   alias Bitcoinex.Transaction
+  alias Bitcoinex.Transaction.Utils, as: TxUtils
 
   @type t() :: %__MODULE__{
           global: Global.t(),
@@ -199,11 +200,14 @@ defmodule Bitcoinex.PSBT do
     end
   end
 
-  # BIP-174 identifies a PSBT by its unsigned transaction. Compare by txid so
-  # two PSBTs built for the same tx (e.g. one via decode, one via from_tx/1)
-  # match regardless of incidental struct differences such as witnesses nil vs [].
+  # BIP-174 Combiner precondition: the two PSBTs must describe the same unsigned
+  # transaction. Compare the full serialization byte-for-byte (not just the txid)
+  # so a hand-built PSBT carrying stray witnesses or scriptSigs that happen to
+  # collide on txid is still rejected. `TxUtils.serialize/1` emits legacy form
+  # when there are no witnesses, so the genuine "witnesses nil vs []" difference
+  # between a decoded and a from_tx/1-built unsigned tx does not cause a mismatch.
   defp same_unsigned_tx?(tx_a, tx_b) do
-    Transaction.transaction_id(tx_a) == Transaction.transaction_id(tx_b)
+    TxUtils.serialize(tx_a) == TxUtils.serialize(tx_b)
   end
 
   # Combines two lists of maps positionally, short-circuiting on the first
