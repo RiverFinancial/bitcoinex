@@ -1355,6 +1355,25 @@ defmodule Bitcoinex.PSBTTest do
       end)
     end
 
+    test "keeps proprietary and unknown records after finalizing" do
+      {:ok, psbt} = PSBT.decode(@finalize_input)
+
+      prop = %{key: <<0xFC, "p">>, value: "prop"}
+      unk = %{key: <<0x99, "u">>, value: "unk"}
+
+      inputs =
+        Enum.map(psbt.inputs, fn input -> %In{input | proprietary: [prop], unknown: [unk]} end)
+
+      finalized = PSBT.finalize(%PSBT{psbt | inputs: inputs})
+
+      assert PSBT.finalized?(finalized)
+
+      Enum.each(finalized.inputs, fn input ->
+        assert input.proprietary == [prop]
+        assert input.unknown == [unk]
+      end)
+    end
+
     test "orders multisig signatures independently of their insertion order" do
       {:ok, psbt} = PSBT.decode(@finalize_input)
 
@@ -1797,6 +1816,25 @@ defmodule Bitcoinex.PSBTTest do
       {:ok, psbt} = PSBT.decode(@finalize_expected)
       desynced = %PSBT{psbt | inputs: tl(psbt.inputs)}
       assert {:error, :not_finalized} = PSBT.extract_tx(desynced)
+    end
+
+    test "extracts a fully-legacy transaction without the segwit marker" do
+      {:ok, p2pkh} =
+        Script.create_p2pkh(Bitcoinex.Utils.hash160(Point.sec(point(@finalize_pubkey_a))))
+
+      psbt =
+        non_witness_psbt(Script.to_hex(p2pkh), [
+          signature_record(@finalize_pubkey_a, @finalize_sig_a)
+        ])
+
+      finalized = PSBT.finalize(psbt)
+      assert {:ok, tx} = PSBT.extract_tx(finalized)
+      assert tx.witnesses in [nil, []]
+
+      # Legacy serialization: 4-byte version, then the input count directly —
+      # never the segwit 0x00 marker byte.
+      assert <<_version::little-size(32), 0x01, _::binary>> =
+               Transaction.Utils.serialize(tx)
     end
   end
 
