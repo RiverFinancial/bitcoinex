@@ -172,7 +172,14 @@ defmodule Bitcoinex.Transaction.Utils do
   end
 
   @doc """
-    Returns the serialized variable length integer.
+    Returns the serialized Bitcoin CompactSize (variable-length) unsigned integer.
+
+    CompactSize is defined over the full unsigned 64-bit range: values up to
+    `0xFC` are a single byte, then `0xFD`/`0xFE`/`0xFF` prefix a little-endian
+    2-/4-/8-byte value. The 8-byte form is a real part of the encoding (it is the
+    inverse of `get_counter/1`), so this function must handle values up to
+    `0xFFFFFFFFFFFFFFFF` even though the counts bitcoinex serializes in practice
+    (input/output/witness counts, script and value lengths) never approach it.
   """
   def serialize_compact_size_unsigned_int(compact_size) do
     cond do
