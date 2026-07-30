@@ -646,5 +646,209 @@ defmodule Bitcoinex.PSBTTest do
       assert {:error, :missing_unsigned_tx} = PSBT.to_file(psbt, "./test/never-written.psbt")
       refute File.exists?("./test/never-written.psbt")
     end
+
+    test "txid/1 and add_global_field/3 return errors on a PSBT with no global map" do
+      psbt = %PSBT{global: nil, inputs: [], outputs: []}
+      assert {:error, :no_unsigned_tx} = PSBT.txid(psbt)
+      assert {:ok, updated} = PSBT.add_global_field(psbt, :version, 0)
+      assert updated.global.version == 0
+    end
+  end
+
+  describe "scripts with non-minimal pushes" do
+    test "a redeem_script using OP_PUSHDATA1 for a short payload round-trips byte-for-byte" do
+      # `4c 14 <20 bytes>` is consensus-valid but non-minimal; Script must not
+      # rewrite it to `14 <20 bytes>` (the hash would no longer match a p2sh
+      # scriptPubKey built from the original bytes).
+      non_minimal = <<0x4C, 0x14>> <> :binary.copy(<<0xAB>>, 20)
+      psbt_b64 = psbt_with_records(record(<<0x04>>, non_minimal), :input)
+
+      assert {:ok, psbt} = PSBT.decode(psbt_b64)
+      assert Script.serialize_script(hd(psbt.inputs).redeem_script) == non_minimal
+      assert PSBT.encode_b64(psbt) == psbt_b64
+    end
+  end
+
+  # BIP-174 test-vector master key; every bip32_derivation/xpub in the official
+  # vectors descends from it (master fingerprint d90c6a4f).
+  @bip174_master_tprv "tprv8ZgxMBicQKsPd9TeAdPADNnSyH9SSUUbTVeFszDE23Ki6TBB5nCefAdHkK8Fm3qMQR6sHwA56zqRmKmxnHk37JkiFzvncDqoKmPWubu7hDF"
+
+  describe "key origins" do
+    test "a decoded fingerprint equals ExtendedKey.get_fingerprint/1 of the master key" do
+      # Guards the raw-4-bytes fingerprint representation: an LE-integer
+      # regression would compare byte-reversed against get_fingerprint/1.
+      {:ok, master} = ExtendedKey.parse_extended_key(@bip174_master_tprv)
+      {:ok, psbt} = PSBT.decode(@two_partial_sigs_vector)
+
+      [%{origin: origin} | _] = hd(psbt.inputs).bip32_derivation
+      assert origin.fingerprint == ExtendedKey.get_fingerprint(master)
+      assert origin.fingerprint == <<0xD9, 0x0C, 0x6A, 0x4F>>
+    end
+
+    test "a decoded derivation renders through DerivationPath.to_string/1" do
+      {:ok, psbt} = PSBT.decode(@two_partial_sigs_vector)
+      [%{origin: origin} | _] = hd(psbt.inputs).bip32_derivation
+
+      assert origin.derivation.child_nums == [0x80000000, 0x80000000, 0x80000000]
+      assert {:ok, rendered} = DerivationPath.to_string(origin.derivation)
+      assert String.replace(rendered, "h", "'") =~ "0'/0'/0'"
+    end
+  end
+
+  describe "Updater content validation" do
+    setup do
+      {:ok, base} = PSBT.decode(valid_vector(@p2sh_p2wsh_vector_index))
+      {:ok, psbt} = PSBT.from_tx(base.global.unsigned_tx)
+
+      {:ok, public_key} =
+        Point.parse_public_key(
+          Base.decode16!("03b1341ccba7683b6af4f1238cd6e97e7167d569fac47f1e48d47541844355bd46",
+            case: :lower
+          )
+        )
+
+      %{psbt: psbt, public_key: public_key, base: base}
+    end
+
+    test "adds a partial_sig and rejects a duplicate for the same pubkey", %{
+      psbt: psbt,
+      public_key: public_key,
+      base: base
+    } do
+      [%{signature: signature} | _] = hd(base.inputs).partial_sig
+      record = %{public_key: public_key, signature: signature, sighash_flag: 0x01}
+
+      assert {:ok, updated} = PSBT.add_input_field(psbt, 0, :partial_sig, record)
+      assert hd(updated.inputs).partial_sig == [record]
+      assert {:error, :duplicate_key} = PSBT.add_input_field(updated, 0, :partial_sig, record)
+    end
+
+    test "rejects a partial_sig whose signature is not parseable DER", %{
+      psbt: psbt,
+      public_key: public_key
+    } do
+      record = %{public_key: public_key, signature: <<0xFF, 0xFF>>, sighash_flag: 0x01}
+      assert {:error, :invalid_partial_sig} = PSBT.add_input_field(psbt, 0, :partial_sig, record)
+    end
+
+    test "rejects a KeyOrigin with a wrong-length fingerprint or wildcard path", %{
+      psbt: psbt,
+      public_key: public_key
+    } do
+      short_fp = %KeyOrigin{
+        fingerprint: <<1, 2, 3>>,
+        derivation: %DerivationPath{child_nums: [0]}
+      }
+
+      wildcard = %KeyOrigin{
+        fingerprint: <<1, 2, 3, 4>>,
+        derivation: %DerivationPath{child_nums: [0x80000000, :any]}
+      }
+
+      for origin <- [short_fp, wildcard] do
+        record = %{public_key: public_key, origin: origin}
+
+        assert {:error, :invalid_key_origin} =
+                 PSBT.add_input_field(psbt, 0, :bip32_derivation, record)
+
+        assert {:error, :invalid_key_origin} =
+                 PSBT.add_output_field(psbt, 0, :bip32_derivation, record)
+      end
+    end
+
+    test "rejects a bip32_derivation duplicate for the same pubkey", %{
+      psbt: psbt,
+      public_key: public_key
+    } do
+      origin = %KeyOrigin{
+        fingerprint: <<1, 2, 3, 4>>,
+        derivation: %DerivationPath{child_nums: [0x80000000]}
+      }
+
+      record = %{public_key: public_key, origin: origin}
+      assert {:ok, updated} = PSBT.add_input_field(psbt, 0, :bip32_derivation, record)
+
+      assert {:error, :duplicate_key} =
+               PSBT.add_input_field(updated, 0, :bip32_derivation, record)
+    end
+
+    test "rejects an out-of-range output index", %{psbt: psbt} do
+      assert {:error, :index_out_of_range} =
+               PSBT.add_output_field(
+                 psbt,
+                 99,
+                 :witness_script,
+                 "0014" <> String.duplicate("ab", 20)
+               )
+    end
+
+    test "adds global proprietary and unknown records and rejects duplicates", %{psbt: psbt} do
+      record = %{key: <<0xFC, "prop">>, value: "data"}
+      assert {:ok, updated} = PSBT.add_global_field(psbt, :proprietary, record)
+      assert {:error, :duplicate_key} = PSBT.add_global_field(updated, :proprietary, record)
+
+      unknown = %{key: <<0x42>>, value: "data"}
+      assert {:ok, updated} = PSBT.add_global_field(psbt, :unknown, unknown)
+      assert {:error, :duplicate_key} = PSBT.add_global_field(updated, :unknown, unknown)
+    end
+
+    test "rejects a witness_utxo without an integer value", %{psbt: psbt} do
+      utxo = %Bitcoinex.Transaction.Out{
+        value: nil,
+        script_pub_key: "0014" <> String.duplicate("ab", 20)
+      }
+
+      assert {:error, :invalid_field} = PSBT.add_input_field(psbt, 0, :witness_utxo, utxo)
+    end
+
+    test "validates a non_witness_utxo against the input's outpoint" do
+      # Vector 4 carries a genuine non_witness_utxo for input 0; re-adding it to
+      # a fresh skeleton of the same unsigned tx must succeed, and a mutated
+      # (different-txid) transaction must be rejected.
+      {:ok, base} = PSBT.decode(valid_vector(3))
+      {:ok, psbt} = PSBT.from_tx(base.global.unsigned_tx)
+      utxo = hd(base.inputs).non_witness_utxo
+      assert %Bitcoinex.Transaction{} = utxo
+
+      assert {:ok, updated} = PSBT.add_input_field(psbt, 0, :non_witness_utxo, utxo)
+      assert hd(updated.inputs).non_witness_utxo == utxo
+
+      mutated = %Bitcoinex.Transaction{utxo | lock_time: utxo.lock_time + 1}
+
+      assert {:error, :non_witness_utxo_mismatch} =
+               PSBT.add_input_field(psbt, 0, :non_witness_utxo, mutated)
+    end
+  end
+
+  describe "extended private keys are refused in xpub fields" do
+    test "decoding a PSBT whose global xpub key-data is an xprv fails" do
+      {:ok, master} = ExtendedKey.parse_extended_key(@bip174_master_tprv)
+      raw78 = binary_part(ExtendedKey.serialize_extended_key(master), 0, 78)
+      xprv_record = record(<<0x01>> <> raw78, <<0, 0, 0, 0>>)
+
+      assert {:error, :private_key_not_allowed} =
+               PSBT.decode(psbt_with_records(xprv_record, :global))
+    end
+
+    test "add_global_field(:xpub) rejects an extended private key" do
+      {:ok, base} = PSBT.decode(valid_vector(@p2sh_p2wsh_vector_index))
+      {:ok, psbt} = PSBT.from_tx(base.global.unsigned_tx)
+      {:ok, master} = ExtendedKey.parse_extended_key(@bip174_master_tprv)
+
+      origin = %KeyOrigin{
+        fingerprint: ExtendedKey.get_fingerprint(master),
+        derivation: %DerivationPath{child_nums: []}
+      }
+
+      assert {:error, :private_key_not_allowed} =
+               PSBT.add_global_field(psbt, :xpub, %{xkey: master, origin: origin})
+
+      {:ok, xpub} = ExtendedKey.to_extended_public_key(master)
+      assert {:ok, updated} = PSBT.add_global_field(psbt, :xpub, %{xkey: xpub, origin: origin})
+      assert [%{xkey: ^xpub}] = updated.global.xpub
+
+      assert {:error, :duplicate_key} =
+               PSBT.add_global_field(updated, :xpub, %{xkey: xpub, origin: origin})
+    end
   end
 end
