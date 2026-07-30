@@ -191,7 +191,7 @@ defmodule Bitcoinex.PSBTTest do
     test "partial_sig uses Point and Signature structs" do
       {:ok, psbt} = PSBT.decode(valid_vector(@p2sh_p2wsh_vector_index))
 
-      assert [%{public_key: %Point{} = public_key, signature: %Signature{}, sighash: 1}] =
+      assert [%{public_key: %Point{} = public_key, signature: %Signature{}, sighash_flag: 1}] =
                hd(psbt.inputs).partial_sig
 
       assert Point.sec(public_key) ==
