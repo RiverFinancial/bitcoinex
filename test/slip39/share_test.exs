@@ -140,15 +140,16 @@ defmodule Bitcoinex.SLIP39.ShareTest do
       assert Share.decode(vector_mnemonic(2)) == {:error, :invalid_padding}
     end
 
-    test "21-word mnemonic returns {:error, :invalid_secret_length}" do
+    test "21-word mnemonic returns {:error, :invalid_mnemonic_length}" do
       # rem((21 - 7) * 10, 16) == 12 > 8, so 21-word mnemonics are invalid
-      # even with a correct checksum: they can only encode a master secret
-      # of invalid (odd) length. Matches official vector 40.
+      # even with a correct checksum. The reference implementation reports
+      # this the same way as a too-short mnemonic ("Invalid mnemonic
+      # length"). Matches official vector 40.
       data = List.duplicate(0, 18)
       indices = data ++ Encoding.rs1024_create_checksum(data, false)
       mnemonic = indices |> Encoding.indices_to_words() |> Enum.join(" ")
 
-      assert Share.decode(mnemonic) == {:error, :invalid_secret_length}
+      assert Share.decode(mnemonic) == {:error, :invalid_mnemonic_length}
     end
 
     test "vector 39 (insufficient length, 19 words) returns {:error, :invalid_mnemonic_length}" do

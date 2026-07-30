@@ -68,7 +68,10 @@ defmodule Bitcoinex.SLIP39Test do
       description =~ "insufficient number of members" -> :insufficient_member_shares
       description =~ "Basic sharing 2-of-3" -> :insufficient_member_shares
       description =~ "insufficient length" -> :invalid_mnemonic_length
-      description =~ "invalid master secret length" -> :invalid_secret_length
+      # The reference implementation reports a pad_bits > 8 word count the
+      # same way as a too-short mnemonic ("Invalid mnemonic length").
+      description =~ "invalid master secret length" -> :invalid_mnemonic_length
+      true -> raise "no expected error mapped for vector description: #{description}"
     end
   end
 

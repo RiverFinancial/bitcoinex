@@ -81,18 +81,15 @@ defmodule Bitcoinex.SLIP39 do
     extendable = Keyword.get(opts, :extendable, true)
     iteration_exponent = Keyword.get(opts, :iteration_exponent, 0)
     rng = Keyword.get(opts, :rng, &:crypto.strong_rand_bytes/1)
+    identifier_opt = Keyword.get(opts, :identifier)
 
     with :ok <- validate_secret(master_secret),
          :ok <- validate_group_threshold(group_threshold, length(groups)),
          :ok <- validate_groups(groups),
          :ok <- validate_passphrase(passphrase),
-         :ok <- validate_identifier(Keyword.get(opts, :identifier)),
+         :ok <- validate_identifier(identifier_opt),
          :ok <- validate_iteration_exponent(iteration_exponent) do
-      identifier =
-        case Keyword.get(opts, :identifier) do
-          nil -> random_identifier(rng)
-          identifier -> identifier
-        end
+      identifier = identifier_opt || random_identifier(rng)
 
       ems =
         Cipher.encrypt(master_secret, passphrase, iteration_exponent, identifier, extendable)

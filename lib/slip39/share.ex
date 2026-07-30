@@ -115,12 +115,13 @@ defmodule Bitcoinex.SLIP39.Share do
     pad_bits = rem(value_words * @radix_bits, 16)
 
     if pad_bits > 8 do
-      # Rules out e.g. 21-word mnemonics, where rem(140, 16) == 12. Such a
-      # word count implies a share value that is not a whole number of even
-      # bytes, i.e. it can only be produced by a master secret of invalid
-      # length (official vector 40, "invalid master secret length", is the
-      # 21-word encoding of a 17-byte secret).
-      {:error, :invalid_secret_length}
+      # Per SLIP-39 the padding may not exceed 8 bits, which rules out e.g.
+      # 21-word mnemonics (rem(140, 16) == 12). The reference implementation
+      # reports this as "Invalid mnemonic length" — the same error it raises
+      # for too-short mnemonics — so we mirror it with the same atom. Official
+      # vector 40, labelled "invalid master secret length", is the 21-word
+      # encoding of a 17-byte secret and lands here.
+      {:error, :invalid_mnemonic_length}
     else
       # pad_bits <= 8 guarantees the trailing share value is a whole
       # number of bytes, so this match cannot fail.
