@@ -1138,13 +1138,13 @@ defmodule Bitcoinex.PSBT.In do
 
   # Minimal Bitcoin script data push for the given bytes.
   defp push_data(data) do
-    length = byte_size(data)
+    data_size = byte_size(data)
 
     cond do
-      length < 0x4C -> <<length>> <> data
-      length <= 0xFF -> <<0x4C, length>> <> data
-      length <= 0xFFFF -> <<0x4D, length::little-size(16)>> <> data
-      true -> <<0x4E, length::little-size(32)>> <> data
+      data_size < 0x4C -> <<data_size>> <> data
+      data_size <= 0xFF -> <<0x4C, data_size>> <> data
+      data_size <= 0xFFFF -> <<0x4D, data_size::little-size(16)>> <> data
+      true -> <<0x4E, data_size::little-size(32)>> <> data
     end
   end
 

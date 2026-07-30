@@ -445,6 +445,12 @@ defmodule Bitcoinex.PSBTTest do
   @p2wpkh_pubkey_hex "03b1341ccba7683b6af4f1238cd6e97e7167d569fac47f1e48d47541844355bd46"
   @p2wpkh_sig_hex "3044022062eb7a556107a7c73f45ac4ab5a1dddf6f7075fb1275969a7f383efff784bcb202200c05dbb7470dbf2f08557dd356c7325c1ed30913e996cd3840945db12228da5f01"
 
+  # A compressed pubkey and a canonical DER signature (both from the BIP-174
+  # vectors) used to construct finalize test inputs. The finalizer assembles
+  # bytes; it does not verify the signature.
+  @finalize_pubkey_a "03089dc10c7ac6db54f91329af617333db388cead0c231f723379d1b99030b02dc"
+  @finalize_sig_a "3044022062eb7a556107a7c73f45ac4ab5a1dddf6f7075fb1275969a7f383efff784bcb202200c05dbb7470dbf2f08557dd356c7325c1ed30913e996cd3840945db12228da5f"
+
   # BIP-174 Finalizer/Extractor worked example (P2SH multisig + P2SH-P2WSH multisig).
   @finalize_input "cHNidP8BAJoCAAAAAljoeiG1ba8MI76OcHBFbDNvfLqlyHV5JPVFiHuyq911AAAAAAD/////g40EJ9DsZQpoqka7CwmK6kQiwHGyyng1Kgd5WdB86h0BAAAAAP////8CcKrwCAAAAAAWABTYXCtx0AYLCcmIauuBXlCZHdoSTQDh9QUAAAAAFgAUAK6pouXw+HaliN9VRuh0LR2HAI8AAAAAAAEAuwIAAAABqtc5MQGL0l+ErkALaISL4J23BurCrBgpi6vucatlb4sAAAAASEcwRAIgWPb8fGoz4bMVSNSByCbAFb0wE1qtQs1neQ2rZtKtJDsCIEoc7SYExnNbY5PltBaR3XiwDwxZQvufdRhW+qk4FX26Af7///8CgPD6AgAAAAAXqRQPuUY0IWlrgsgzryQceMF9295JNIfQ8gonAQAAABepFCnKdPigj4GZlCgYXJe12FLkBj9hh2UAAAAiAgKVg785rgpgl0etGZrd1jT6YQhVnWxc05tMIYPxq5bgf0cwRAIgdAGK1BgAl7hzMjwAFXILNoTMgSOJEEjn282bVa1nnJkCIHPTabdA4+tT3O+jOCPIBwUUylWn3ZVE8VfBZ5EyYRGMASICAtq2H/SaFNtqfQKwzR+7ePxLGDErW05U2uTbovv+9TbXSDBFAiEA9hA4swjcHahlo0hSdG8BV3KTQgjG0kRUOTzZm98iF3cCIAVuZ1pnWm0KArhbFOXikHTYolqbV2C+ooFvZhkQoAbqAQEDBAEAAAABBEdSIQKVg785rgpgl0etGZrd1jT6YQhVnWxc05tMIYPxq5bgfyEC2rYf9JoU22p9ArDNH7t4/EsYMStbTlTa5Nui+/71NtdSriIGApWDvzmuCmCXR60Zmt3WNPphCFWdbFzTm0whg/GrluB/ENkMak8AAACAAAAAgAAAAIAiBgLath/0mhTban0CsM0fu3j8SxgxK1tOVNrk26L7/vU21xDZDGpPAAAAgAAAAIABAACAAAEBIADC6wsAAAAAF6kUt/X69A49QKWkWbHbNTXyty+pIeiHIgIDCJ3BDHrG21T5EymvYXMz2ziM6tDCMfcjN50bmQMLAtxHMEQCIGLrelVhB6fHP0WsSrWh3d9vcHX7EnWWmn84Pv/3hLyyAiAMBdu3Rw2/LwhVfdNWxzJcHtMJE+mWzThAlF2xIijaXwEiAgI63ZBPPW3PWd25BrDe4jUpt/+57VDl6GFRkmhgIh8Oc0cwRAIgZfRbpZmLWaJ//hp77QFq8fH5DVSzqo90UKpfVqJRA70CIH9yRwOtHtuWaAsoS1bU/8uI9/t1nqu+CKow8puFE4PSAQEDBAEAAAABBCIAIIwjUxc3Q7WV37Sge3K6jkLjeX2nTof+fZ10l+OyAokDAQVHUiEDCJ3BDHrG21T5EymvYXMz2ziM6tDCMfcjN50bmQMLAtwhAjrdkE89bc9Z3bkGsN7iNSm3/7ntUOXoYVGSaGAiHw5zUq4iBgI63ZBPPW3PWd25BrDe4jUpt/+57VDl6GFRkmhgIh8OcxDZDGpPAAAAgAAAAIADAACAIgYDCJ3BDHrG21T5EymvYXMz2ziM6tDCMfcjN50bmQMLAtwQ2QxqTwAAAIAAAACAAgAAgAAiAgOppMN/WZbTqiXbrGtXCvBlA5RJKUJGCzVHU+2e7KWHcRDZDGpPAAAAgAAAAIAEAACAACICAn9jmXV9Lv9VoTatAsaEsYOLZVbl8bazQoKpS2tQBRCWENkMak8AAACAAAAAgAUAAIAA"
   @finalize_expected "cHNidP8BAJoCAAAAAljoeiG1ba8MI76OcHBFbDNvfLqlyHV5JPVFiHuyq911AAAAAAD/////g40EJ9DsZQpoqka7CwmK6kQiwHGyyng1Kgd5WdB86h0BAAAAAP////8CcKrwCAAAAAAWABTYXCtx0AYLCcmIauuBXlCZHdoSTQDh9QUAAAAAFgAUAK6pouXw+HaliN9VRuh0LR2HAI8AAAAAAAEAuwIAAAABqtc5MQGL0l+ErkALaISL4J23BurCrBgpi6vucatlb4sAAAAASEcwRAIgWPb8fGoz4bMVSNSByCbAFb0wE1qtQs1neQ2rZtKtJDsCIEoc7SYExnNbY5PltBaR3XiwDwxZQvufdRhW+qk4FX26Af7///8CgPD6AgAAAAAXqRQPuUY0IWlrgsgzryQceMF9295JNIfQ8gonAQAAABepFCnKdPigj4GZlCgYXJe12FLkBj9hh2UAAAABB9oARzBEAiB0AYrUGACXuHMyPAAVcgs2hMyBI4kQSOfbzZtVrWecmQIgc9Npt0Dj61Pc76M4I8gHBRTKVafdlUTxV8FnkTJhEYwBSDBFAiEA9hA4swjcHahlo0hSdG8BV3KTQgjG0kRUOTzZm98iF3cCIAVuZ1pnWm0KArhbFOXikHTYolqbV2C+ooFvZhkQoAbqAUdSIQKVg785rgpgl0etGZrd1jT6YQhVnWxc05tMIYPxq5bgfyEC2rYf9JoU22p9ArDNH7t4/EsYMStbTlTa5Nui+/71NtdSrgABASAAwusLAAAAABepFLf1+vQOPUClpFmx2zU18rcvqSHohwEHIyIAIIwjUxc3Q7WV37Sge3K6jkLjeX2nTof+fZ10l+OyAokDAQjaBABHMEQCIGLrelVhB6fHP0WsSrWh3d9vcHX7EnWWmn84Pv/3hLyyAiAMBdu3Rw2/LwhVfdNWxzJcHtMJE+mWzThAlF2xIijaXwFHMEQCIGX0W6WZi1mif/4ae+0BavHx+Q1Us6qPdFCqX1aiUQO9AiB/ckcDrR7blmgLKEtW1P/LiPf7dZ6rvgiqMPKbhROD0gFHUiEDCJ3BDHrG21T5EymvYXMz2ziM6tDCMfcjN50bmQMLAtwhAjrdkE89bc9Z3bkGsN7iNSm3/7ntUOXoYVGSaGAiHw5zUq4AIgIDqaTDf1mW06ol26xrVwrwZQOUSSlCRgs1R1Ptnuylh3EQ2QxqTwAAAIAAAACABAAAgAAiAgJ/Y5l1fS7/VaE2rQLGhLGDi2VW5fG2s0KCqUtrUAUQlhDZDGpPAAAAgAAAAIAFAACAAA=="
@@ -483,6 +489,102 @@ defmodule Bitcoinex.PSBTTest do
       assert input.final_scriptsig == nil
       assert input.final_scriptwitness.txinwitness == [@p2wpkh_sig_hex, @p2wpkh_pubkey_hex]
       assert PSBT.finalized?(finalized)
+    end
+
+    test "strips the non-final fields but keeps the UTXO after finalizing" do
+      {:ok, psbt} = PSBT.decode(@finalize_input)
+      finalized = PSBT.finalize(psbt)
+
+      Enum.each(finalized.inputs, fn input ->
+        assert input.partial_sig == nil
+        assert input.redeem_script == nil
+        assert input.witness_script == nil
+        assert input.bip32_derivation == nil
+        assert input.non_witness_utxo != nil or input.witness_utxo != nil
+      end)
+    end
+
+    test "orders multisig signatures independently of their insertion order" do
+      {:ok, psbt} = PSBT.decode(@finalize_input)
+
+      reversed_sigs =
+        Enum.map(psbt.inputs, fn input ->
+          %{input | partial_sig: Enum.reverse(input.partial_sig)}
+        end)
+
+      reversed = %PSBT{psbt | inputs: reversed_sigs}
+
+      assert PSBT.finalize(reversed) == PSBT.finalize(psbt)
+    end
+
+    test "finalizes a p2pkh input (non-witness UTXO) to a scriptSig" do
+      {:ok, p2pkh} =
+        Script.create_p2pkh(Bitcoinex.Utils.hash160(Point.sec(point(@finalize_pubkey_a))))
+
+      psbt =
+        non_witness_psbt(Script.to_hex(p2pkh), [
+          signature_record(@finalize_pubkey_a, @finalize_sig_a)
+        ])
+
+      finalized = PSBT.finalize(psbt)
+      input = hd(finalized.inputs)
+
+      assert PSBT.finalized?(finalized)
+      assert input.final_scriptwitness == nil
+      assert %Script{} = input.final_scriptsig
+    end
+
+    test "skips an input whose non-witness UTXO txid does not match" do
+      {:ok, p2pkh} =
+        Script.create_p2pkh(Bitcoinex.Utils.hash160(Point.sec(point(@finalize_pubkey_a))))
+
+      psbt =
+        non_witness_psbt(
+          Script.to_hex(p2pkh),
+          [signature_record(@finalize_pubkey_a, @finalize_sig_a)],
+          wrong_txid: true
+        )
+
+      finalized = PSBT.finalize(psbt)
+
+      refute PSBT.finalized?(finalized)
+      assert finalized == psbt
+    end
+
+    test "finalizes a p2sh-p2wpkh input to a redeemScript scriptSig and a witness" do
+      pubkey = point(@finalize_pubkey_a)
+      {:ok, redeem_script} = Script.create_p2wpkh(Bitcoinex.Utils.hash160(Point.sec(pubkey)))
+      {:ok, script_pub_key} = Script.to_p2sh(redeem_script)
+
+      {:ok, tx} = Transaction.decode(single_input_tx_hex())
+      {:ok, base} = PSBT.from_tx(tx)
+
+      utxo = %Bitcoinex.Transaction.Out{
+        value: 1000,
+        script_pub_key: Script.to_hex(script_pub_key)
+      }
+
+      {:ok, psbt} = PSBT.add_input_field(base, 0, :witness_utxo, utxo)
+      {:ok, psbt} = PSBT.add_input_field(psbt, 0, :redeem_script, redeem_script)
+
+      {:ok, psbt} =
+        PSBT.add_input_field(
+          psbt,
+          0,
+          :partial_sig,
+          signature_record(@finalize_pubkey_a, @finalize_sig_a)
+        )
+
+      finalized = PSBT.finalize(psbt)
+      input = hd(finalized.inputs)
+
+      assert PSBT.finalized?(finalized)
+      assert %Script{} = input.final_scriptsig
+
+      assert input.final_scriptwitness.txinwitness == [
+               @finalize_sig_a <> "01",
+               @finalize_pubkey_a
+             ]
     end
   end
 
@@ -532,5 +634,69 @@ defmodule Bitcoinex.PSBTTest do
       })
 
     psbt
+  end
+
+  defp point(hex) do
+    {:ok, public_key} = Point.parse_public_key(Base.decode16!(hex, case: :lower))
+    public_key
+  end
+
+  defp signature_record(pubkey_hex, der_sig_hex) do
+    {:ok, signature} = Signature.der_parse_signature(Base.decode16!(der_sig_hex, case: :lower))
+    %{public_key: point(pubkey_hex), signature: signature, sighash: 0x01}
+  end
+
+  defp single_input_tx_hex do
+    "0200000001" <>
+      String.duplicate("00", 32) <>
+      "00000000" <> "00" <> "ffffffff" <> "01" <> "e803000000000000" <> "00" <> "00000000"
+  end
+
+  # Builds a single-input PSBT spending a non-witness UTXO with the given
+  # scriptPubKey and partial signatures. With `wrong_txid: true` the unsigned
+  # tx references a txid that does not match the supplied prev tx.
+  defp non_witness_psbt(script_pub_key_hex, partial_sigs, opts \\ []) do
+    prev_tx = %Transaction{
+      version: 2,
+      inputs: [
+        %Bitcoinex.Transaction.In{
+          prev_txid: String.duplicate("00", 32),
+          prev_vout: 0,
+          script_sig: "",
+          sequence_no: 0xFFFFFFFF
+        }
+      ],
+      outputs: [%Bitcoinex.Transaction.Out{value: 1000, script_pub_key: script_pub_key_hex}],
+      witnesses: nil,
+      lock_time: 0
+    }
+
+    prev_txid =
+      if opts[:wrong_txid],
+        do: String.duplicate("11", 32),
+        else: Transaction.transaction_id(prev_tx)
+
+    unsigned_tx = %Transaction{
+      version: 2,
+      inputs: [
+        %Bitcoinex.Transaction.In{
+          prev_txid: prev_txid,
+          prev_vout: 0,
+          script_sig: "",
+          sequence_no: 0xFFFFFFFF
+        }
+      ],
+      outputs: [%Bitcoinex.Transaction.Out{value: 900, script_pub_key: ""}],
+      witnesses: nil,
+      lock_time: 0
+    }
+
+    {:ok, psbt} = PSBT.from_tx(unsigned_tx)
+    {:ok, psbt} = PSBT.add_input_field(psbt, 0, :non_witness_utxo, prev_tx)
+
+    Enum.reduce(partial_sigs, psbt, fn partial_sig, acc ->
+      {:ok, acc} = PSBT.add_input_field(acc, 0, :partial_sig, partial_sig)
+      acc
+    end)
   end
 end
