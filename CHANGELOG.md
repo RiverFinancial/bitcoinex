@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PSBT (de)serialization is now lossless for all BIP-174 v0 fields. `PSBT.encode_b64/1` previously dropped the global `version`, per-input `por_commitment`, and any proprietary records (`Global.serialize_global/1` carried a `TODO: serialize all other fields`), so `decode |> encode_b64` was not the identity for many PSBTs.
 ### Added
 - PSBT parsing now covers the BIP-174 v0 input hash-preimage fields (`ripemd160`, `sha256`, `hash160`, `hash256`) and preserves unrecognized proprietary (`:proprietary`) and unknown (`:unknown`) key-value records on every map, so they round-trip.
-- PSBT decoding now rejects malformed inputs per BIP-174: duplicate keys (`{:error, :duplicate_key}`), a known key type carrying wrong-length key data (`:invalid_key_format`), a missing global unsigned tx (`:missing_unsigned_tx`), an unsigned tx with a non-empty scriptSig (`:unsigned_tx_has_script_sig`) or witness serialization (`:unsigned_tx_has_witness_serialization`), and truncated/oversized data — instead of crashing or silently accepting.
+- PSBT decoding now rejects malformed inputs per BIP-174: duplicate keys (`{:error, :duplicate_key}`), a known key type carrying wrong-length key data (`:invalid_key_format`), a missing global unsigned tx (`:missing_unsigned_tx`), an unsigned tx with a non-empty scriptSig (`:unsigned_tx_has_script_sig`) or witness serialization (`:unsigned_tx_has_witness_serialization`), trailing bytes after the final output map (`:trailing_bytes`), and truncated/oversized data — instead of crashing or silently accepting.
 
 ## [0.2.0] - 2026-07-10
 ### Changed

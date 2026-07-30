@@ -105,6 +105,12 @@ defmodule Bitcoinex.PSBTTest do
 
       assert {:error, :duplicate_key} = PSBT.decode(base64)
     end
+
+    test "trailing bytes after the output maps are rejected" do
+      {:ok, valid_bytes} = Base.decode64(hd(@bip174_valid_vectors))
+      tampered = Base.encode64(valid_bytes <> <<0xFF>>)
+      assert {:error, :trailing_bytes} = PSBT.decode(tampered)
+    end
   end
 
   describe "to_file/2 & from_file/1" do
