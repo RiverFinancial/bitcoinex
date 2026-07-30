@@ -315,17 +315,61 @@ defmodule Bitcoinex.PSBTTest do
       assert {:error, :non_witness_utxo_mismatch} = PSBT.decode(bad_vout)
     end
 
-    test "partial_sig uses Point and Signature structs" do
+    test "partial_sig stores the public key as a Point and the signature as raw DER bytes" do
       {:ok, psbt} = PSBT.decode(valid_vector(@p2sh_p2wsh_vector_index))
 
-      assert [%{public_key: %Point{} = public_key, signature: %Signature{}, sighash_flag: 1}] =
+      assert [%{public_key: %Point{} = public_key, signature: signature, sighash_flag: 1}] =
                hd(psbt.inputs).partial_sig
+
+      # The signature is kept as raw bytes (not a parsed Signature struct) so it
+      # round-trips verbatim; it is still well-formed DER.
+      assert is_binary(signature)
+      assert {:ok, %Signature{}} = Signature.der_parse_signature(signature)
 
       assert Point.sec(public_key) ==
                Base.decode16!(
                  "03b1341ccba7683b6af4f1238cd6e97e7167d569fac47f1e48d47541844355bd46",
                  case: :lower
                )
+    end
+
+    test "preserves the exact partial_sig bytes on round-trip, including non-canonical DER" do
+      {:ok, psbt} = PSBT.decode(valid_vector(@p2sh_p2wsh_vector_index))
+      [%{public_key: public_key, sighash_flag: sighash_flag} | _] = hd(psbt.inputs).partial_sig
+
+      # A DER signature carrying an unnecessary leading 0x00 on r: parseable, but
+      # non-canonical. Parsing it into (r, s) and re-serializing would silently
+      # rewrite it to canonical DER; storing the raw bytes preserves it exactly
+      # across decode |> encode_b64.
+      noncanonical_der =
+        Base.decode16!(
+          "3045022100" <> String.duplicate("11", 32) <> "0220" <> String.duplicate("22", 32),
+          case: :lower
+        )
+
+      record = %{public_key: public_key, signature: noncanonical_der, sighash_flag: sighash_flag}
+
+      psbt = %PSBT{
+        psbt
+        | inputs: [%{hd(psbt.inputs) | partial_sig: [record]} | tl(psbt.inputs)]
+      }
+
+      assert {:ok, decoded} = PSBT.decode(PSBT.encode_b64(psbt))
+      assert [%{signature: ^noncanonical_der}] = hd(decoded.inputs).partial_sig
+    end
+
+    test "round-trips a redeem_script that is not a finalizer-recognized template" do
+      # An arbitrary (non-standard) redeem script exercising Script parse/serialize
+      # fidelity for the general case rather than the p2pkh/p2wpkh/p2wsh/multisig
+      # templates: PUSH(4) <locktime> OP_CLTV OP_DROP PUSH(33) <pubkey> OP_CHECKSIG.
+      redeem_hex =
+        "04deadbeefb17521" <> "02" <> String.duplicate("ab", 32) <> "ac"
+
+      {:ok, base} = PSBT.decode(valid_vector(@p2sh_p2wsh_vector_index))
+      {:ok, psbt} = PSBT.add_input_field(base, 0, :redeem_script, redeem_hex)
+
+      assert {:ok, decoded} = PSBT.decode(PSBT.encode_b64(psbt))
+      assert Script.to_hex(hd(decoded.inputs).redeem_script) == redeem_hex
     end
 
     test "redeem_script and witness_script are Script structs" do
@@ -643,6 +687,25 @@ defmodule Bitcoinex.PSBTTest do
       assert {:error, :mismatched_tx} = PSBT.combine(a, b)
     end
 
+    test "rejects same-txid unsigned txs that differ byte-for-byte (stray witnesses)" do
+      {:ok, a} = PSBT.decode(@combine_signer_a)
+
+      # Same unsigned tx but carrying stray witnesses: the txid is unchanged
+      # (witnesses are stripped when computing it) yet the full serialization
+      # differs. A txid-only precondition would wrongly accept these as the same
+      # tx; the byte-for-byte comparison rejects them.
+      tx = a.global.unsigned_tx
+
+      witnesses =
+        Enum.map(tx.inputs, fn _ -> %Bitcoinex.Transaction.Witness{txinwitness: ["00"]} end)
+
+      tampered = %{tx | witnesses: witnesses}
+      b = %{a | global: %{a.global | unsigned_tx: tampered}}
+
+      assert Transaction.transaction_id(tx) == Transaction.transaction_id(tampered)
+      assert {:error, :mismatched_tx} = PSBT.combine(a, b)
+    end
+
     test "rejects conflicting singleton fields" do
       {:ok, base} = PSBT.decode(valid_vector(@p2sh_p2wsh_vector_index))
       {:ok, a} = PSBT.add_input_field(base, 0, :sighash_type, 0x01)
@@ -772,6 +835,32 @@ defmodule Bitcoinex.PSBTTest do
       assert PSBT.finalized?(finalized)
       assert input.final_scriptwitness == nil
       assert %Script{} = input.final_scriptsig
+    end
+
+    test "finalizes a single-key input even when an unrelated extra partial_sig is present" do
+      {:ok, p2pkh} =
+        Script.create_p2pkh(Bitcoinex.Utils.hash160(Point.sec(point(@finalize_pubkey_a))))
+
+      # Input carries a's signature (the one matching the scriptPubKey) plus an
+      # unrelated key b's. The finalizer must select a by key-hash match rather
+      # than refusing because more than one partial_sig is present.
+      with_extra =
+        non_witness_psbt(Script.to_hex(p2pkh), [
+          signature_record(@finalize_pubkey_b, @finalize_sig_a),
+          signature_record(@finalize_pubkey_a, @finalize_sig_a)
+        ])
+
+      only_matching =
+        non_witness_psbt(Script.to_hex(p2pkh), [
+          signature_record(@finalize_pubkey_a, @finalize_sig_a)
+        ])
+
+      finalized = PSBT.finalize(with_extra)
+
+      assert PSBT.finalized?(finalized)
+      # The extra sig is dropped; the result is identical to finalizing with only
+      # the matching signature present.
+      assert finalized == PSBT.finalize(only_matching)
     end
 
     test "skips an input whose non-witness UTXO txid does not match" do
@@ -1007,11 +1096,10 @@ defmodule Bitcoinex.PSBTTest do
   defp single_sig_p2wpkh_psbt() do
     {:ok, pubkey} = Point.parse_public_key(Base.decode16!(@p2wpkh_pubkey_hex, case: :lower))
 
-    {:ok, signature} =
-      Signature.der_parse_signature(
-        Base.decode16!(binary_part(@p2wpkh_sig_hex, 0, byte_size(@p2wpkh_sig_hex) - 2),
-          case: :lower
-        )
+    # Raw DER signature bytes (the sig hex without its trailing 1-byte sighash).
+    signature =
+      Base.decode16!(binary_part(@p2wpkh_sig_hex, 0, byte_size(@p2wpkh_sig_hex) - 2),
+        case: :lower
       )
 
     tx_hex =
@@ -1043,8 +1131,11 @@ defmodule Bitcoinex.PSBTTest do
   end
 
   defp signature_record(pubkey_hex, der_sig_hex) do
-    {:ok, signature} = Signature.der_parse_signature(Base.decode16!(der_sig_hex, case: :lower))
-    %{public_key: point(pubkey_hex), signature: signature, sighash_flag: 0x01}
+    %{
+      public_key: point(pubkey_hex),
+      signature: Base.decode16!(der_sig_hex, case: :lower),
+      sighash_flag: 0x01
+    }
   end
 
   defp single_input_tx_hex do
