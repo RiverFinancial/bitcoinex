@@ -268,4 +268,44 @@ defmodule Bitcoinex.TransactionTest do
                TxUtils.serialize_compact_size_unsigned_int(0x1_0000_0000)
     end
   end
+
+  describe "0-input transaction (segwit-marker ambiguity)" do
+    # version | 00 (0 inputs) | 01 (1 output) | value | 00 (empty script) | locktime.
+    # The `00 01` prefix collides with the segwit marker+flag; parse/1 must fall
+    # back to legacy so a 0-input tx (used by PSBT unsigned txs) round-trips.
+    @zero_input_tx "02000000" <>
+                     "00" <> "01" <> "e803000000000000" <> "00" <> "00000000"
+
+    test "decodes a 0-input tx as legacy and round-trips it" do
+      assert {:ok, tx} = Transaction.decode(@zero_input_tx)
+      assert tx.inputs == []
+      assert length(tx.outputs) == 1
+      assert tx.witnesses == nil
+      assert Base.encode16(TxUtils.serialize(tx), case: :lower) == @zero_input_tx
+    end
+  end
+
+  describe "single-record parsing rejects trailing bytes" do
+    # PSBT passes a whole record value to these; leftover bytes mean the stated
+    # length did not match, so they must not be silently dropped (BIP-174).
+    test "Out.output/1 rejects trailing bytes after the output" do
+      {:ok, valid} =
+        Base.decode16("e80300000000000017a9146e91b72d5593e7d4391e2ff44e91e985c31641f087",
+          case: :lower
+        )
+
+      assert %Bitcoinex.Transaction.Out{} = Bitcoinex.Transaction.Out.output(valid)
+      assert_raise MatchError, fn -> Bitcoinex.Transaction.Out.output(valid <> <<0xFF>>) end
+    end
+
+    test "Witness.witness/1 rejects trailing bytes after the stack" do
+      # One-item stack: count 01, item len 02, item 0xAABB.
+      {:ok, valid} = Base.decode16("0102aabb", case: :lower)
+
+      assert %Bitcoinex.Transaction.Witness{txinwitness: ["aabb"]} =
+               Bitcoinex.Transaction.Witness.witness(valid)
+
+      assert_raise MatchError, fn -> Bitcoinex.Transaction.Witness.witness(valid <> <<0xFF>>) end
+    end
+  end
 end

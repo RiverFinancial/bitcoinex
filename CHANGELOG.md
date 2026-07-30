@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - PSBT parsing now covers the BIP-174 v0 input hash-preimage fields (`ripemd160`, `sha256`, `hash160`, `hash256`) and preserves unrecognized proprietary (`:proprietary`) and unknown (`:unknown`) key-value records on every map, so they round-trip.
 - PSBT decoding now rejects malformed inputs per BIP-174: duplicate keys (`{:error, :duplicate_key}`), a known key type carrying wrong-length key data (`:invalid_key_format`), a missing global unsigned tx (`:missing_unsigned_tx`), an unsigned tx with a non-empty scriptSig (`:unsigned_tx_has_script_sig`) or witness serialization (`:unsigned_tx_has_witness_serialization`), trailing bytes after the final output map (`:trailing_bytes`), and truncated/oversized data — instead of crashing or silently accepting.
+- `Transaction.Out.output/1` and `Transaction.Witness.witness/1` now reject trailing bytes instead of silently dropping them. These parse a single PSBT record value (`PSBT_IN_WITNESS_UTXO` / `PSBT_IN_FINAL_SCRIPTWITNESS`), so an over-long value (stated length exceeding the actual output/witness) is now rejected rather than decoding and re-encoding to different bytes — restoring the `decode |> encode_b64` round-trip guarantee.
+- `Transaction.decode/1` now parses a 0-input transaction (whose `00 01` prefix collides with the segwit marker+flag) by falling back to legacy parsing when the segwit interpretation does not parse cleanly. PSBTs whose unsigned tx has 0 inputs (e.g. Bitcoin Core's `rpc_psbt.json` `valid[5]`) now decode and round-trip.
 
 ## [0.2.0] - 2026-07-10
 ### Changed

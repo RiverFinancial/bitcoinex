@@ -154,10 +154,10 @@ defmodule Bitcoinex.PSBTTest do
   # Extra coverage vendored from Bitcoin Core's test/functional/data/rpc_psbt.json
   # (v0 subset only; v2/BIP-370 and taproot/BIP-371 vectors are out of scope).
   # Regenerate with scripts/gen_core_fixture.exs. The fixture buckets each vector
-  # by this decoder's actual behavior; `_excluded` records the handful of Core
-  # vectors we classify differently (our parser is more lenient on a few negative
-  # cases; one 0-input tx trips the witness-marker ambiguity), so nothing is
-  # silently mislabeled.
+  # by this decoder's actual behavior; `_excluded.invalid_but_accepted` records
+  # the few Core negative vectors our parser is more lenient about (e.g. an input
+  # with both a witness and non-witness UTXO, or out-of-place keys), so nothing
+  # is silently mislabeled.
   describe "Bitcoin Core rpc_psbt.json v0 vectors" do
     setup do
       %{fixture: "test/data/core_psbt_v0_vectors.json" |> File.read!() |> Jason.decode!()}
