@@ -54,12 +54,14 @@ defmodule Bitcoinex.PSBT do
   end
 
   # Parsing operates on untrusted input; a malformed binary (e.g. a value whose
-  # declared length exceeds the remaining bytes) raises during binary matching.
-  # Convert any such raise into a clean error rather than crashing the caller.
+  # declared length exceeds the remaining bytes) raises a MatchError/ArgumentError
+  # during binary matching. Convert those into a clean error rather than crashing
+  # the caller, while letting unexpected exceptions (real bugs) propagate.
   defp safe_parse(psbt_binary) do
     parse(psbt_binary)
   rescue
-    _ -> {:error, :invalid_psbt}
+    _error in [MatchError, ArgumentError, FunctionClauseError] ->
+      {:error, :invalid_psbt}
   end
 
   @spec serialize(t()) :: binary()
@@ -95,7 +97,8 @@ defmodule Bitcoinex.PSBT do
          {:ok, input_count} <- input_count(global),
          {:ok, {inputs, psbt}} <- In.parse_inputs(psbt, input_count),
          output_count = length(global.unsigned_tx.outputs),
-         {:ok, {outputs, _psbt}} <- Out.parse_outputs(psbt, output_count) do
+         {:ok, {outputs, remaining}} <- Out.parse_outputs(psbt, output_count),
+         :ok <- ensure_fully_consumed(remaining) do
       {:ok,
        %PSBT{
          global: global,
@@ -106,6 +109,11 @@ defmodule Bitcoinex.PSBT do
   end
 
   defp parse(_), do: {:error, :invalid_magic}
+
+  # BIP-174: a PSBT must be fully consumed; any bytes after the last output map
+  # make it invalid.
+  defp ensure_fully_consumed(<<>>), do: :ok
+  defp ensure_fully_consumed(_remaining), do: {:error, :trailing_bytes}
 
   # PSBT v0 requires a global unsigned transaction; its input count fixes the
   # number of input maps that follow.
