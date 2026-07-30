@@ -412,6 +412,22 @@ defmodule Bitcoinex.PSBTTest do
       assert {:error, :conflicting_field} = PSBT.combine(a, b)
     end
 
+    test "rejects a repeatable record with the same key but a different value" do
+      {:ok, base} = PSBT.decode(valid_vector(@p2sh_p2wsh_vector_index))
+      {:ok, a} = PSBT.add_input_field(base, 0, :proprietary, %{key: <<0xFC, "x">>, value: "one"})
+      {:ok, b} = PSBT.add_input_field(base, 0, :proprietary, %{key: <<0xFC, "x">>, value: "two"})
+      assert {:error, :conflicting_field} = PSBT.combine(a, b)
+    end
+
+    test "merges a repeatable record shared identically by both sides" do
+      {:ok, base} = PSBT.decode(valid_vector(@p2sh_p2wsh_vector_index))
+      record = %{key: <<0xFC, "x">>, value: "same"}
+      {:ok, a} = PSBT.add_input_field(base, 0, :proprietary, record)
+      {:ok, b} = PSBT.add_input_field(base, 0, :proprietary, record)
+      assert {:ok, combined} = PSBT.combine(a, b)
+      assert hd(combined.inputs).proprietary == [record]
+    end
+
     test "unions repeatable fields (partial signatures) from both inputs" do
       {:ok, a} = PSBT.decode(@combine_signer_a)
       {:ok, b} = PSBT.decode(@combine_signer_b)

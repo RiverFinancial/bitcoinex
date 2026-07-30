@@ -144,25 +144,34 @@ defmodule Bitcoinex.PSBT do
   @doc """
   Combines two PSBTs into one (the BIP-174 Combiner role).
 
-  Both PSBTs must describe the same global unsigned transaction, otherwise
-  `{:error, :mismatched_tx}` is returned. Each map is merged field by field:
-  singleton fields must agree where both are set, and repeatable fields are
-  unioned by key. A record present in both maps under the same key but with a
-  different value yields `{:error, :conflicting_field}`.
+  Both PSBTs must describe the same global unsigned transaction (compared by
+  txid), otherwise `{:error, :mismatched_tx}` is returned. Each map is merged
+  field by field: singleton fields must agree where both are set, and repeatable
+  fields are unioned by key. A record present in both maps under the same key
+  but with a different value yields `{:error, :conflicting_field}`.
 
-  `combine/2` is commutative and idempotent for non-conflicting inputs.
+  Repeatable records are ordered canonically (by key), so `combine/2` is
+  commutative for non-conflicting inputs and idempotent on a canonical PSBT
+  (such as any PSBT that `combine/2` itself produced).
   """
   @spec combine(t(), t()) :: {:ok, t()} | {:error, atom()}
   def combine(%PSBT{} = psbt_a, %PSBT{} = psbt_b) do
-    if psbt_a.global.unsigned_tx != psbt_b.global.unsigned_tx do
-      {:error, :mismatched_tx}
-    else
+    if same_unsigned_tx?(psbt_a.global.unsigned_tx, psbt_b.global.unsigned_tx) do
       with {:ok, global} <- Global.combine(psbt_a.global, psbt_b.global),
            {:ok, inputs} <- combine_pairs(psbt_a.inputs, psbt_b.inputs, &In.combine/2),
            {:ok, outputs} <- combine_pairs(psbt_a.outputs, psbt_b.outputs, &Out.combine/2) do
         {:ok, %PSBT{global: global, inputs: inputs, outputs: outputs}}
       end
+    else
+      {:error, :mismatched_tx}
     end
+  end
+
+  # BIP-174 identifies a PSBT by its unsigned transaction. Compare by txid so
+  # two PSBTs built for the same tx (e.g. one via decode, one via from_tx/1)
+  # match regardless of incidental struct differences such as witnesses nil vs [].
+  defp same_unsigned_tx?(tx_a, tx_b) do
+    Transaction.transaction_id(tx_a) == Transaction.transaction_id(tx_b)
   end
 
   # Combines two equal-length lists of maps positionally, short-circuiting on
