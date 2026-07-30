@@ -191,7 +191,7 @@ defmodule Bitcoinex.PSBTTest do
     test "partial_sig uses Point and Signature structs" do
       {:ok, psbt} = PSBT.decode(valid_vector(@p2sh_p2wsh_vector_index))
 
-      assert [%{public_key: %Point{} = public_key, signature: %Signature{}, sighash: 1}] =
+      assert [%{public_key: %Point{} = public_key, signature: %Signature{}, sighash_flag: 1}] =
                hd(psbt.inputs).partial_sig
 
       assert Point.sec(public_key) ==
@@ -692,7 +692,7 @@ defmodule Bitcoinex.PSBTTest do
       PSBT.add_input_field(psbt, 0, :partial_sig, %{
         public_key: pubkey,
         signature: signature,
-        sighash: 0x01
+        sighash_flag: 0x01
       })
 
     psbt
@@ -705,7 +705,7 @@ defmodule Bitcoinex.PSBTTest do
 
   defp signature_record(pubkey_hex, der_sig_hex) do
     {:ok, signature} = Signature.der_parse_signature(Base.decode16!(der_sig_hex, case: :lower))
-    %{public_key: point(pubkey_hex), signature: signature, sighash: 0x01}
+    %{public_key: point(pubkey_hex), signature: signature, sighash_flag: 0x01}
   end
 
   defp single_input_tx_hex do
