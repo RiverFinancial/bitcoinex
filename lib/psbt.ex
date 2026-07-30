@@ -992,7 +992,9 @@ defmodule Bitcoinex.PSBT.In do
   defp signatures_match_sighash_type(%In{sighash_type: nil}), do: :ok
 
   defp signatures_match_sighash_type(%In{sighash_type: sighash_type, partial_sig: partial_sigs}) do
-    if Enum.all?(partial_sigs || [], fn partial_sig -> partial_sig.sighash_flag == sighash_type end) do
+    if Enum.all?(partial_sigs || [], fn partial_sig ->
+         partial_sig.sighash_flag == sighash_type
+       end) do
       :ok
     else
       :sighash_mismatch
@@ -1025,8 +1027,8 @@ defmodule Bitcoinex.PSBT.In do
     case Script.get_script_type(script_pub_key) do
       :p2pkh -> finalize_p2pkh(input)
       :p2wpkh -> finalize_p2wpkh(input)
-      :p2sh -> finalize_p2sh(input)
-      :p2wsh -> finalize_p2wsh(input, input.witness_script)
+      :p2sh -> finalize_p2sh(input, script_pub_key)
+      :p2wsh -> finalize_p2wsh(input, input.witness_script, script_pub_key)
       :multi -> finalize_bare_multisig(input, script_pub_key)
       _other -> :cannot_finalize
     end
@@ -1052,12 +1054,18 @@ defmodule Bitcoinex.PSBT.In do
     end
   end
 
-  defp finalize_p2sh(%In{redeem_script: nil}), do: :cannot_finalize
+  defp finalize_p2sh(%In{redeem_script: nil}, _script_pub_key), do: :cannot_finalize
 
-  defp finalize_p2sh(%In{redeem_script: redeem_script} = input) do
+  defp finalize_p2sh(%In{redeem_script: redeem_script} = input, script_pub_key) do
     redeem_bytes = Script.serialize_script(redeem_script)
 
     cond do
+      # BIP-174 Signer/Finalizer check: the redeemScript must hash (HASH160) to
+      # the p2sh scriptPubKey. Without this, a mismatched redeemScript would be
+      # assembled into a provably-invalid scriptSig.
+      Script.to_p2sh(redeem_script) != {:ok, script_pub_key} ->
+        :cannot_finalize
+
       Script.is_p2wpkh?(redeem_script) ->
         case single_signature(input) do
           {:ok, signature, public_key} ->
@@ -1068,7 +1076,7 @@ defmodule Bitcoinex.PSBT.In do
         end
 
       Script.is_p2wsh?(redeem_script) ->
-        case finalize_p2wsh(input, input.witness_script) do
+        case finalize_p2wsh(input, input.witness_script, redeem_script) do
           {:ok, nil, final_scriptwitness} ->
             {:ok, script_from_bytes(push_data(redeem_bytes)), final_scriptwitness}
 
@@ -1094,16 +1102,25 @@ defmodule Bitcoinex.PSBT.In do
     end
   end
 
-  defp finalize_p2wsh(_input, nil), do: :cannot_finalize
+  defp finalize_p2wsh(_input, nil, _expected_p2wsh), do: :cannot_finalize
 
-  defp finalize_p2wsh(input, witness_script) do
-    case multisig_signatures(witness_script, input.partial_sig) do
-      {:ok, signatures} ->
-        stack_items = signatures ++ [Script.serialize_script(witness_script)]
-        {:ok, nil, witness([<<>> | stack_items])}
-
-      :cannot_finalize ->
+  defp finalize_p2wsh(input, witness_script, expected_p2wsh) do
+    cond do
+      # BIP-174 Signer/Finalizer check: the witnessScript must hash (SHA256) to
+      # the p2wsh witness program — the scriptPubKey for native p2wsh, or the
+      # redeemScript for p2sh-nested p2wsh.
+      Script.to_p2wsh(witness_script) != {:ok, expected_p2wsh} ->
         :cannot_finalize
+
+      true ->
+        case multisig_signatures(witness_script, input.partial_sig) do
+          {:ok, signatures} ->
+            stack_items = signatures ++ [Script.serialize_script(witness_script)]
+            {:ok, nil, witness([<<>> | stack_items])}
+
+          :cannot_finalize ->
+            :cannot_finalize
+        end
     end
   end
 

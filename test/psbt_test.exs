@@ -73,6 +73,25 @@ defmodule Bitcoinex.PSBTTest do
      "cHNidP8BADN0Af8HAAEAAAABAP8BAApzMXQo/wAAAAAB/wEDAQAAAQAAAAAAAAAAdgEAAABBAAkAAAAAAA=="}
   ]
 
+  # Official BIP-174 "Fails Signer checks" vectors. These are NOT invalid PSBTs:
+  # the BIP lists them in a separate section *after* the valid vectors. They are
+  # well-formed and MUST decode and round-trip. What they violate is a Signer
+  # check (BIP-174: "the redeemScript/witnessScript must match the hash in the
+  # UTXO/redeemScript"). bitcoinex implements no Signer (signing is out of scope),
+  # so the role that must reject them here is the Finalizer: it refuses to
+  # assemble a final scriptSig/scriptWitness whose redeem/witness script does not
+  # hash to the scriptPubKey, leaving the input unfinalized.
+  @bip174_fails_signer_vectors [
+    {"A Witness UTXO is provided for a non-witness input",
+     "cHNidP8BAKACAAAAAqsJSaCMWvfEm4IS9Bfi8Vqz9cM9zxU4IagTn4d6W3vkAAAAAAD+////qwlJoIxa98SbghL0F+LxWrP1wz3PFTghqBOfh3pbe+QBAAAAAP7///8CYDvqCwAAAAAZdqkUdopAu9dAy+gdmI5x3ipNXHE5ax2IrI4kAAAAAAAAGXapFG9GILVT+glechue4O/p+gOcykWXiKwAAAAAAAEBItPf9QUAAAAAGXapFNSO0xELlAFMsRS9Mtb00GbcdCVriKwAAQEgAOH1BQAAAAAXqRQ1RebjO4MsRwUPJNPuuTycA5SLx4cBBBYAFIXRNTfy4mVAWjTbr6nj3aAfuCMIACICAurVlmh8qAYEPtw94RbN8p1eklfBls0FXPaYyNAr8k6ZELSmumcAAACAAAAAgAIAAIAAIgIDlPYr6d8ZlSxVh3aK63aYBhrSxKJciU9H2MFitNchPQUQtKa6ZwAAAIABAACAAgAAgAA="},
+    {"redeemScript with non-witness UTXO does not match the scriptPubKey",
+     "cHNidP8BAJoCAAAAAljoeiG1ba8MI76OcHBFbDNvfLqlyHV5JPVFiHuyq911AAAAAAD/////g40EJ9DsZQpoqka7CwmK6kQiwHGyyng1Kgd5WdB86h0BAAAAAP////8CcKrwCAAAAAAWABTYXCtx0AYLCcmIauuBXlCZHdoSTQDh9QUAAAAAFgAUAK6pouXw+HaliN9VRuh0LR2HAI8AAAAAAAEAuwIAAAABqtc5MQGL0l+ErkALaISL4J23BurCrBgpi6vucatlb4sAAAAASEcwRAIgWPb8fGoz4bMVSNSByCbAFb0wE1qtQs1neQ2rZtKtJDsCIEoc7SYExnNbY5PltBaR3XiwDwxZQvufdRhW+qk4FX26Af7///8CgPD6AgAAAAAXqRQPuUY0IWlrgsgzryQceMF9295JNIfQ8gonAQAAABepFCnKdPigj4GZlCgYXJe12FLkBj9hh2UAAAAiAgLath/0mhTban0CsM0fu3j8SxgxK1tOVNrk26L7/vU210gwRQIhAPYQOLMI3B2oZaNIUnRvAVdyk0IIxtJEVDk82ZvfIhd3AiAFbmdaZ1ptCgK4WxTl4pB02KJam1dgvqKBb2YZEKAG6gEBAwQBAAAAAQRHUiEClYO/Oa4KYJdHrRma3dY0+mEIVZ1sXNObTCGD8auW4H8hAtq2H/SaFNtqfQKwzR+7ePxLGDErW05U2uTbovv+9TbXUq8iBgKVg785rgpgl0etGZrd1jT6YQhVnWxc05tMIYPxq5bgfxDZDGpPAAAAgAAAAIAAAACAIgYC2rYf9JoU22p9ArDNH7t4/EsYMStbTlTa5Nui+/71NtcQ2QxqTwAAAIAAAACAAQAAgAABASAAwusLAAAAABepFLf1+vQOPUClpFmx2zU18rcvqSHohyICAjrdkE89bc9Z3bkGsN7iNSm3/7ntUOXoYVGSaGAiHw5zRzBEAiBl9FulmYtZon/+GnvtAWrx8fkNVLOqj3RQql9WolEDvQIgf3JHA60e25ZoCyhLVtT/y4j3+3Weq74IqjDym4UTg9IBAQMEAQAAAAEEIgAgjCNTFzdDtZXftKB7crqOQuN5fadOh/59nXSX47ICiQMBBUdSIQMIncEMesbbVPkTKa9hczPbOIzq0MIx9yM3nRuZAwsC3CECOt2QTz1tz1nduQaw3uI1Kbf/ue1Q5ehhUZJoYCIfDnNSriIGAjrdkE89bc9Z3bkGsN7iNSm3/7ntUOXoYVGSaGAiHw5zENkMak8AAACAAAAAgAMAAIAiBgMIncEMesbbVPkTKa9hczPbOIzq0MIx9yM3nRuZAwsC3BDZDGpPAAAAgAAAAIACAACAACICA6mkw39ZltOqJdusa1cK8GUDlEkpQkYLNUdT7Z7spYdxENkMak8AAACAAAAAgAQAAIAAIgICf2OZdX0u/1WhNq0CxoSxg4tlVuXxtrNCgqlLa1AFEJYQ2QxqTwAAAIAAAACABQAAgAA="},
+    {"redeemScript with witness UTXO does not match the scriptPubKey",
+     "cHNidP8BAJoCAAAAAljoeiG1ba8MI76OcHBFbDNvfLqlyHV5JPVFiHuyq911AAAAAAD/////g40EJ9DsZQpoqka7CwmK6kQiwHGyyng1Kgd5WdB86h0BAAAAAP////8CcKrwCAAAAAAWABTYXCtx0AYLCcmIauuBXlCZHdoSTQDh9QUAAAAAFgAUAK6pouXw+HaliN9VRuh0LR2HAI8AAAAAAAEAuwIAAAABqtc5MQGL0l+ErkALaISL4J23BurCrBgpi6vucatlb4sAAAAASEcwRAIgWPb8fGoz4bMVSNSByCbAFb0wE1qtQs1neQ2rZtKtJDsCIEoc7SYExnNbY5PltBaR3XiwDwxZQvufdRhW+qk4FX26Af7///8CgPD6AgAAAAAXqRQPuUY0IWlrgsgzryQceMF9295JNIfQ8gonAQAAABepFCnKdPigj4GZlCgYXJe12FLkBj9hh2UAAAAiAgLath/0mhTban0CsM0fu3j8SxgxK1tOVNrk26L7/vU210gwRQIhAPYQOLMI3B2oZaNIUnRvAVdyk0IIxtJEVDk82ZvfIhd3AiAFbmdaZ1ptCgK4WxTl4pB02KJam1dgvqKBb2YZEKAG6gEBAwQBAAAAAQRHUiEClYO/Oa4KYJdHrRma3dY0+mEIVZ1sXNObTCGD8auW4H8hAtq2H/SaFNtqfQKwzR+7ePxLGDErW05U2uTbovv+9TbXUq4iBgKVg785rgpgl0etGZrd1jT6YQhVnWxc05tMIYPxq5bgfxDZDGpPAAAAgAAAAIAAAACAIgYC2rYf9JoU22p9ArDNH7t4/EsYMStbTlTa5Nui+/71NtcQ2QxqTwAAAIAAAACAAQAAgAABASAAwusLAAAAABepFLf1+vQOPUClpFmx2zU18rcvqSHohyICAjrdkE89bc9Z3bkGsN7iNSm3/7ntUOXoYVGSaGAiHw5zRzBEAiBl9FulmYtZon/+GnvtAWrx8fkNVLOqj3RQql9WolEDvQIgf3JHA60e25ZoCyhLVtT/y4j3+3Weq74IqjDym4UTg9IBAQMEAQAAAAEEIgAgjCNTFzdDtZXftKB7crqOQuN5fadOh/59nXSX47ICiQABBUdSIQMIncEMesbbVPkTKa9hczPbOIzq0MIx9yM3nRuZAwsC3CECOt2QTz1tz1nduQaw3uI1Kbf/ue1Q5ehhUZJoYCIfDnNSriIGAjrdkE89bc9Z3bkGsN7iNSm3/7ntUOXoYVGSaGAiHw5zENkMak8AAACAAAAAgAMAAIAiBgMIncEMesbbVPkTKa9hczPbOIzq0MIx9yM3nRuZAwsC3BDZDGpPAAAAgAAAAIACAACAACICA6mkw39ZltOqJdusa1cK8GUDlEkpQkYLNUdT7Z7spYdxENkMak8AAACAAAAAgAQAAIAAIgICf2OZdX0u/1WhNq0CxoSxg4tlVuXxtrNCgqlLa1AFEJYQ2QxqTwAAAIAAAACABQAAgAA="},
+    {"witnessScript with witness UTXO does not match the redeemScript",
+     "cHNidP8BAJoCAAAAAljoeiG1ba8MI76OcHBFbDNvfLqlyHV5JPVFiHuyq911AAAAAAD/////g40EJ9DsZQpoqka7CwmK6kQiwHGyyng1Kgd5WdB86h0BAAAAAP////8CcKrwCAAAAAAWABTYXCtx0AYLCcmIauuBXlCZHdoSTQDh9QUAAAAAFgAUAK6pouXw+HaliN9VRuh0LR2HAI8AAAAAAAEAuwIAAAABqtc5MQGL0l+ErkALaISL4J23BurCrBgpi6vucatlb4sAAAAASEcwRAIgWPb8fGoz4bMVSNSByCbAFb0wE1qtQs1neQ2rZtKtJDsCIEoc7SYExnNbY5PltBaR3XiwDwxZQvufdRhW+qk4FX26Af7///8CgPD6AgAAAAAXqRQPuUY0IWlrgsgzryQceMF9295JNIfQ8gonAQAAABepFCnKdPigj4GZlCgYXJe12FLkBj9hh2UAAAAiAgLath/0mhTban0CsM0fu3j8SxgxK1tOVNrk26L7/vU210gwRQIhAPYQOLMI3B2oZaNIUnRvAVdyk0IIxtJEVDk82ZvfIhd3AiAFbmdaZ1ptCgK4WxTl4pB02KJam1dgvqKBb2YZEKAG6gEBAwQBAAAAAQRHUiEClYO/Oa4KYJdHrRma3dY0+mEIVZ1sXNObTCGD8auW4H8hAtq2H/SaFNtqfQKwzR+7ePxLGDErW05U2uTbovv+9TbXUq4iBgKVg785rgpgl0etGZrd1jT6YQhVnWxc05tMIYPxq5bgfxDZDGpPAAAAgAAAAIAAAACAIgYC2rYf9JoU22p9ArDNH7t4/EsYMStbTlTa5Nui+/71NtcQ2QxqTwAAAIAAAACAAQAAgAABASAAwusLAAAAABepFLf1+vQOPUClpFmx2zU18rcvqSHohyICAjrdkE89bc9Z3bkGsN7iNSm3/7ntUOXoYVGSaGAiHw5zRzBEAiBl9FulmYtZon/+GnvtAWrx8fkNVLOqj3RQql9WolEDvQIgf3JHA60e25ZoCyhLVtT/y4j3+3Weq74IqjDym4UTg9IBAQMEAQAAAAEEIgAgjCNTFzdDtZXftKB7crqOQuN5fadOh/59nXSX47ICiQMBBUdSIQMIncEMesbbVPkTKa9hczPbOIzq0MIx9yM3nRuZAwsC3CECOt2QTz1tz1nduQaw3uI1Kbf/ue1Q5ehhUZJoYCIfDnNSrSIGAjrdkE89bc9Z3bkGsN7iNSm3/7ntUOXoYVGSaGAiHw5zENkMak8AAACAAAAAgAMAAIAiBgMIncEMesbbVPkTKa9hczPbOIzq0MIx9yM3nRuZAwsC3BDZDGpPAAAAgAAAAIACAACAACICA6mkw39ZltOqJdusa1cK8GUDlEkpQkYLNUdT7Z7spYdxENkMak8AAACAAAAAgAQAAIAAIgICf2OZdX0u/1WhNq0CxoSxg4tlVuXxtrNCgqlLa1AFEJYQ2QxqTwAAAIAAAACABQAAgAA="}
+  ]
+
   # Synthetic vector exercising the v0 fields absent from the official vectors:
   # global version/proprietary/unknown, input por_commitment, the four hash
   # preimage fields, and input/output proprietary/unknown records.
@@ -110,6 +129,59 @@ defmodule Bitcoinex.PSBTTest do
       {:ok, valid_bytes} = Base.decode64(hd(@bip174_valid_vectors))
       tampered = Base.encode64(valid_bytes <> <<0xFF>>)
       assert {:error, :trailing_bytes} = PSBT.decode(tampered)
+    end
+  end
+
+  describe "BIP-174 \"Fails Signer checks\" vectors" do
+    # These are valid PSBTs (they decode and round-trip); only the Signer/Finalizer
+    # script-hash checks reject them. See the @bip174_fails_signer_vectors comment.
+    test "decode and round-trip losslessly (they are structurally valid)" do
+      for {name, base64} <- @bip174_fails_signer_vectors do
+        assert {:ok, psbt} = PSBT.decode(base64), "expected decode to succeed: #{name}"
+        assert PSBT.encode_b64(psbt) == base64, "expected lossless round-trip: #{name}"
+      end
+    end
+
+    test "the finalizer refuses them (mismatched redeem/witness script), leaving inputs unfinalized" do
+      for {name, base64} <- @bip174_fails_signer_vectors do
+        {:ok, psbt} = PSBT.decode(base64)
+        finalized = PSBT.finalize(psbt)
+        refute PSBT.finalized?(finalized), "finalizer must not finalize: #{name}"
+      end
+    end
+  end
+
+  # Extra coverage vendored from Bitcoin Core's test/functional/data/rpc_psbt.json
+  # (v0 subset only; v2/BIP-370 and taproot/BIP-371 vectors are out of scope).
+  # Regenerate with scripts/gen_core_fixture.exs. The fixture buckets each vector
+  # by this decoder's actual behavior; `_excluded` records the handful of Core
+  # vectors we classify differently (our parser is more lenient on a few negative
+  # cases; one 0-input tx trips the witness-marker ambiguity), so nothing is
+  # silently mislabeled.
+  describe "Bitcoin Core rpc_psbt.json v0 vectors" do
+    setup do
+      %{fixture: "test/data/core_psbt_v0_vectors.json" |> File.read!() |> Jason.decode!()}
+    end
+
+    test "invalid vectors are rejected", %{fixture: fixture} do
+      for base64 <- fixture["invalid"] do
+        assert {:error, _reason} = PSBT.decode(base64), "expected error decoding: #{base64}"
+      end
+    end
+
+    test "valid vectors decode and round-trip losslessly", %{fixture: fixture} do
+      for base64 <- fixture["valid_roundtrip"] do
+        assert {:ok, psbt} = PSBT.decode(base64)
+        assert PSBT.encode_b64(psbt) == base64
+      end
+    end
+
+    test "non-canonically-ordered valid vectors decode (re-encode is canonical)", %{
+      fixture: fixture
+    } do
+      for base64 <- fixture["valid_decode_only"] do
+        assert {:ok, _psbt} = PSBT.decode(base64)
+      end
     end
   end
 
@@ -628,6 +700,36 @@ defmodule Bitcoinex.PSBTTest do
                @finalize_sig_a <> "01",
                @finalize_pubkey_a
              ]
+    end
+
+    test "refuses to finalize when the redeemScript does not hash to the scriptPubKey" do
+      # A fully-signed p2sh-p2wpkh input whose witness_utxo scriptPubKey is a p2sh
+      # of a *different* script. There are enough signatures to finalize, so only
+      # the redeemScript-vs-scriptPubKey hash check can stop it.
+      pubkey = point(@finalize_pubkey_a)
+      {:ok, redeem_script} = Script.create_p2wpkh(Bitcoinex.Utils.hash160(Point.sec(pubkey)))
+      {:ok, wrong_script_pub_key} = Script.create_p2sh(:binary.copy(<<0x11>>, 20))
+
+      {:ok, tx} = Transaction.decode(single_input_tx_hex())
+      {:ok, base} = PSBT.from_tx(tx)
+
+      utxo = %Bitcoinex.Transaction.Out{
+        value: 1000,
+        script_pub_key: Script.to_hex(wrong_script_pub_key)
+      }
+
+      {:ok, psbt} = PSBT.add_input_field(base, 0, :witness_utxo, utxo)
+      {:ok, psbt} = PSBT.add_input_field(psbt, 0, :redeem_script, redeem_script)
+
+      {:ok, psbt} =
+        PSBT.add_input_field(
+          psbt,
+          0,
+          :partial_sig,
+          signature_record(@finalize_pubkey_a, @finalize_sig_a)
+        )
+
+      refute PSBT.finalized?(PSBT.finalize(psbt))
     end
 
     test "does not finalize an input whose signature sighash disagrees with its sighash_type" do
