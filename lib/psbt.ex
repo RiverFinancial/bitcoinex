@@ -22,6 +22,12 @@ defmodule Bitcoinex.PSBT do
     unknown records last (as Bitcoin Core does). `decode |> encode_b64` is
     byte-identical for canonically-ordered PSBTs; a PSBT whose records arrive
     in a different order decodes to the same struct but re-encodes canonically.
+  * `redeem_script`, `witness_script`, and `final_scriptsig` values must parse
+    as Script: they are stored as `Bitcoinex.Script` structs, so a value whose
+    bytes are not valid script (e.g. a truncated push) is rejected with
+    `{:error, :invalid_script}`. BIP-174 treats these fields as opaque byte
+    strings, so this is stricter than Bitcoin Core — which accepts (almost
+    certainly unspendable) unparseable scripts.
   """
   alias Bitcoinex.PSBT
   alias Bitcoinex.PSBT.Global
@@ -493,12 +499,19 @@ defmodule Bitcoinex.PSBT.Utils do
   Parses a key origin value: a 4-byte master fingerprint (stored verbatim, not
   reinterpreted) followed by little-endian uint32 derivation indexes.
   """
-  @spec parse_key_origin(binary()) :: KeyOrigin.t()
+  @spec parse_key_origin(binary()) :: {:ok, KeyOrigin.t()} | {:error, :invalid_derivation}
   def parse_key_origin(<<fingerprint::binary-size(4), path::binary>>)
       when rem(byte_size(path), 4) == 0 do
     child_nums = for <<index::little-unsigned-32 <- path>>, do: index
-    %KeyOrigin{fingerprint: fingerprint, derivation: %DerivationPath{child_nums: child_nums}}
+
+    {:ok,
+     %KeyOrigin{fingerprint: fingerprint, derivation: %DerivationPath{child_nums: child_nums}}}
   end
+
+  # BIP-174: the value is a 4-byte fingerprint followed by whole 32-bit
+  # indexes — a shorter value or a trailing partial index is malformed, not
+  # ignorable (dropping bytes would silently alter the PSBT on re-serialize).
+  def parse_key_origin(_), do: {:error, :invalid_derivation}
 
   @doc """
   Serializes a key origin: the 4-byte fingerprint followed by little-endian
@@ -615,6 +628,7 @@ defmodule Bitcoinex.PSBT.Global do
       ) do
     with :ok <- PsbtUtils.ensure_public_xkey(xkey),
          :ok <- PsbtUtils.validate_key_origin(origin),
+         :ok <- validate_xpub_depth(xkey, origin),
          {:ok, xpubs} <-
            PsbtUtils.append_unique(global.xpub, xpub, & &1.xkey) do
       {:ok, %Global{global | xpub: xpubs}}
@@ -643,6 +657,16 @@ defmodule Bitcoinex.PSBT.Global do
   end
 
   def add_field(%Global{}, _field, _value), do: {:error, :invalid_field}
+
+  # BIP-174: "The number of 32 bit unsigned integer indexes must match the
+  # depth provided in the extended public key."
+  defp validate_xpub_depth(%ExtendedKey{depth: <<depth>>}, %KeyOrigin{derivation: derivation}) do
+    if length(derivation.child_nums) == depth do
+      :ok
+    else
+      {:error, :xpub_depth_mismatch}
+    end
+  end
 
   @spec parse_global(binary()) :: {:ok, {t(), binary()}} | {:error, term()}
   def parse_global(psbt) do
@@ -688,13 +712,20 @@ defmodule Bitcoinex.PSBT.Global do
   defp parse(<<@psbt_global_xpub::big-size(8), raw_extended_key::binary-size(78)>>, psbt, global) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
 
-    case PsbtUtils.parse_xpub_keydata(raw_extended_key) do
-      {:ok, xkey} ->
-        xpub = %{xkey: xkey, origin: PsbtUtils.parse_key_origin(value)}
-        {%Global{global | xpub: PsbtUtils.append(global.xpub, xpub)}, psbt}
-
+    with {:ok, xkey} <- PsbtUtils.parse_xpub_keydata(raw_extended_key),
+         {:ok, origin} <- PsbtUtils.parse_key_origin(value),
+         :ok <- validate_xpub_depth(xkey, origin) do
+      xpub = %{xkey: xkey, origin: origin}
+      {%Global{global | xpub: PsbtUtils.append(global.xpub, xpub)}, psbt}
+    else
       {:error, :private_key_not_allowed} ->
         {:error, :private_key_not_allowed}
+
+      {:error, :invalid_derivation} ->
+        {:error, :invalid_derivation}
+
+      {:error, :xpub_depth_mismatch} ->
+        {:error, :xpub_depth_mismatch}
 
       {:error, _reason} ->
         {:error, :invalid_xpub}
@@ -1063,10 +1094,16 @@ defmodule Bitcoinex.PSBT.In do
     end
   end
 
+  # BIP-174: the value is the entire output in network serialization — bytes
+  # beyond the scriptPubKey are malformed, not ignorable (dropping them would
+  # also silently alter the PSBT on re-serialize).
   defp parse(<<@psbt_in_witness_utxo::big-size(8)>>, psbt, input) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    out = Out.output(value)
-    {%In{input | witness_utxo: out}, psbt}
+
+    case Out.parse_output(value) do
+      {:ok, out} -> {%In{input | witness_utxo: out}, psbt}
+      {:error, _} -> {:error, :invalid_witness_utxo}
+    end
   end
 
   # partial_sig is repeatable: one record per signing pubkey (BIP-174 keys them
@@ -1125,13 +1162,13 @@ defmodule Bitcoinex.PSBT.In do
        ) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
 
-    case Point.parse_public_key(public_key_bytes) do
-      {:ok, public_key} ->
-        record = %{public_key: public_key, origin: PsbtUtils.parse_key_origin(value)}
-        {%In{input | bip32_derivation: PsbtUtils.append(input.bip32_derivation, record)}, psbt}
-
-      {:error, _reason} ->
-        {:error, :invalid_bip32_derivation}
+    with {:ok, public_key} <- Point.parse_public_key(public_key_bytes),
+         {:ok, origin} <- PsbtUtils.parse_key_origin(value) do
+      record = %{public_key: public_key, origin: origin}
+      {%In{input | bip32_derivation: PsbtUtils.append(input.bip32_derivation, record)}, psbt}
+    else
+      {:error, :invalid_derivation} -> {:error, :invalid_derivation}
+      {:error, _reason} -> {:error, :invalid_bip32_derivation}
     end
   end
 
@@ -1149,9 +1186,15 @@ defmodule Bitcoinex.PSBT.In do
     end
   end
 
+  # BIP-174: the value is the entire witness stack in network serialization —
+  # bytes beyond the last stack item are malformed, not ignorable.
   defp parse(<<@psbt_in_final_scriptwitness::big-size(8)>>, psbt, input) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    {%In{input | final_scriptwitness: Witness.witness(value)}, psbt}
+
+    case Witness.parse_witness(value) do
+      {:ok, witness} -> {%In{input | final_scriptwitness: witness}, psbt}
+      {:error, _} -> {:error, :invalid_final_scriptwitness}
+    end
   end
 
   defp parse(<<@psbt_in_por_commitment::big-size(8)>>, psbt, input) do
@@ -1477,13 +1520,13 @@ defmodule Bitcoinex.PSBT.Out do
        ) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
 
-    case Point.parse_public_key(public_key_bytes) do
-      {:ok, public_key} ->
-        record = %{public_key: public_key, origin: PsbtUtils.parse_key_origin(value)}
-        {%Out{output | bip32_derivation: PsbtUtils.append(output.bip32_derivation, record)}, psbt}
-
-      {:error, _reason} ->
-        {:error, :invalid_bip32_derivation}
+    with {:ok, public_key} <- Point.parse_public_key(public_key_bytes),
+         {:ok, origin} <- PsbtUtils.parse_key_origin(value) do
+      record = %{public_key: public_key, origin: origin}
+      {%Out{output | bip32_derivation: PsbtUtils.append(output.bip32_derivation, record)}, psbt}
+    else
+      {:error, :invalid_derivation} -> {:error, :invalid_derivation}
+      {:error, _reason} -> {:error, :invalid_bip32_derivation}
     end
   end
 
