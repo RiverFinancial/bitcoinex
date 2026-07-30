@@ -342,6 +342,7 @@ defmodule Bitcoinex.PSBT do
     with {:ok, {global, psbt}} <- Global.parse_global(psbt),
          {:ok, input_count} <- input_count(global),
          {:ok, {inputs, psbt}} <- In.parse_inputs(psbt, input_count),
+         :ok <- validate_non_witness_utxos(inputs, global.unsigned_tx.inputs),
          output_count = length(global.unsigned_tx.outputs),
          {:ok, {outputs, remaining}} <- Out.parse_outputs(psbt, output_count),
          :ok <- ensure_fully_consumed(remaining) do
@@ -355,6 +356,29 @@ defmodule Bitcoinex.PSBT do
   end
 
   defp parse(_), do: {:error, :invalid_magic}
+
+  # BIP-174: an input's non_witness_utxo is the full transaction identified by
+  # that input's prevout. Its txid must equal the input's prev_txid and the
+  # prevout index must reference one of its outputs; otherwise the PSBT is
+  # internally inconsistent (it provides the wrong previous transaction).
+  defp validate_non_witness_utxos(inputs, tx_inputs) do
+    inputs
+    |> Enum.zip(tx_inputs)
+    |> Enum.reduce_while(:ok, fn {input, tx_input}, :ok ->
+      case input.non_witness_utxo do
+        nil ->
+          {:cont, :ok}
+
+        %Transaction{} = utxo ->
+          if Transaction.transaction_id(utxo) == tx_input.prev_txid and
+               tx_input.prev_vout < length(utxo.outputs) do
+            {:cont, :ok}
+          else
+            {:halt, {:error, :non_witness_utxo_mismatch}}
+          end
+      end
+    end)
+  end
 
   # BIP-174: a PSBT must be fully consumed; any bytes after the last output map
   # make it invalid.
