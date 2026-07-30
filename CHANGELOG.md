@@ -6,7 +6,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Added
-- `PSBT.from_tx/1` (Creator), `PSBT.txid/1`, and the Updater API — `PSBT.add_global_field/3`, `PSBT.add_input_field/4`, `PSBT.add_output_field/4` (each dispatching on a field-name atom via `PSBT.Global.add_field/3`, `PSBT.In.add_field/3`, `PSBT.Out.add_field/3`).
+- `PSBT.from_tx/1` (Creator), `PSBT.txid/1`, and the Updater API — `PSBT.add_global_field/3`, `PSBT.add_input_field/4`, `PSBT.add_output_field/4` (each dispatching on a field-name atom via `PSBT.Global.add_field/3`, `PSBT.In.add_field/3`, `PSBT.Out.add_field/3`). Adding a hash-preimage field (`:ripemd160`/`:sha256`/`:hash160`/`:hash256`) validates that the hash is the digest of the preimage (`{:error, :invalid_hash_preimage}` otherwise).
 ### Changed
 - **Breaking:** decoded PSBT fields are now typed `Bitcoinex` structs rather than hex/Base58 strings or integer lists: pubkeys are `Secp256k1.Point.t()`, signatures `Secp256k1.Signature.t()`, scripts (`redeem_script`/`witness_script`/`final_scriptsig`) `Script.t()`, extended keys `ExtendedKey.t()`, and BIP-32 key origins a new `PSBT.KeyOrigin` struct (`fingerprint` as raw 4 bytes, `derivation` as `ExtendedKey.DerivationPath.t()`). `sighash_type` and global `version` are now integers. `partial_sig` is now a list (BIP-174 allows multiple signatures per input). Public keys in `partial_sig`/`bip32_derivation` must be 33-byte compressed SEC keys (the `Point` representation re-serializes compressed); legacy uncompressed 65-byte keys are rejected rather than silently re-encoded.
 ### Fixed

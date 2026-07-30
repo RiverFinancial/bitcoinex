@@ -352,5 +352,25 @@ defmodule Bitcoinex.PSBTTest do
       {:ok, expected} = Script.parse_script(script_hex)
       assert hd(psbt.outputs).witness_script == expected
     end
+
+    test "accepts a hash-preimage record whose hash matches the preimage", %{psbt: psbt} do
+      preimage = "preimage bytes"
+
+      for {field, hash} <- [
+            {:ripemd160, :crypto.hash(:ripemd160, preimage)},
+            {:sha256, Bitcoinex.Utils.sha256(preimage)},
+            {:hash160, Bitcoinex.Utils.hash160(preimage)},
+            {:hash256, Bitcoinex.Utils.double_sha256(preimage)}
+          ] do
+        record = %{hash: hash, preimage: preimage}
+        assert {:ok, updated} = PSBT.add_input_field(psbt, 0, field, record)
+        assert Map.get(hd(updated.inputs), field) == [record]
+      end
+    end
+
+    test "rejects a hash-preimage record whose hash does not match the preimage", %{psbt: psbt} do
+      wrong = %{hash: :binary.copy(<<0>>, 32), preimage: "preimage bytes"}
+      assert {:error, :invalid_hash_preimage} = PSBT.add_input_field(psbt, 0, :sha256, wrong)
+    end
   end
 end
