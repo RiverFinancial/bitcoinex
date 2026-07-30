@@ -82,6 +82,19 @@ defmodule Bitcoinex.PSBT do
   """
   @spec from_tx(Transaction.t()) :: {:ok, t()} | {:error, atom()}
   def from_tx(%Transaction{} = tx) do
+    with :ok <- validate_unsigned_tx(tx) do
+      {:ok,
+       %PSBT{
+         global: Global.from_unsigned_tx(tx),
+         inputs: Enum.map(tx.inputs, fn _input -> In.new() end),
+         outputs: Enum.map(tx.outputs, fn _output -> Out.new() end)
+       }}
+    end
+  end
+
+  # A PSBT's global unsigned transaction must carry no scriptSigs and no
+  # witnesses (BIP-174).
+  defp validate_unsigned_tx(%Transaction{} = tx) do
     cond do
       Enum.any?(tx.inputs, fn input -> input.script_sig not in [nil, ""] end) ->
         {:error, :tx_not_unsigned}
@@ -90,12 +103,7 @@ defmodule Bitcoinex.PSBT do
         {:error, :tx_not_unsigned}
 
       true ->
-        {:ok,
-         %PSBT{
-           global: Global.from_unsigned_tx(tx),
-           inputs: Enum.map(tx.inputs, fn _input -> In.new() end),
-           outputs: Enum.map(tx.outputs, fn _output -> Out.new() end)
-         }}
+        :ok
     end
   end
 
@@ -111,10 +119,34 @@ defmodule Bitcoinex.PSBT do
   See `Bitcoinex.PSBT.Global.add_field/3` for the accepted fields.
   """
   @spec add_global_field(t(), atom(), any()) :: {:ok, t()} | {:error, atom()}
+  def add_global_field(%PSBT{global: %{unsigned_tx: existing}}, :unsigned_tx, %Transaction{})
+      when not is_nil(existing) do
+    # The unsigned tx fixes the number of input/output maps; replacing it would
+    # desync them (and is the Creator's job, not the Updater's).
+    {:error, :unsigned_tx_already_set}
+  end
+
+  def add_global_field(%PSBT{} = psbt, :unsigned_tx, %Transaction{} = tx) do
+    with :ok <- validate_unsigned_tx(tx),
+         :ok <- validate_io_counts(psbt, tx),
+         {:ok, global} <- Global.add_field(psbt.global, :unsigned_tx, tx) do
+      {:ok, %PSBT{psbt | global: global}}
+    end
+  end
+
   def add_global_field(%PSBT{} = psbt, field, value) do
     case Global.add_field(psbt.global, field, value) do
       {:ok, global} -> {:ok, %PSBT{psbt | global: global}}
       {:error, reason} -> {:error, reason}
+    end
+  end
+
+  # The unsigned tx's input/output counts must match the PSBT's map counts.
+  defp validate_io_counts(%PSBT{inputs: inputs, outputs: outputs}, %Transaction{} = tx) do
+    if length(tx.inputs) == length(inputs) and length(tx.outputs) == length(outputs) do
+      :ok
+    else
+      {:error, :tx_io_count_mismatch}
     end
   end
 
@@ -184,12 +216,21 @@ defmodule Bitcoinex.PSBT do
   """
   @spec finalize(t()) :: t()
   def finalize(%PSBT{} = psbt) do
-    inputs =
-      psbt.inputs
-      |> Enum.zip(psbt.global.unsigned_tx.inputs)
-      |> Enum.map(fn {input, tx_input} -> In.finalize(input, tx_input) end)
+    tx_inputs = psbt.global.unsigned_tx.inputs
 
-    %PSBT{psbt | inputs: inputs}
+    # A well-formed PSBT has exactly one input map per unsigned-tx input. If a
+    # (hand-built) PSBT desyncs them, `Enum.zip` would finalize only the common
+    # prefix and silently drop the rest, so leave the PSBT untouched instead.
+    if length(psbt.inputs) == length(tx_inputs) do
+      inputs =
+        psbt.inputs
+        |> Enum.zip(tx_inputs)
+        |> Enum.map(fn {input, tx_input} -> In.finalize(input, tx_input) end)
+
+      %PSBT{psbt | inputs: inputs}
+    else
+      psbt
+    end
   end
 
   @doc """
@@ -205,7 +246,7 @@ defmodule Bitcoinex.PSBT do
   """
   @spec extract_tx(t()) :: {:ok, Transaction.t()} | {:error, :not_finalized}
   def extract_tx(%PSBT{} = psbt) do
-    if finalized?(psbt) do
+    if finalized?(psbt) and length(psbt.inputs) == length(psbt.global.unsigned_tx.inputs) do
       tx = psbt.global.unsigned_tx
 
       inputs =
@@ -237,8 +278,15 @@ defmodule Bitcoinex.PSBT do
     end
   end
 
-  # Combines two equal-length lists of maps positionally, short-circuiting on
-  # the first conflict.
+  # Combines two lists of maps positionally, short-circuiting on the first
+  # conflict. The lists must be the same length: `Enum.zip` would otherwise
+  # silently truncate to the shorter one and drop maps. For validly-decoded
+  # PSBTs equal txids imply equal counts, but a hand-built PSBT could desync
+  # them, so guard explicitly rather than lose data.
+  defp combine_pairs(maps_a, maps_b, _combiner) when length(maps_a) != length(maps_b) do
+    {:error, :map_count_mismatch}
+  end
+
   defp combine_pairs(maps_a, maps_b, combiner) do
     maps_a
     |> Enum.zip(maps_b)
@@ -566,9 +614,13 @@ defmodule Bitcoinex.PSBT.Global do
     {:ok, %Global{global | xpub: PsbtUtils.append(global.xpub, xpub)}}
   end
 
-  def add_field(%Global{} = global, :version, version)
-      when is_integer(version) and version >= 0 do
-    {:ok, %Global{global | version: version}}
+  # Only PSBT v0 is supported, so 0 is the only version we will emit.
+  def add_field(%Global{} = global, :version, 0) do
+    {:ok, %Global{global | version: 0}}
+  end
+
+  def add_field(%Global{}, :version, version) when is_integer(version) do
+    {:error, :unsupported_version}
   end
 
   def add_field(%Global{} = global, :proprietary, %{key: _, value: _} = record) do
@@ -668,7 +720,15 @@ defmodule Bitcoinex.PSBT.Global do
   defp parse(<<@psbt_global_version::big-size(8)>>, psbt, global) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
     <<version::little-unsigned-32>> = value
-    {%Global{global | version: version}, psbt}
+
+    # Only BIP-174 PSBT v0 is supported. A PSBT that advertises any other version
+    # follows a spec (BIP-370 v2, etc.) whose fields we do not implement, so we
+    # must not parse it as if it were v0.
+    if version == 0 do
+      {%Global{global | version: version}, psbt}
+    else
+      {:error, :unsupported_version}
+    end
   end
 
   # A key whose leading byte is a known global type but which did not match the
@@ -783,7 +843,7 @@ defmodule Bitcoinex.PSBT.In do
 
     * `:non_witness_utxo` — a `Transaction.t()`
     * `:witness_utxo` — a `Transaction.Out.t()`
-    * `:partial_sig` — `%{public_key: Point.t(), signature: Signature.t(), sighash_flag: 0..255}` (repeatable)
+    * `:partial_sig` — `%{public_key: Point.t(), signature: Signature.t(), sighash_flag: flag}` (repeatable), where `flag` (like `:sighash_type`) must be one of the valid sighash flags `0x01`/`0x02`/`0x03` optionally `| 0x80`
     * `:sighash_type` — one of the valid sighash flag integers
     * `:redeem_script` / `:witness_script` / `:final_scriptsig` — a `Script.t()` or its hex/binary
     * `:bip32_derivation` — `%{public_key: Point.t(), origin: KeyOrigin.t()}` (repeatable)
@@ -797,8 +857,11 @@ defmodule Bitcoinex.PSBT.In do
     {:ok, %In{input | non_witness_utxo: tx}}
   end
 
-  def add_field(%In{} = input, :witness_utxo, %Out{} = utxo) do
-    {:ok, %In{input | witness_utxo: utxo}}
+  def add_field(%In{} = input, :witness_utxo, %Out{script_pub_key: script_pub_key} = utxo) do
+    case normalize_hex(script_pub_key) do
+      {:ok, hex} -> {:ok, %In{input | witness_utxo: %Out{utxo | script_pub_key: hex}}}
+      :error -> {:error, :invalid_field}
+    end
   end
 
   def add_field(
@@ -839,8 +902,15 @@ defmodule Bitcoinex.PSBT.In do
     {:ok, %In{input | bip32_derivation: PsbtUtils.append(input.bip32_derivation, record)}}
   end
 
-  def add_field(%In{} = input, :final_scriptwitness, %Witness{} = witness) do
-    {:ok, %In{input | final_scriptwitness: witness}}
+  def add_field(%In{} = input, :final_scriptwitness, %Witness{txinwitness: items} = witness)
+      when is_list(items) do
+    case normalize_hex_list(items) do
+      {:ok, items} ->
+        {:ok, %In{input | final_scriptwitness: %Witness{witness | txinwitness: items}}}
+
+      :error ->
+        {:error, :invalid_field}
+    end
   end
 
   def add_field(%In{} = input, :por_commitment, por_commitment)
@@ -1025,8 +1095,8 @@ defmodule Bitcoinex.PSBT.In do
   # unsupported.
   defp build_finalization(input, script_pub_key) do
     case Script.get_script_type(script_pub_key) do
-      :p2pkh -> finalize_p2pkh(input)
-      :p2wpkh -> finalize_p2wpkh(input)
+      :p2pkh -> finalize_p2pkh(input, script_pub_key)
+      :p2wpkh -> finalize_p2wpkh(input, script_pub_key)
       :p2sh -> finalize_p2sh(input, script_pub_key)
       :p2wsh -> finalize_p2wsh(input, input.witness_script, script_pub_key)
       :multi -> finalize_bare_multisig(input, script_pub_key)
@@ -1034,8 +1104,8 @@ defmodule Bitcoinex.PSBT.In do
     end
   end
 
-  defp finalize_p2pkh(input) do
-    case single_signature(input) do
+  defp finalize_p2pkh(input, script_pub_key) do
+    case single_signature_for(input, script_pub_key, &Script.create_p2pkh/1) do
       {:ok, signature, public_key} ->
         {:ok, script_from_bytes(push_data(signature) <> push_data(public_key)), nil}
 
@@ -1044,8 +1114,8 @@ defmodule Bitcoinex.PSBT.In do
     end
   end
 
-  defp finalize_p2wpkh(input) do
-    case single_signature(input) do
+  defp finalize_p2wpkh(input, script_pub_key) do
+    case single_signature_for(input, script_pub_key, &Script.create_p2wpkh/1) do
       {:ok, signature, public_key} ->
         {:ok, nil, witness([signature, public_key])}
 
@@ -1067,7 +1137,7 @@ defmodule Bitcoinex.PSBT.In do
         :cannot_finalize
 
       Script.is_p2wpkh?(redeem_script) ->
-        case single_signature(input) do
+        case single_signature_for(input, redeem_script, &Script.create_p2wpkh/1) do
           {:ok, signature, public_key} ->
             {:ok, script_from_bytes(push_data(redeem_bytes)), witness([signature, public_key])}
 
@@ -1140,6 +1210,25 @@ defmodule Bitcoinex.PSBT.In do
   end
 
   defp single_signature(_input), do: :cannot_finalize
+
+  # Like single_signature/1, but also enforces the BIP-174 Signer key-hash check:
+  # HASH160(pubkey) must equal the 20-byte hash committed to by the scriptPubKey
+  # (p2pkh/p2wpkh) or redeemScript (nested p2wpkh). `builder` rebuilds that script
+  # from the pubkey hash. Without this a signature from an unrelated key would
+  # finalize into a provably-invalid input.
+  defp single_signature_for(input, expected_script, builder) do
+    case single_signature(input) do
+      {:ok, signature, public_key} ->
+        if builder.(Bitcoinex.Utils.hash160(public_key)) == {:ok, expected_script} do
+          {:ok, signature, public_key}
+        else
+          :cannot_finalize
+        end
+
+      :cannot_finalize ->
+        :cannot_finalize
+    end
+  end
 
   # Collects the m signatures required by a multisig script, in the order the
   # pubkeys appear in the script.
@@ -1219,6 +1308,31 @@ defmodule Bitcoinex.PSBT.In do
   end
 
   defp with_script(_script, _put_fun), do: {:error, :invalid_field}
+
+  # Validates that a string is hex and normalizes it to lowercase, so the Updater
+  # rejects values that would otherwise raise at encode time (the serializers use
+  # `Base.decode16(.., case: :lower)`). Returns `:error` for non-hex input.
+  defp normalize_hex(hex) when is_binary(hex) do
+    case Base.decode16(hex, case: :mixed) do
+      {:ok, _bytes} -> {:ok, String.downcase(hex)}
+      :error -> :error
+    end
+  end
+
+  defp normalize_hex(_hex), do: :error
+
+  defp normalize_hex_list(items) when is_list(items) do
+    Enum.reduce_while(items, {:ok, []}, fn item, {:ok, acc} ->
+      case normalize_hex(item) do
+        {:ok, hex} -> {:cont, {:ok, [hex | acc]}}
+        :error -> {:halt, :error}
+      end
+    end)
+    |> case do
+      {:ok, reversed} -> {:ok, Enum.reverse(reversed)}
+      :error -> :error
+    end
+  end
 
   @spec parse_inputs(binary(), non_neg_integer()) ::
           {:ok, {list(t()), binary()}} | {:error, term()}
@@ -1328,27 +1442,19 @@ defmodule Bitcoinex.PSBT.In do
   end
 
   defp parse(<<@psbt_in_ripemd160::big-size(8), hash::binary-size(20)>>, psbt, input) do
-    {preimage, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    record = %{hash: hash, preimage: preimage}
-    {%In{input | ripemd160: PsbtUtils.append(input.ripemd160, record)}, psbt}
+    parse_hash_preimage(input, :ripemd160, hash, psbt, &:crypto.hash(:ripemd160, &1))
   end
 
   defp parse(<<@psbt_in_sha256::big-size(8), hash::binary-size(32)>>, psbt, input) do
-    {preimage, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    record = %{hash: hash, preimage: preimage}
-    {%In{input | sha256: PsbtUtils.append(input.sha256, record)}, psbt}
+    parse_hash_preimage(input, :sha256, hash, psbt, &Bitcoinex.Utils.sha256/1)
   end
 
   defp parse(<<@psbt_in_hash160::big-size(8), hash::binary-size(20)>>, psbt, input) do
-    {preimage, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    record = %{hash: hash, preimage: preimage}
-    {%In{input | hash160: PsbtUtils.append(input.hash160, record)}, psbt}
+    parse_hash_preimage(input, :hash160, hash, psbt, &Bitcoinex.Utils.hash160/1)
   end
 
   defp parse(<<@psbt_in_hash256::big-size(8), hash::binary-size(32)>>, psbt, input) do
-    {preimage, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    record = %{hash: hash, preimage: preimage}
-    {%In{input | hash256: PsbtUtils.append(input.hash256, record)}, psbt}
+    parse_hash_preimage(input, :hash256, hash, psbt, &Bitcoinex.Utils.double_sha256/1)
   end
 
   # A key whose leading byte is a known input type but which did not match the
@@ -1362,6 +1468,21 @@ defmodule Bitcoinex.PSBT.In do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
     {field, record} = PsbtUtils.classify_unknown_record(key, value)
     {Map.update(input, field, [record], &PsbtUtils.append(&1, record)), psbt}
+  end
+
+  # BIP-174: for the 0x0a-0x0d preimage fields the key hash must equal the value
+  # run through the field's hash algorithm. Reject a record that does not, so the
+  # decoder never accepts a preimage a finalizer could not use (mirrors the
+  # Updater's `put_hash_preimage/4` validation).
+  defp parse_hash_preimage(input, field, hash, psbt, hash_fun) do
+    {preimage, psbt} = PsbtUtils.parse_compact_size_value(psbt)
+
+    if hash_fun.(preimage) == hash do
+      record = %{hash: hash, preimage: preimage}
+      {Map.update(input, field, [record], &PsbtUtils.append(&1, record)), psbt}
+    else
+      {:error, :invalid_hash_preimage}
+    end
   end
 
   # Splits a PSBT partial_sig value into its DER signature and trailing 1-byte
@@ -1395,7 +1516,9 @@ defmodule Bitcoinex.PSBT.In do
     end
   end
 
-  @spec serialize_inputs(list(t())) :: binary()
+  @spec serialize_inputs(list(t()) | nil) :: binary()
+  def serialize_inputs(nil), do: <<>>
+
   def serialize_inputs(inputs) when is_list(inputs) do
     Enum.map_join(inputs, &serialize_input/1)
   end
@@ -1686,7 +1809,9 @@ defmodule Bitcoinex.PSBT.Out do
     end
   end
 
-  @spec serialize_outputs(list(t())) :: binary()
+  @spec serialize_outputs(list(t()) | nil) :: binary()
+  def serialize_outputs(nil), do: <<>>
+
   def serialize_outputs(outputs) when is_list(outputs) do
     Enum.map_join(outputs, &serialize_output/1)
   end
