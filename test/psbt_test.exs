@@ -231,7 +231,10 @@ defmodule Bitcoinex.PSBTTest do
                | _rest
              ] = psbt.global.xpub
 
-      assert byte_size(fingerprint) == 4
+      # Fingerprint is the raw 4 wire bytes, not reversed. The wire encodes the
+      # master fingerprint 0x3119694f (little-endian value 1_332_350_169); a
+      # byte-reversing parse would yield <<0x4f, 0x69, 0x19, 0x31>> instead.
+      assert fingerprint == <<1_332_350_169::little-size(32)>>
 
       assert ExtendedKey.display_extended_key(xkey) ==
                "tpubDBkJeJo2X94Yq3RVz65DoUgyLUkaDrkfyrn2VcgyCRSKCRonvKvCF2FpYDGJWDkdRHBajXJGpc63GnumUt63ySvqCu2XaTRGVTKMYGuFk9H"
@@ -259,6 +262,11 @@ defmodule Bitcoinex.PSBTTest do
       signed_tx = %{tx | inputs: [signed_input | tl(tx.inputs)]}
 
       assert {:error, :tx_not_unsigned} = PSBT.from_tx(signed_tx)
+    end
+
+    test "rejects a tx that carries witnesses", %{unsigned_tx: tx} do
+      witness_tx = %{tx | witnesses: [%Bitcoinex.Transaction.Witness{txinwitness: ["00"]}]}
+      assert {:error, :tx_not_unsigned} = PSBT.from_tx(witness_tx)
     end
   end
 
