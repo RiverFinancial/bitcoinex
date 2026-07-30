@@ -670,7 +670,7 @@ defmodule Bitcoinex.PSBT.In do
 
     * `:non_witness_utxo` — a `Transaction.t()`
     * `:witness_utxo` — a `Transaction.Out.t()`
-    * `:partial_sig` — `%{public_key: Point.t(), signature: Signature.t(), sighash_flag: flag}` (repeatable), where `flag` (like `:sighash_type`) must be one of the valid sighash flags `0x01`/`0x02`/`0x03` optionally `| 0x80`
+    * `:partial_sig` — `%{public_key: Point.t(), signature: binary(), sighash_flag: flag}` (repeatable), where `signature` is the raw DER-encoded ECDSA signature (stored verbatim, so it round-trips byte-for-byte) and `flag` (like `:sighash_type`) must be one of the valid sighash flags `0x01`/`0x02`/`0x03` optionally `| 0x80`
     * `:sighash_type` — one of the valid sighash flag integers
     * `:redeem_script` / `:witness_script` / `:final_scriptsig` — a `Script.t()` or its hex/binary
     * `:bip32_derivation` — `%{public_key: Point.t(), origin: KeyOrigin.t()}` (repeatable)
@@ -696,12 +696,21 @@ defmodule Bitcoinex.PSBT.In do
         :partial_sig,
         %{
           public_key: %Point{},
-          signature: %Signature{},
+          signature: signature,
           sighash_flag: sighash_flag
         } = record
       )
-      when sighash_flag in @valid_sighash_flags do
-    {:ok, %In{input | partial_sig: PsbtUtils.append(input.partial_sig, record)}}
+      when is_binary(signature) and sighash_flag in @valid_sighash_flags do
+    # Signatures are kept as their raw DER bytes so they round-trip verbatim, but
+    # still validate that those bytes are well-formed DER so a garbage partial_sig
+    # is rejected rather than stored.
+    case Signature.der_parse_signature(signature) do
+      {:ok, _signature} ->
+        {:ok, %In{input | partial_sig: PsbtUtils.append(input.partial_sig, record)}}
+
+      {:error, _reason} ->
+        {:error, :invalid_partial_sig}
+    end
   end
 
   def add_field(%In{} = input, :sighash_type, sighash_type)
@@ -975,7 +984,11 @@ defmodule Bitcoinex.PSBT.In do
   end
 
   # Splits a PSBT partial_sig value into its DER signature and trailing 1-byte
-  # sighash flag.
+  # sighash flag. The DER signature is stored as raw bytes rather than parsed into
+  # a Signature struct: re-serializing a parsed ECDSA signature yields canonical
+  # DER, which is not guaranteed to reproduce a non-canonically-encoded input, so
+  # storing the raw bytes is what makes partial_sig round-trip losslessly. The
+  # bytes are still validated as well-formed DER so a malformed value is rejected.
   defp parse_partial_sig(public_key, value) do
     signature_length = byte_size(value) - 1
     <<der_signature::binary-size(signature_length), sighash_flag::8>> = value
@@ -986,8 +999,8 @@ defmodule Bitcoinex.PSBT.In do
 
       true ->
         case Signature.der_parse_signature(der_signature) do
-          {:ok, signature} ->
-            {:ok, %{public_key: public_key, signature: signature, sighash_flag: sighash_flag}}
+          {:ok, _signature} ->
+            {:ok, %{public_key: public_key, signature: der_signature, sighash_flag: sighash_flag}}
 
           {:error, reason} ->
             {:error, reason}
@@ -1096,7 +1109,7 @@ defmodule Bitcoinex.PSBT.In do
          sighash_flag: sighash_flag
        }) do
     key = <<@psbt_in_partial_sig::big-size(8)>> <> Point.sec(public_key)
-    value = Signature.der_serialize_signature(signature) <> <<sighash_flag>>
+    value = signature <> <<sighash_flag>>
     PsbtUtils.serialize_kv(key, value)
   end
 

@@ -243,17 +243,61 @@ defmodule Bitcoinex.PSBTTest do
       assert {:error, :non_witness_utxo_mismatch} = PSBT.decode(bad_vout)
     end
 
-    test "partial_sig uses Point and Signature structs" do
+    test "partial_sig stores the public key as a Point and the signature as raw DER bytes" do
       {:ok, psbt} = PSBT.decode(valid_vector(@p2sh_p2wsh_vector_index))
 
-      assert [%{public_key: %Point{} = public_key, signature: %Signature{}, sighash_flag: 1}] =
+      assert [%{public_key: %Point{} = public_key, signature: signature, sighash_flag: 1}] =
                hd(psbt.inputs).partial_sig
+
+      # The signature is kept as raw bytes (not a parsed Signature struct) so it
+      # round-trips verbatim; it is still well-formed DER.
+      assert is_binary(signature)
+      assert {:ok, %Signature{}} = Signature.der_parse_signature(signature)
 
       assert Point.sec(public_key) ==
                Base.decode16!(
                  "03b1341ccba7683b6af4f1238cd6e97e7167d569fac47f1e48d47541844355bd46",
                  case: :lower
                )
+    end
+
+    test "preserves the exact partial_sig bytes on round-trip, including non-canonical DER" do
+      {:ok, psbt} = PSBT.decode(valid_vector(@p2sh_p2wsh_vector_index))
+      [%{public_key: public_key, sighash_flag: sighash_flag} | _] = hd(psbt.inputs).partial_sig
+
+      # A DER signature carrying an unnecessary leading 0x00 on r: parseable, but
+      # non-canonical. Parsing it into (r, s) and re-serializing would silently
+      # rewrite it to canonical DER; storing the raw bytes preserves it exactly
+      # across decode |> encode_b64.
+      noncanonical_der =
+        Base.decode16!(
+          "3045022100" <> String.duplicate("11", 32) <> "0220" <> String.duplicate("22", 32),
+          case: :lower
+        )
+
+      record = %{public_key: public_key, signature: noncanonical_der, sighash_flag: sighash_flag}
+
+      psbt = %PSBT{
+        psbt
+        | inputs: [%{hd(psbt.inputs) | partial_sig: [record]} | tl(psbt.inputs)]
+      }
+
+      assert {:ok, decoded} = PSBT.decode(PSBT.encode_b64(psbt))
+      assert [%{signature: ^noncanonical_der}] = hd(decoded.inputs).partial_sig
+    end
+
+    test "round-trips a redeem_script that is not a finalizer-recognized template" do
+      # An arbitrary (non-standard) redeem script exercising Script parse/serialize
+      # fidelity for the general case rather than the p2pkh/p2wpkh/p2wsh/multisig
+      # templates: PUSH(4) <locktime> OP_CLTV OP_DROP PUSH(33) <pubkey> OP_CHECKSIG.
+      redeem_hex =
+        "04deadbeefb17521" <> "02" <> String.duplicate("ab", 32) <> "ac"
+
+      {:ok, base} = PSBT.decode(valid_vector(@p2sh_p2wsh_vector_index))
+      {:ok, psbt} = PSBT.add_input_field(base, 0, :redeem_script, redeem_hex)
+
+      assert {:ok, decoded} = PSBT.decode(PSBT.encode_b64(psbt))
+      assert Script.to_hex(hd(decoded.inputs).redeem_script) == redeem_hex
     end
 
     test "redeem_script and witness_script are Script structs" do
