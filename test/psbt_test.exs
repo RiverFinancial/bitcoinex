@@ -1,8 +1,11 @@
 defmodule Bitcoinex.PSBTTest do
   use ExUnit.Case
+  use ExUnitProperties
   doctest Bitcoinex.PSBT
 
   alias Bitcoinex.PSBT
+  alias Bitcoinex.PSBT.Global
+  alias Bitcoinex.PSBT.In
   alias Bitcoinex.PSBT.KeyOrigin
   alias Bitcoinex.{ExtendedKey, Script, Transaction}
   alias Bitcoinex.ExtendedKey.DerivationPath
@@ -81,6 +84,13 @@ defmodule Bitcoinex.PSBTTest do
   # Named indexes into @bip174_valid_vectors used by the representation tests.
   @sighash_vector_index 2
   @p2sh_p2wsh_vector_index 4
+
+  # A known-valid compressed pubkey from the BIP-174 worked examples.
+  @bip174_vector_pubkey "029583bf39ae0a609747ad199addd634fa6108559d6c5cd39b4c2183f1ab96e07f"
+
+  # BIP-174 test-vector master key; every bip32_derivation/xpub in the official
+  # vectors descends from it (master fingerprint d90c6a4f).
+  @bip174_master_tprv "tprv8ZgxMBicQKsPd9TeAdPADNnSyH9SSUUbTVeFszDE23Ki6TBB5nCefAdHkK8Fm3qMQR6sHwA56zqRmKmxnHk37JkiFzvncDqoKmPWubu7hDF"
   @global_xpub_vector_index 5
 
   defp valid_vector(index), do: Enum.at(@bip174_valid_vectors, index)
@@ -696,8 +706,8 @@ defmodule Bitcoinex.PSBTTest do
       origin_a = %KeyOrigin{fingerprint: fingerprint, derivation: %DerivationPath{child_nums: []}}
 
       origin_b = %KeyOrigin{
-        fingerprint: fingerprint,
-        derivation: %DerivationPath{child_nums: [0]}
+        fingerprint: <<0, 0, 0, 0>>,
+        derivation: %DerivationPath{child_nums: []}
       }
 
       {:ok, a} = PSBT.add_global_field(base, :xpub, %{xkey: xpub, origin: origin_a})
@@ -727,6 +737,27 @@ defmodule Bitcoinex.PSBTTest do
       assert {:error, :missing_unsigned_tx} = PSBT.combine(a, empty)
       assert {:error, :missing_unsigned_tx} = PSBT.combine(empty, a)
       assert {:error, :missing_unsigned_tx} = PSBT.combine(no_global, no_global)
+    end
+
+    test "rejects a partial_sig with the same pubkey but a different signature" do
+      {:ok, a} = PSBT.decode(@combine_signer_a)
+
+      [input | rest] = a.inputs
+      [sig | more_sigs] = input.partial_sig
+      tampered = %{sig | signature: sig.signature <> <<0>>}
+      b = %PSBT{a | inputs: [%In{input | partial_sig: [tampered | more_sigs]} | rest]}
+
+      assert {:error, :conflicting_field} = PSBT.combine(a, b)
+    end
+
+    # Unreachable through the public API today (decode/add_field accept only
+    # version 0), but BIP-174 directs combiners to keep the highest version;
+    # this pins Global.combine/2's behavior directly.
+    test "Global.combine/2 keeps the higher version when they differ" do
+      assert {:ok, %Global{version: 1}} = Global.combine(%Global{version: 0}, %Global{version: 1})
+      assert {:ok, %Global{version: 1}} = Global.combine(%Global{version: 1}, %Global{version: 0})
+      assert {:ok, %Global{version: 0}} = Global.combine(%Global{version: 0}, %Global{})
+      assert {:ok, %Global{version: nil}} = Global.combine(%Global{}, %Global{})
     end
   end
 
@@ -840,6 +871,142 @@ defmodule Bitcoinex.PSBTTest do
     test "a global version value that is not 4 bytes is rejected" do
       psbt_b64 = psbt_with_records(record(<<0xFB>>, <<0x02, 0x00>>), :global)
       assert {:error, :invalid_version} = PSBT.decode(psbt_b64)
+    end
+  end
+
+  # BIP-174 defines each value's encoding exactly; bytes beyond it are
+  # malformed. Accepting them would also break losslessness: the parsers drop
+  # them, so decode |> encode_b64 would silently emit a different PSBT.
+  describe "trailing bytes inside a value payload" do
+    test "witness_utxo with bytes after the scriptPubKey is rejected" do
+      # value = 8-byte amount, scriptPubKey [len=1, OP_TRUE], 2 junk bytes
+      value = <<1000::little-size(64), 0x01, 0x51, 0xDE, 0xAD>>
+      psbt_b64 = psbt_with_records(record(<<0x01>>, value), :input)
+      assert {:error, :invalid_witness_utxo} = PSBT.decode(psbt_b64)
+    end
+
+    test "final_scriptwitness with bytes after the stack is rejected" do
+      # value = 1 stack item [len=1, OP_TRUE], 1 junk byte
+      value = <<0x01, 0x01, 0x51, 0xBB>>
+      psbt_b64 = psbt_with_records(record(<<0x08>>, value), :input)
+      assert {:error, :invalid_final_scriptwitness} = PSBT.decode(psbt_b64)
+
+      # empty stack followed by a junk byte
+      psbt_b64 = psbt_with_records(record(<<0x08>>, <<0x00, 0xFF>>), :input)
+      assert {:error, :invalid_final_scriptwitness} = PSBT.decode(psbt_b64)
+    end
+
+    test "derivation values with a trailing partial index are rejected" do
+      pubkey = Base.decode16!(@bip174_vector_pubkey, case: :lower)
+      {:ok, master} = ExtendedKey.parse_extended_key(@bip174_master_tprv)
+      {:ok, xpub} = ExtendedKey.to_extended_public_key(master)
+      xpub_keydata = binary_part(ExtendedKey.serialize_extended_key(xpub), 0, 78)
+      # fingerprint + one full index + one stray byte (length ≢ 0 mod 4)
+      value = <<0, 0, 0, 0>> <> <<84::little-size(32)>> <> <<0xAA>>
+
+      assert {:error, :invalid_derivation} =
+               PSBT.decode(psbt_with_records(record(<<0x01>> <> xpub_keydata, value), :global))
+
+      assert {:error, :invalid_derivation} =
+               PSBT.decode(psbt_with_records(record(<<0x06>> <> pubkey, value), :input))
+
+      assert {:error, :invalid_derivation} =
+               PSBT.decode(psbt_with_records(record(<<0x02>> <> pubkey, value), :output))
+    end
+  end
+
+  describe "duplicate keys in the global and output maps" do
+    test "a repeated global key is rejected with :duplicate_key" do
+      records = record(<<0xFB>>, <<0, 0, 0, 0>>) <> record(<<0xFB>>, <<0, 0, 0, 0>>)
+      assert {:error, :duplicate_key} = PSBT.decode(psbt_with_records(records, :global))
+    end
+
+    test "a repeated output key is rejected with :duplicate_key" do
+      pubkey = Base.decode16!(@bip174_vector_pubkey, case: :lower)
+      bip32 = record(<<0x02>> <> pubkey, <<0, 0, 0, 0>>)
+      assert {:error, :duplicate_key} = PSBT.decode(psbt_with_records(bip32 <> bip32, :output))
+    end
+  end
+
+  # A structurally well-formed record whose 33-byte pubkey has a prefix other
+  # than 0x02/0x03 must decode to a clean error, never crash the caller.
+  describe "invalid public key prefixes" do
+    test "a 33-byte pubkey whose prefix is not 0x02/0x03 is cleanly rejected" do
+      badkey = <<0x05>> <> :binary.copy(<<0xAB>>, 32)
+
+      assert {:error, :invalid_partial_sig} =
+               PSBT.decode(psbt_with_records(record(<<0x02>> <> badkey, <<0x30>>), :input))
+
+      assert {:error, :invalid_bip32_derivation} =
+               PSBT.decode(psbt_with_records(record(<<0x06>> <> badkey, <<0, 0, 0, 0>>), :input))
+
+      assert {:error, :invalid_bip32_derivation} =
+               PSBT.decode(psbt_with_records(record(<<0x02>> <> badkey, <<0, 0, 0, 0>>), :output))
+    end
+  end
+
+  # BIP-174: "The number of 32 bit unsigned integer indexes must match the
+  # depth provided in the extended public key."
+  describe "global xpub depth must match the derivation path length" do
+    test "decoding rejects an xpub whose path length differs from its depth" do
+      {:ok, master} = ExtendedKey.parse_extended_key(@bip174_master_tprv)
+      {:ok, xpub} = ExtendedKey.to_extended_public_key(master)
+      xpub_keydata = binary_part(ExtendedKey.serialize_extended_key(xpub), 0, 78)
+
+      # the master key has depth 0, but the origin carries one index
+      one_index = <<0, 0, 0, 0>> <> <<0x80000054::little-size(32)>>
+
+      assert {:error, :xpub_depth_mismatch} =
+               PSBT.decode(
+                 psbt_with_records(record(<<0x01>> <> xpub_keydata, one_index), :global)
+               )
+
+      # depth 0 with an empty path is consistent and decodes fine
+      assert {:ok, _psbt} =
+               PSBT.decode(
+                 psbt_with_records(record(<<0x01>> <> xpub_keydata, <<0, 0, 0, 0>>), :global)
+               )
+    end
+
+    test "add_global_field(:xpub) rejects a depth/path mismatch" do
+      {:ok, base} = PSBT.decode(valid_vector(@p2sh_p2wsh_vector_index))
+      {:ok, psbt} = PSBT.from_tx(base.global.unsigned_tx)
+      {:ok, master} = ExtendedKey.parse_extended_key(@bip174_master_tprv)
+      {:ok, xpub} = ExtendedKey.to_extended_public_key(master)
+
+      origin = %KeyOrigin{
+        fingerprint: ExtendedKey.get_fingerprint(master),
+        derivation: %DerivationPath{child_nums: [0x80000054]}
+      }
+
+      assert {:error, :xpub_depth_mismatch} =
+               PSBT.add_global_field(psbt, :xpub, %{xkey: xpub, origin: origin})
+    end
+  end
+
+  describe "unknown record round-trip property" do
+    test "any set of unknown input records survives decode |> encode_b64 byte-for-byte" do
+      # Key type bytes outside every known input type (0x00-0x0d) and the
+      # proprietary prefix (0xFC), so each record lands in :unknown.
+      key_gen =
+        gen all(
+              type <- StreamData.integer(0x20..0xF0),
+              suffix <- StreamData.binary(max_length: 40)
+            ) do
+          <<type>> <> suffix
+        end
+
+      check all(
+              keys <- StreamData.uniq_list_of(key_gen, min_length: 1, max_length: 5),
+              values <-
+                StreamData.list_of(StreamData.binary(max_length: 60), length: length(keys))
+            ) do
+        records = Enum.zip(keys, values) |> Enum.map_join(fn {k, v} -> record(k, v) end)
+        psbt_b64 = psbt_with_records(records, :input)
+
+        assert {:ok, psbt} = PSBT.decode(psbt_b64)
+        assert PSBT.encode_b64(psbt) == psbt_b64
+      end
     end
   end
 
