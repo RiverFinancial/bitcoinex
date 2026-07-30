@@ -720,7 +720,7 @@ defmodule Bitcoinex.PSBT.In do
 
     * `:non_witness_utxo` — a `Transaction.t()`
     * `:witness_utxo` — a `Transaction.Out.t()`
-    * `:partial_sig` — `%{public_key: Point.t(), signature: Signature.t(), sighash: 0..255}` (repeatable)
+    * `:partial_sig` — `%{public_key: Point.t(), signature: Signature.t(), sighash_flag: 0..255}` (repeatable)
     * `:sighash_type` — one of the valid sighash flag integers
     * `:redeem_script` / `:witness_script` / `:final_scriptsig` — a `Script.t()` or its hex/binary
     * `:bip32_derivation` — `%{public_key: Point.t(), origin: KeyOrigin.t()}` (repeatable)
@@ -744,10 +744,10 @@ defmodule Bitcoinex.PSBT.In do
         %{
           public_key: %Point{},
           signature: %Signature{},
-          sighash: sighash
+          sighash_flag: sighash_flag
         } = record
       )
-      when sighash in @valid_sighash_flags do
+      when sighash_flag in @valid_sighash_flags do
     {:ok, %In{input | partial_sig: PsbtUtils.append(input.partial_sig, record)}}
   end
 
@@ -1053,19 +1053,20 @@ defmodule Bitcoinex.PSBT.In do
     {Map.update(input, field, [record], &PsbtUtils.append(&1, record)), psbt}
   end
 
-  # Splits a PSBT partial_sig value into its DER signature and trailing sighash byte.
+  # Splits a PSBT partial_sig value into its DER signature and trailing 1-byte
+  # sighash flag.
   defp parse_partial_sig(public_key, value) do
     signature_length = byte_size(value) - 1
-    <<der_signature::binary-size(signature_length), sighash::8>> = value
+    <<der_signature::binary-size(signature_length), sighash_flag::8>> = value
 
     cond do
-      sighash not in @valid_sighash_flags ->
+      sighash_flag not in @valid_sighash_flags ->
         {:error, :invalid_sighash_type}
 
       true ->
         case Signature.der_parse_signature(der_signature) do
           {:ok, signature} ->
-            {:ok, %{public_key: public_key, signature: signature, sighash: sighash}}
+            {:ok, %{public_key: public_key, signature: signature, sighash_flag: sighash_flag}}
 
           {:error, reason} ->
             {:error, reason}
@@ -1168,9 +1169,13 @@ defmodule Bitcoinex.PSBT.In do
     PsbtUtils.serialize_kv(<<@psbt_in_por_commitment::big-size(8)>>, por_commitment)
   end
 
-  defp serialize_partial_sig(%{public_key: public_key, signature: signature, sighash: sighash}) do
+  defp serialize_partial_sig(%{
+         public_key: public_key,
+         signature: signature,
+         sighash_flag: sighash_flag
+       }) do
     key = <<@psbt_in_partial_sig::big-size(8)>> <> Point.sec(public_key)
-    value = Signature.der_serialize_signature(signature) <> <<sighash>>
+    value = Signature.der_serialize_signature(signature) <> <<sighash_flag>>
     PsbtUtils.serialize_kv(key, value)
   end
 
