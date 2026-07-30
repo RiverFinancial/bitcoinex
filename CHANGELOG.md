@@ -6,6 +6,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Added
+- `PSBT.combine/2` (Combiner): merges two PSBTs describing the same unsigned transaction, unioning repeatable fields by key and requiring singleton fields to agree. Returns `{:error, :mismatched_tx}` for different transactions and `{:error, :conflicting_field}` on conflicting values. Repeatable records are ordered canonically so the operation is commutative and idempotent.
 - `PSBT.from_tx/1` (Creator), `PSBT.txid/1`, and the Updater API — `PSBT.add_global_field/3`, `PSBT.add_input_field/4`, `PSBT.add_output_field/4` (each dispatching on a field-name atom via `PSBT.Global.add_field/3`, `PSBT.In.add_field/3`, `PSBT.Out.add_field/3`).
 ### Changed
 - **Breaking:** decoded PSBT fields are now typed `Bitcoinex` structs rather than hex/Base58 strings or integer lists: pubkeys are `Secp256k1.Point.t()`, signatures `Secp256k1.Signature.t()`, scripts (`redeem_script`/`witness_script`/`final_scriptsig`) `Script.t()`, extended keys `ExtendedKey.t()`, and BIP-32 key origins a new `PSBT.KeyOrigin` struct (`fingerprint` as raw 4 bytes, `derivation` as `ExtendedKey.DerivationPath.t()`). `sighash_type` and global `version` are now integers. `partial_sig` is now a list (BIP-174 allows multiple signatures per input).

@@ -132,6 +132,43 @@ defmodule Bitcoinex.PSBT do
     end
   end
 
+  @doc """
+  Combines two PSBTs into one (the BIP-174 Combiner role).
+
+  Both PSBTs must describe the same global unsigned transaction, otherwise
+  `{:error, :mismatched_tx}` is returned. Each map is merged field by field:
+  singleton fields must agree where both are set, and repeatable fields are
+  unioned by key. A record present in both maps under the same key but with a
+  different value yields `{:error, :conflicting_field}`.
+
+  `combine/2` is commutative and idempotent for non-conflicting inputs.
+  """
+  @spec combine(t(), t()) :: {:ok, t()} | {:error, atom()}
+  def combine(%PSBT{} = psbt_a, %PSBT{} = psbt_b) do
+    if psbt_a.global.unsigned_tx != psbt_b.global.unsigned_tx do
+      {:error, :mismatched_tx}
+    else
+      with {:ok, global} <- Global.combine(psbt_a.global, psbt_b.global),
+           {:ok, inputs} <- combine_pairs(psbt_a.inputs, psbt_b.inputs, &In.combine/2),
+           {:ok, outputs} <- combine_pairs(psbt_a.outputs, psbt_b.outputs, &Out.combine/2) do
+        {:ok, %PSBT{global: global, inputs: inputs, outputs: outputs}}
+      end
+    end
+  end
+
+  # Combines two equal-length lists of maps positionally, short-circuiting on
+  # the first conflict.
+  defp combine_pairs(maps_a, maps_b, combiner) do
+    maps_a
+    |> Enum.zip(maps_b)
+    |> Enum.reduce_while({:ok, []}, fn {map_a, map_b}, {:ok, combined} ->
+      case combiner.(map_a, map_b) do
+        {:ok, merged} -> {:cont, {:ok, combined ++ [merged]}}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
+  end
+
   # Applies add_field_fun to the item at index, replacing it in the list.
   defp put_item_field(items, index, add_field_fun) do
     if index < 0 or index >= length(items) do
@@ -348,6 +385,47 @@ defmodule Bitcoinex.PSBT.Utils do
     path = for index <- derivation.child_nums, into: <<>>, do: <<index::little-size(32)>>
     fingerprint <> path
   end
+
+  @doc """
+  Combines two values for a singleton (non-repeatable) field (BIP-174 Combiner):
+  takes whichever side is set, keeps the value if both agree, and returns
+  `{:error, :conflicting_field}` if both are set and differ.
+  """
+  def combine_singleton(nil, value), do: {:ok, value}
+  def combine_singleton(value, nil), do: {:ok, value}
+  def combine_singleton(value, value), do: {:ok, value}
+  def combine_singleton(_value_a, _value_b), do: {:error, :conflicting_field}
+
+  @doc """
+  Combines two repeatable (list-valued) fields into their union, identifying
+  records by `key_fun`. Two records that share a key but differ in value are a
+  `{:error, :conflicting_field}`. The union is sorted by key so the result is
+  canonical and independent of argument order (the Combiner is commutative). An
+  empty union normalizes back to `nil`.
+  """
+  def combine_repeatable(list_a, list_b, key_fun) do
+    merged =
+      Enum.reduce_while(to_list(list_b), {:ok, to_list(list_a)}, fn record, {:ok, accumulator} ->
+        case Enum.find(accumulator, fn existing -> key_fun.(existing) == key_fun.(record) end) do
+          nil ->
+            {:cont, {:ok, accumulator ++ [record]}}
+
+          existing ->
+            if existing == record,
+              do: {:cont, {:ok, accumulator}},
+              else: {:halt, {:error, :conflicting_field}}
+        end
+      end)
+
+    case merged do
+      {:ok, []} -> {:ok, nil}
+      {:ok, records} -> {:ok, Enum.sort_by(records, key_fun)}
+      other -> other
+    end
+  end
+
+  defp to_list(nil), do: []
+  defp to_list(list) when is_list(list), do: list
 end
 
 defmodule Bitcoinex.PSBT.Global do
@@ -412,6 +490,32 @@ defmodule Bitcoinex.PSBT.Global do
   end
 
   def add_field(%Global{}, _field, _value), do: {:error, :invalid_field}
+
+  @doc """
+  Combines two Global maps (BIP-174 Combiner). Callers guarantee the two
+  `unsigned_tx` values are equal.
+  """
+  @spec combine(t(), t()) :: {:ok, t()} | {:error, atom()}
+  def combine(%Global{} = global_a, %Global{} = global_b) do
+    with {:ok, version} <- PsbtUtils.combine_singleton(global_a.version, global_b.version),
+         {:ok, xpub} <- PsbtUtils.combine_repeatable(global_a.xpub, global_b.xpub, &xpub_key/1),
+         {:ok, proprietary} <-
+           PsbtUtils.combine_repeatable(global_a.proprietary, global_b.proprietary, &record_key/1),
+         {:ok, unknown} <-
+           PsbtUtils.combine_repeatable(global_a.unknown, global_b.unknown, &record_key/1) do
+      {:ok,
+       %Global{
+         global_a
+         | version: version,
+           xpub: xpub,
+           proprietary: proprietary,
+           unknown: unknown
+       }}
+    end
+  end
+
+  defp xpub_key(%{xkey: xkey}), do: PsbtUtils.serialize_xpub_keydata(xkey)
+  defp record_key(%{key: key}), do: key
 
   @spec parse_global(binary()) :: {:ok, {t(), binary()}} | {:error, term()}
   def parse_global(psbt) do
@@ -678,6 +782,77 @@ defmodule Bitcoinex.PSBT.In do
   end
 
   def add_field(%In{}, _field, _value), do: {:error, :invalid_field}
+
+  @doc """
+  Combines two input maps (BIP-174 Combiner).
+  """
+  @spec combine(t(), t()) :: {:ok, t()} | {:error, atom()}
+  def combine(%In{} = input_a, %In{} = input_b) do
+    with {:ok, non_witness_utxo} <-
+           PsbtUtils.combine_singleton(input_a.non_witness_utxo, input_b.non_witness_utxo),
+         {:ok, witness_utxo} <-
+           PsbtUtils.combine_singleton(input_a.witness_utxo, input_b.witness_utxo),
+         {:ok, sighash_type} <-
+           PsbtUtils.combine_singleton(input_a.sighash_type, input_b.sighash_type),
+         {:ok, redeem_script} <-
+           PsbtUtils.combine_singleton(input_a.redeem_script, input_b.redeem_script),
+         {:ok, witness_script} <-
+           PsbtUtils.combine_singleton(input_a.witness_script, input_b.witness_script),
+         {:ok, final_scriptsig} <-
+           PsbtUtils.combine_singleton(input_a.final_scriptsig, input_b.final_scriptsig),
+         {:ok, final_scriptwitness} <-
+           PsbtUtils.combine_singleton(input_a.final_scriptwitness, input_b.final_scriptwitness),
+         {:ok, por_commitment} <-
+           PsbtUtils.combine_singleton(input_a.por_commitment, input_b.por_commitment),
+         {:ok, partial_sig} <-
+           PsbtUtils.combine_repeatable(
+             input_a.partial_sig,
+             input_b.partial_sig,
+             &public_key_key/1
+           ),
+         {:ok, bip32_derivation} <-
+           PsbtUtils.combine_repeatable(
+             input_a.bip32_derivation,
+             input_b.bip32_derivation,
+             &public_key_key/1
+           ),
+         {:ok, ripemd160} <-
+           PsbtUtils.combine_repeatable(input_a.ripemd160, input_b.ripemd160, &hash_key/1),
+         {:ok, sha256} <-
+           PsbtUtils.combine_repeatable(input_a.sha256, input_b.sha256, &hash_key/1),
+         {:ok, hash160} <-
+           PsbtUtils.combine_repeatable(input_a.hash160, input_b.hash160, &hash_key/1),
+         {:ok, hash256} <-
+           PsbtUtils.combine_repeatable(input_a.hash256, input_b.hash256, &hash_key/1),
+         {:ok, proprietary} <-
+           PsbtUtils.combine_repeatable(input_a.proprietary, input_b.proprietary, &record_key/1),
+         {:ok, unknown} <-
+           PsbtUtils.combine_repeatable(input_a.unknown, input_b.unknown, &record_key/1) do
+      {:ok,
+       %In{
+         non_witness_utxo: non_witness_utxo,
+         witness_utxo: witness_utxo,
+         partial_sig: partial_sig,
+         sighash_type: sighash_type,
+         redeem_script: redeem_script,
+         witness_script: witness_script,
+         bip32_derivation: bip32_derivation,
+         final_scriptsig: final_scriptsig,
+         final_scriptwitness: final_scriptwitness,
+         por_commitment: por_commitment,
+         ripemd160: ripemd160,
+         sha256: sha256,
+         hash160: hash160,
+         hash256: hash256,
+         proprietary: proprietary,
+         unknown: unknown
+       }}
+    end
+  end
+
+  defp public_key_key(%{public_key: public_key}), do: Point.sec(public_key)
+  defp hash_key(%{hash: hash}), do: hash
+  defp record_key(%{key: key}), do: key
 
   # Normalizes a Script, hex string, or raw binary into a Script and applies it.
   defp with_script(%Script{} = script, put_fun), do: {:ok, put_fun.(script)}
@@ -1020,6 +1195,39 @@ defmodule Bitcoinex.PSBT.Out do
   end
 
   def add_field(%Out{}, _field, _value), do: {:error, :invalid_field}
+
+  @doc """
+  Combines two output maps (BIP-174 Combiner).
+  """
+  @spec combine(t(), t()) :: {:ok, t()} | {:error, atom()}
+  def combine(%Out{} = output_a, %Out{} = output_b) do
+    with {:ok, redeem_script} <-
+           PsbtUtils.combine_singleton(output_a.redeem_script, output_b.redeem_script),
+         {:ok, witness_script} <-
+           PsbtUtils.combine_singleton(output_a.witness_script, output_b.witness_script),
+         {:ok, bip32_derivation} <-
+           PsbtUtils.combine_repeatable(
+             output_a.bip32_derivation,
+             output_b.bip32_derivation,
+             &public_key_key/1
+           ),
+         {:ok, proprietary} <-
+           PsbtUtils.combine_repeatable(output_a.proprietary, output_b.proprietary, &record_key/1),
+         {:ok, unknown} <-
+           PsbtUtils.combine_repeatable(output_a.unknown, output_b.unknown, &record_key/1) do
+      {:ok,
+       %Out{
+         redeem_script: redeem_script,
+         witness_script: witness_script,
+         bip32_derivation: bip32_derivation,
+         proprietary: proprietary,
+         unknown: unknown
+       }}
+    end
+  end
+
+  defp public_key_key(%{public_key: public_key}), do: Point.sec(public_key)
+  defp record_key(%{key: key}), do: key
 
   defp with_script(%Script{} = script, put_fun), do: {:ok, put_fun.(script)}
 
