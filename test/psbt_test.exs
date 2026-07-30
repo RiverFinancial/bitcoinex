@@ -104,6 +104,10 @@ defmodule Bitcoinex.PSBTTest do
 
   defp valid_vector(index), do: Enum.at(@bip174_valid_vectors, index)
 
+  # BIP-174 test-vector master key; every bip32_derivation/xpub in the official
+  # vectors descends from it (master fingerprint d90c6a4f).
+  @bip174_master_tprv "tprv8ZgxMBicQKsPd9TeAdPADNnSyH9SSUUbTVeFszDE23Ki6TBB5nCefAdHkK8Fm3qMQR6sHwA56zqRmKmxnHk37JkiFzvncDqoKmPWubu7hDF"
+
   describe "BIP-174 official vectors" do
     test "all valid vectors decode and round-trip losslessly" do
       for base64 <- @bip174_valid_vectors do
@@ -629,40 +633,47 @@ defmodule Bitcoinex.PSBTTest do
   @combine_unknown_expected "cHNidP8BAD8CAAAAAf//////////////////////////////////////////AAAAAAD/////AQAAAAAAAAAAA2oBAAAAAAAK8AECAwQFBgcICQ8BAgMEBQYHCAkKCwwNDg8K8AECAwQFBgcIEA8BAgMEBQYHCAkKCwwNDg8ACvABAgMEBQYHCAkPAQIDBAUGBwgJCgsMDQ4PCvABAgMEBQYHCBAPAQIDBAUGBwgJCgsMDQ4PAArwAQIDBAUGBwgJDwECAwQFBgcICQoLDA0ODwrwAQIDBAUGBwgQDwECAwQFBgcICQoLDA0ODwA="
 
   describe "combine/2 (Combiner)" do
-    test "unions two independently-signed PSBTs (BIP-174 combiner vector)" do
+    test "reproduces the official BIP-174 combiner vector byte-for-byte" do
       {:ok, a} = PSBT.decode(@combine_signer_a)
       {:ok, b} = PSBT.decode(@combine_signer_b)
       {:ok, expected} = PSBT.decode(@combine_signer_expected)
       {:ok, combined} = PSBT.combine(a, b)
 
-      # This combiner orders repeatable records canonically (by key), while the
-      # BIP vector preserves participant order. Both are valid per BIP-174;
-      # canonicalizing the vector (combining it with itself) yields this result.
-      assert {:ok, combined} == PSBT.combine(expected, expected)
+      # First-list order is kept and new records appended (Bitcoin Core's Merge
+      # semantics), so the result matches the BIP's expected combined PSBT
+      # exactly, not just as a record set.
+      assert combined == expected
+      assert PSBT.encode_b64(combined) == @combine_signer_expected
       assert Enum.all?(combined.inputs, fn input -> length(input.partial_sig) == 2 end)
     end
 
-    test "byte-matches the lexicographically-ordered unknown-keys vector" do
+    test "byte-matches the unknown-keys combiner vector" do
       {:ok, a} = PSBT.decode(@combine_unknown_a)
       {:ok, b} = PSBT.decode(@combine_unknown_b)
       {:ok, combined} = PSBT.combine(a, b)
       assert PSBT.encode_b64(combined) == @combine_unknown_expected
     end
 
-    test "is commutative" do
+    test "is commutative up to record order" do
+      # combine(a,b) and combine(b,a) union the same record sets; only the
+      # order of repeatable records differs (first argument's records lead).
       for {first, second} <- [
             {@combine_signer_a, @combine_signer_b},
             {@combine_unknown_a, @combine_unknown_b}
           ] do
         {:ok, a} = PSBT.decode(first)
         {:ok, b} = PSBT.decode(second)
-        assert PSBT.combine(a, b) == PSBT.combine(b, a)
+        {:ok, ab} = PSBT.combine(a, b)
+        {:ok, ba} = PSBT.combine(b, a)
+        assert sort_repeatable_records(ab) == sort_repeatable_records(ba)
       end
     end
 
-    test "is idempotent for a canonical PSBT" do
-      {:ok, a} = PSBT.decode(@combine_signer_a)
-      assert PSBT.combine(a, a) == {:ok, a}
+    test "is idempotent for any PSBT" do
+      for vector <- [@combine_signer_a, @combine_signer_b, @combine_signer_expected] do
+        {:ok, a} = PSBT.decode(vector)
+        assert PSBT.combine(a, a) == {:ok, a}
+      end
     end
 
     test "combining two v0 PSBTs preserves the version" do
@@ -740,6 +751,376 @@ defmodule Bitcoinex.PSBTTest do
 
       assert Enum.all?(a_sigs, &(&1 in combined_sigs))
       assert Enum.all?(b_sigs, &(&1 in combined_sigs))
+    end
+
+    test "rejects PSBTs whose output-map counts do not match" do
+      {:ok, a} = PSBT.decode(valid_vector(@p2sh_p2wsh_vector_index))
+      b = %PSBT{a | outputs: []}
+      assert {:error, :map_count_mismatch} = PSBT.combine(a, b)
+    end
+
+    test "rejects a global xpub key collision with differing origins" do
+      {:ok, base} = PSBT.decode(valid_vector(@p2sh_p2wsh_vector_index))
+      {:ok, master} = ExtendedKey.parse_extended_key(@bip174_master_tprv)
+      {:ok, xpub} = ExtendedKey.to_extended_public_key(master)
+      fingerprint = ExtendedKey.get_fingerprint(master)
+
+      origin_a = %KeyOrigin{fingerprint: fingerprint, derivation: %DerivationPath{child_nums: []}}
+
+      origin_b = %KeyOrigin{
+        fingerprint: fingerprint,
+        derivation: %DerivationPath{child_nums: [0]}
+      }
+
+      {:ok, a} = PSBT.add_global_field(base, :xpub, %{xkey: xpub, origin: origin_a})
+      {:ok, b} = PSBT.add_global_field(base, :xpub, %{xkey: xpub, origin: origin_b})
+
+      assert {:error, :conflicting_field} = PSBT.combine(a, b)
+      assert {:ok, _combined} = PSBT.combine(a, a)
+    end
+
+    test "rejects a conflicting output singleton field" do
+      {:ok, base} = PSBT.decode(valid_vector(@p2sh_p2wsh_vector_index))
+
+      {:ok, a} =
+        PSBT.add_output_field(base, 0, :witness_script, "0014" <> String.duplicate("ab", 20))
+
+      {:ok, b} =
+        PSBT.add_output_field(base, 0, :witness_script, "0014" <> String.duplicate("cd", 20))
+
+      assert {:error, :conflicting_field} = PSBT.combine(a, b)
+    end
+
+    test "returns an error instead of raising when an unsigned tx is missing" do
+      {:ok, a} = PSBT.decode(valid_vector(@p2sh_p2wsh_vector_index))
+      empty = %PSBT{global: %Bitcoinex.PSBT.Global{}, inputs: [], outputs: []}
+      no_global = %PSBT{global: nil, inputs: [], outputs: []}
+
+      assert {:error, :missing_unsigned_tx} = PSBT.combine(a, empty)
+      assert {:error, :missing_unsigned_tx} = PSBT.combine(empty, a)
+      assert {:error, :missing_unsigned_tx} = PSBT.combine(no_global, no_global)
+    end
+  end
+
+  # Sorts every repeatable (list-valued) field so two PSBTs that union the same
+  # record sets in different orders compare equal.
+  defp sort_repeatable_records(%PSBT{} = psbt) do
+    %PSBT{
+      psbt
+      | global: sort_struct_lists(psbt.global),
+        inputs: Enum.map(psbt.inputs, &sort_struct_lists/1),
+        outputs: Enum.map(psbt.outputs, &sort_struct_lists/1)
+    }
+  end
+
+  defp sort_struct_lists(%module{} = struct) do
+    fields =
+      struct
+      |> Map.from_struct()
+      |> Enum.map(fn {key, value} ->
+        {key, if(is_list(value), do: Enum.sort(value), else: value)}
+      end)
+
+    struct(module, fields)
+  end
+
+  # The expected result of the BIP-174 Combiner worked example: every input
+  # carries TWO partial_sig records (one per signer). Guards the repeatability
+  # of partial_sig — a singleton representation keeps only the last record.
+  @two_partial_sigs_vector @combine_signer_expected
+
+  describe "repeatable partial_sig" do
+    test "an input with two partial_sig records keeps both and round-trips" do
+      assert {:ok, psbt} = PSBT.decode(@two_partial_sigs_vector)
+
+      for input <- psbt.inputs do
+        assert length(input.partial_sig) == 2
+      end
+
+      assert PSBT.encode_b64(psbt) == @two_partial_sigs_vector
+    end
+  end
+
+  # Builds a minimal one-input/one-output PSBT binary around the unsigned tx
+  # of @new_fields_vector, with `records` spliced into the given map.
+  defp psbt_with_records(records, location) do
+    {:ok, psbt} = PSBT.decode(@new_fields_vector)
+    tx_bytes = Bitcoinex.Transaction.Utils.serialize(psbt.global.unsigned_tx)
+
+    tx_record =
+      <<0x01, 0x00>> <>
+        Bitcoinex.Transaction.Utils.serialize_compact_size_unsigned_int(byte_size(tx_bytes)) <>
+        tx_bytes
+
+    {global_records, input_records, output_records} =
+      case location do
+        :global -> {records, <<>>, <<>>}
+        :input -> {<<>>, records, <<>>}
+        :output -> {<<>>, <<>>, records}
+      end
+
+    binary =
+      <<0x70736274::big-size(32), 0xFF>> <>
+        tx_record <>
+        global_records <> <<0x00>> <> input_records <> <<0x00>> <> output_records <> <<0x00>>
+
+    Base.encode64(binary)
+  end
+
+  defp record(key, value) do
+    <<byte_size(key)>> <> key <> <<byte_size(value)>> <> value
+  end
+
+  describe "malformed and unsupported inputs" do
+    test "truncated PSBTs are rejected" do
+      {:ok, valid_bytes} = Base.decode64(hd(@bip174_valid_vectors))
+      truncated = binary_part(valid_bytes, 0, byte_size(valid_bytes) - 5)
+      assert {:error, _reason} = PSBT.decode(Base.encode64(truncated))
+    end
+
+    test "65-byte (uncompressed) pubkeys are rejected with a distinct reason" do
+      uncompressed = <<0x04>> <> :binary.copy(<<0xAB>>, 64)
+      signature = :binary.copy(<<0x30>>, 8)
+      origin = <<0, 0, 0, 0>>
+
+      partial_sig = record(<<0x02>> <> uncompressed, signature)
+      in_bip32 = record(<<0x06>> <> uncompressed, origin)
+      out_bip32 = record(<<0x02>> <> uncompressed, origin)
+
+      assert {:error, :uncompressed_public_key} =
+               PSBT.decode(psbt_with_records(partial_sig, :input))
+
+      assert {:error, :uncompressed_public_key} =
+               PSBT.decode(psbt_with_records(in_bip32, :input))
+
+      assert {:error, :uncompressed_public_key} =
+               PSBT.decode(psbt_with_records(out_bip32, :output))
+    end
+
+    test "sighash_type is parsed from and re-emitted as 4 little-endian bytes" do
+      psbt_b64 = psbt_with_records(record(<<0x03>>, <<0x01, 0x00, 0x00, 0x00>>), :input)
+      assert {:ok, psbt} = PSBT.decode(psbt_b64)
+      assert hd(psbt.inputs).sighash_type == 0x01
+      assert PSBT.encode_b64(psbt) == psbt_b64
+    end
+
+    test "a sighash_type value that is not 4 bytes is rejected" do
+      psbt_b64 = psbt_with_records(record(<<0x03>>, <<0x01>>), :input)
+      assert {:error, :invalid_sighash_type} = PSBT.decode(psbt_b64)
+    end
+
+    test "a global version value that is not 4 bytes is rejected" do
+      psbt_b64 = psbt_with_records(record(<<0xFB>>, <<0x02, 0x00>>), :global)
+      assert {:error, :invalid_version} = PSBT.decode(psbt_b64)
+    end
+  end
+
+  describe "encoding a PSBT without an unsigned tx" do
+    test "encode_b64/1 and to_file/2 return an error instead of emitting an invalid PSBT" do
+      psbt = %PSBT{global: %Bitcoinex.PSBT.Global{}, inputs: [], outputs: []}
+      assert {:error, :missing_unsigned_tx} = PSBT.encode_b64(psbt)
+      assert {:error, :missing_unsigned_tx} = PSBT.to_file(psbt, "./test/never-written.psbt")
+      refute File.exists?("./test/never-written.psbt")
+    end
+
+    test "txid/1 and add_global_field/3 return errors on a PSBT with no global map" do
+      psbt = %PSBT{global: nil, inputs: [], outputs: []}
+      assert {:error, :no_unsigned_tx} = PSBT.txid(psbt)
+      assert {:ok, updated} = PSBT.add_global_field(psbt, :version, 0)
+      assert updated.global.version == 0
+    end
+  end
+
+  describe "scripts with non-minimal pushes" do
+    test "a redeem_script using OP_PUSHDATA1 for a short payload round-trips byte-for-byte" do
+      # `4c 14 <20 bytes>` is consensus-valid but non-minimal; Script must not
+      # rewrite it to `14 <20 bytes>` (the hash would no longer match a p2sh
+      # scriptPubKey built from the original bytes).
+      non_minimal = <<0x4C, 0x14>> <> :binary.copy(<<0xAB>>, 20)
+      psbt_b64 = psbt_with_records(record(<<0x04>>, non_minimal), :input)
+
+      assert {:ok, psbt} = PSBT.decode(psbt_b64)
+      assert Script.serialize_script(hd(psbt.inputs).redeem_script) == non_minimal
+      assert PSBT.encode_b64(psbt) == psbt_b64
+    end
+  end
+
+  describe "key origins" do
+    test "a decoded fingerprint equals ExtendedKey.get_fingerprint/1 of the master key" do
+      # Guards the raw-4-bytes fingerprint representation: an LE-integer
+      # regression would compare byte-reversed against get_fingerprint/1.
+      {:ok, master} = ExtendedKey.parse_extended_key(@bip174_master_tprv)
+      {:ok, psbt} = PSBT.decode(@two_partial_sigs_vector)
+
+      [%{origin: origin} | _] = hd(psbt.inputs).bip32_derivation
+      assert origin.fingerprint == ExtendedKey.get_fingerprint(master)
+      assert origin.fingerprint == <<0xD9, 0x0C, 0x6A, 0x4F>>
+    end
+
+    test "a decoded derivation renders through DerivationPath.to_string/1" do
+      {:ok, psbt} = PSBT.decode(@two_partial_sigs_vector)
+      [%{origin: origin} | _] = hd(psbt.inputs).bip32_derivation
+
+      assert origin.derivation.child_nums == [0x80000000, 0x80000000, 0x80000000]
+      assert {:ok, rendered} = DerivationPath.to_string(origin.derivation)
+      assert String.replace(rendered, "h", "'") =~ "0'/0'/0'"
+    end
+  end
+
+  describe "Updater content validation" do
+    setup do
+      {:ok, base} = PSBT.decode(valid_vector(@p2sh_p2wsh_vector_index))
+      {:ok, psbt} = PSBT.from_tx(base.global.unsigned_tx)
+
+      {:ok, public_key} =
+        Point.parse_public_key(
+          Base.decode16!("03b1341ccba7683b6af4f1238cd6e97e7167d569fac47f1e48d47541844355bd46",
+            case: :lower
+          )
+        )
+
+      %{psbt: psbt, public_key: public_key, base: base}
+    end
+
+    test "adds a partial_sig and rejects a duplicate for the same pubkey", %{
+      psbt: psbt,
+      public_key: public_key,
+      base: base
+    } do
+      [%{signature: signature} | _] = hd(base.inputs).partial_sig
+      record = %{public_key: public_key, signature: signature, sighash_flag: 0x01}
+
+      assert {:ok, updated} = PSBT.add_input_field(psbt, 0, :partial_sig, record)
+      assert hd(updated.inputs).partial_sig == [record]
+      assert {:error, :duplicate_key} = PSBT.add_input_field(updated, 0, :partial_sig, record)
+    end
+
+    test "rejects a partial_sig whose signature is not parseable DER", %{
+      psbt: psbt,
+      public_key: public_key
+    } do
+      record = %{public_key: public_key, signature: <<0xFF, 0xFF>>, sighash_flag: 0x01}
+      assert {:error, :invalid_partial_sig} = PSBT.add_input_field(psbt, 0, :partial_sig, record)
+    end
+
+    test "rejects a KeyOrigin with a wrong-length fingerprint or wildcard path", %{
+      psbt: psbt,
+      public_key: public_key
+    } do
+      short_fp = %KeyOrigin{
+        fingerprint: <<1, 2, 3>>,
+        derivation: %DerivationPath{child_nums: [0]}
+      }
+
+      wildcard = %KeyOrigin{
+        fingerprint: <<1, 2, 3, 4>>,
+        derivation: %DerivationPath{child_nums: [0x80000000, :any]}
+      }
+
+      for origin <- [short_fp, wildcard] do
+        record = %{public_key: public_key, origin: origin}
+
+        assert {:error, :invalid_key_origin} =
+                 PSBT.add_input_field(psbt, 0, :bip32_derivation, record)
+
+        assert {:error, :invalid_key_origin} =
+                 PSBT.add_output_field(psbt, 0, :bip32_derivation, record)
+      end
+    end
+
+    test "rejects a bip32_derivation duplicate for the same pubkey", %{
+      psbt: psbt,
+      public_key: public_key
+    } do
+      origin = %KeyOrigin{
+        fingerprint: <<1, 2, 3, 4>>,
+        derivation: %DerivationPath{child_nums: [0x80000000]}
+      }
+
+      record = %{public_key: public_key, origin: origin}
+      assert {:ok, updated} = PSBT.add_input_field(psbt, 0, :bip32_derivation, record)
+
+      assert {:error, :duplicate_key} =
+               PSBT.add_input_field(updated, 0, :bip32_derivation, record)
+    end
+
+    test "rejects an out-of-range output index", %{psbt: psbt} do
+      assert {:error, :index_out_of_range} =
+               PSBT.add_output_field(
+                 psbt,
+                 99,
+                 :witness_script,
+                 "0014" <> String.duplicate("ab", 20)
+               )
+    end
+
+    test "adds global proprietary and unknown records and rejects duplicates", %{psbt: psbt} do
+      record = %{key: <<0xFC, "prop">>, value: "data"}
+      assert {:ok, updated} = PSBT.add_global_field(psbt, :proprietary, record)
+      assert {:error, :duplicate_key} = PSBT.add_global_field(updated, :proprietary, record)
+
+      unknown = %{key: <<0x42>>, value: "data"}
+      assert {:ok, updated} = PSBT.add_global_field(psbt, :unknown, unknown)
+      assert {:error, :duplicate_key} = PSBT.add_global_field(updated, :unknown, unknown)
+    end
+
+    test "rejects a witness_utxo without an integer value", %{psbt: psbt} do
+      utxo = %Bitcoinex.Transaction.Out{
+        value: nil,
+        script_pub_key: "0014" <> String.duplicate("ab", 20)
+      }
+
+      assert {:error, :invalid_field} = PSBT.add_input_field(psbt, 0, :witness_utxo, utxo)
+    end
+
+    test "validates a non_witness_utxo against the input's outpoint" do
+      # Vector 4 carries a genuine non_witness_utxo for input 0; re-adding it to
+      # a fresh skeleton of the same unsigned tx must succeed, and a mutated
+      # (different-txid) transaction must be rejected.
+      {:ok, base} = PSBT.decode(valid_vector(3))
+      {:ok, psbt} = PSBT.from_tx(base.global.unsigned_tx)
+      utxo = hd(base.inputs).non_witness_utxo
+      assert %Bitcoinex.Transaction{} = utxo
+
+      assert {:ok, updated} = PSBT.add_input_field(psbt, 0, :non_witness_utxo, utxo)
+      assert hd(updated.inputs).non_witness_utxo == utxo
+
+      mutated = %Bitcoinex.Transaction{utxo | lock_time: utxo.lock_time + 1}
+
+      assert {:error, :non_witness_utxo_mismatch} =
+               PSBT.add_input_field(psbt, 0, :non_witness_utxo, mutated)
+    end
+  end
+
+  describe "extended private keys are refused in xpub fields" do
+    test "decoding a PSBT whose global xpub key-data is an xprv fails" do
+      {:ok, master} = ExtendedKey.parse_extended_key(@bip174_master_tprv)
+      raw78 = binary_part(ExtendedKey.serialize_extended_key(master), 0, 78)
+      xprv_record = record(<<0x01>> <> raw78, <<0, 0, 0, 0>>)
+
+      assert {:error, :private_key_not_allowed} =
+               PSBT.decode(psbt_with_records(xprv_record, :global))
+    end
+
+    test "add_global_field(:xpub) rejects an extended private key" do
+      {:ok, base} = PSBT.decode(valid_vector(@p2sh_p2wsh_vector_index))
+      {:ok, psbt} = PSBT.from_tx(base.global.unsigned_tx)
+      {:ok, master} = ExtendedKey.parse_extended_key(@bip174_master_tprv)
+
+      origin = %KeyOrigin{
+        fingerprint: ExtendedKey.get_fingerprint(master),
+        derivation: %DerivationPath{child_nums: []}
+      }
+
+      assert {:error, :private_key_not_allowed} =
+               PSBT.add_global_field(psbt, :xpub, %{xkey: master, origin: origin})
+
+      {:ok, xpub} = ExtendedKey.to_extended_public_key(master)
+      assert {:ok, updated} = PSBT.add_global_field(psbt, :xpub, %{xkey: xpub, origin: origin})
+      assert [%{xkey: ^xpub}] = updated.global.xpub
+
+      assert {:error, :duplicate_key} =
+               PSBT.add_global_field(updated, :xpub, %{xkey: xpub, origin: origin})
     end
   end
 
@@ -1184,7 +1565,18 @@ defmodule Bitcoinex.PSBTTest do
     }
 
     {:ok, psbt} = PSBT.from_tx(unsigned_tx)
-    {:ok, psbt} = PSBT.add_input_field(psbt, 0, :non_witness_utxo, prev_tx)
+
+    # The Updater refuses a non_witness_utxo that mismatches the outpoint, so a
+    # deliberately-wrong fixture (defense-in-depth test of the finalizer's own
+    # check) must place it on the struct directly.
+    psbt =
+      if opts[:wrong_txid] do
+        [input] = psbt.inputs
+        %PSBT{psbt | inputs: [%{input | non_witness_utxo: prev_tx}]}
+      else
+        {:ok, psbt} = PSBT.add_input_field(psbt, 0, :non_witness_utxo, prev_tx)
+        psbt
+      end
 
     Enum.reduce(partial_sigs, psbt, fn partial_sig, acc ->
       {:ok, acc} = PSBT.add_input_field(acc, 0, :partial_sig, partial_sig)

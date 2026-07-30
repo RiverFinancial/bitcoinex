@@ -213,6 +213,13 @@ defmodule Bitcoinex.ExtendedKey do
   @spec get_prefix(t()) :: binary
   def get_prefix(%__MODULE__{prefix: prefix}), do: prefix
 
+  @doc """
+    Returns true if the extended key is an extended public key
+    (xpub/ypub/zpub/tpub/...), false for an extended private key.
+  """
+  @spec public_key?(t()) :: boolean
+  def public_key?(%__MODULE__{prefix: prefix}), do: prefix in @pub_prefixes
+
   @spec get_depth(t()) :: binary
   def get_depth(%__MODULE__{depth: depth}), do: depth
 

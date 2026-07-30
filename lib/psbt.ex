@@ -8,11 +8,20 @@ defmodule Bitcoinex.PSBT do
   Reference: https://github.com/bitcoin/bips/blob/master/bip-0174.mediawiki
 
   Only PSBT version 0 (BIP-174) is supported; version 2 (BIP-370) and the
-  BIP-371 taproot fields are not. Public keys in `partial_sig` and
-  `bip32_derivation` records must be 33-byte compressed SEC keys: decoded keys
-  are stored as `Secp256k1.Point` structs, which re-serialize compressed, so
-  legacy uncompressed (65-byte) keys are rejected rather than silently
-  re-encoded to a different key.
+  BIP-371 taproot fields are not.
+
+  Known limitations (deliberate):
+
+  * Public keys in `partial_sig` and `bip32_derivation` records must be
+    33-byte compressed SEC keys: decoded keys are stored as `Secp256k1.Point`
+    structs, which re-serialize compressed, so legacy uncompressed (65-byte)
+    keys — permitted by BIP-174 — are rejected with
+    `{:error, :uncompressed_public_key}` rather than silently re-encoded to a
+    different key.
+  * Serialization always emits records in ascending key-type order with
+    unknown records last (as Bitcoin Core does). `decode |> encode_b64` is
+    byte-identical for canonically-ordered PSBTs; a PSBT whose records arrive
+    in a different order decodes to the same struct but re-encodes canonically.
   """
   alias Bitcoinex.PSBT
   alias Bitcoinex.PSBT.Global
@@ -112,8 +121,11 @@ defmodule Bitcoinex.PSBT do
   Returns the txid of the PSBT's global unsigned transaction.
   """
   @spec txid(t()) :: {:ok, String.t()} | {:error, :no_unsigned_tx}
-  def txid(%PSBT{global: %{unsigned_tx: nil}}), do: {:error, :no_unsigned_tx}
-  def txid(%PSBT{global: %{unsigned_tx: tx}}), do: {:ok, Transaction.transaction_id(tx)}
+  def txid(%PSBT{global: %{unsigned_tx: %Transaction{} = tx}}),
+    do: {:ok, Transaction.transaction_id(tx)}
+
+  # Covers both global: nil and unsigned_tx: nil on hand-built structs.
+  def txid(%PSBT{}), do: {:error, :no_unsigned_tx}
 
   @doc """
   Adds a field to the PSBT's global map (the BIP-174 Updater role).
@@ -130,13 +142,15 @@ defmodule Bitcoinex.PSBT do
   def add_global_field(%PSBT{} = psbt, :unsigned_tx, %Transaction{} = tx) do
     with :ok <- validate_unsigned_tx(tx),
          :ok <- validate_io_counts(psbt, tx),
-         {:ok, global} <- Global.add_field(psbt.global, :unsigned_tx, tx) do
+         {:ok, global} <- Global.add_field(psbt.global || struct(Global), :unsigned_tx, tx) do
       {:ok, %PSBT{psbt | global: global}}
     end
   end
 
   def add_global_field(%PSBT{} = psbt, field, value) do
-    case Global.add_field(psbt.global, field, value) do
+    # A hand-built PSBT may carry global: nil; treat it as an empty map rather
+    # than raising. (struct/1 because Global is defined later in this file.)
+    case Global.add_field(psbt.global || struct(Global), field, value) do
       {:ok, global} -> {:ok, %PSBT{psbt | global: global}}
       {:error, reason} -> {:error, reason}
     end
@@ -156,10 +170,42 @@ defmodule Bitcoinex.PSBT do
   See `Bitcoinex.PSBT.In.add_field/3` for the accepted fields.
   """
   @spec add_input_field(t(), non_neg_integer(), atom(), any()) :: {:ok, t()} | {:error, atom()}
+  def add_input_field(%PSBT{} = psbt, index, :non_witness_utxo, %Transaction{} = utxo) do
+    # Mirror the decoder: a non_witness_utxo must be the transaction the input
+    # spends (same txid, prevout index in range), else the Updater would build
+    # a PSBT its own decoder rejects — and hand a Finalizer the wrong prevout.
+    with :ok <- validate_non_witness_utxo(psbt, index, utxo),
+         {:ok, inputs} <-
+           put_item_field(psbt.inputs, index, &In.add_field(&1, :non_witness_utxo, utxo)) do
+      {:ok, %PSBT{psbt | inputs: inputs}}
+    end
+  end
+
   def add_input_field(%PSBT{} = psbt, index, field, value) do
     case put_item_field(psbt.inputs, index, &In.add_field(&1, field, value)) do
       {:ok, inputs} -> {:ok, %PSBT{psbt | inputs: inputs}}
       {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp validate_non_witness_utxo(%PSBT{global: global}, index, %Transaction{} = utxo) do
+    case global && global.unsigned_tx do
+      nil ->
+        {:error, :missing_unsigned_tx}
+
+      %Transaction{inputs: tx_inputs} ->
+        case Enum.at(tx_inputs, index) do
+          nil ->
+            {:error, :index_out_of_range}
+
+          tx_input ->
+            if Transaction.transaction_id(utxo) == tx_input.prev_txid and
+                 tx_input.prev_vout < length(utxo.outputs) do
+              :ok
+            else
+              {:error, :non_witness_utxo_mismatch}
+            end
+        end
     end
   end
 
@@ -178,18 +224,28 @@ defmodule Bitcoinex.PSBT do
   @doc """
   Combines two PSBTs into one (the BIP-174 Combiner role).
 
-  Both PSBTs must describe the same global unsigned transaction (compared by
-  txid), otherwise `{:error, :mismatched_tx}` is returned. Each map is merged
-  field by field: singleton fields must agree where both are set, and repeatable
-  fields are unioned by key. A record present in both maps under the same key
-  but with a different value yields `{:error, :conflicting_field}`.
+  Both PSBTs must describe the same global unsigned transaction — compared by
+  full serialization, byte for byte — otherwise `{:error, :mismatched_tx}` is
+  returned; a PSBT lacking an unsigned transaction altogether yields
+  `{:error, :missing_unsigned_tx}`, and PSBTs whose input or output map counts
+  do not match yield `{:error, :map_count_mismatch}` rather than silently
+  dropping maps. Each map is merged field by field: singleton fields must agree
+  where both are set, and repeatable fields are unioned by key. A record
+  present in both maps under the same key but with a different value yields
+  `{:error, :conflicting_field}`.
 
-  Repeatable records are ordered canonically (by key), so `combine/2` is
-  commutative for non-conflicting inputs and idempotent on a canonical PSBT
-  (such as any PSBT that `combine/2` itself produced).
+  The union keeps the first PSBT's records in their existing order and appends
+  records new from the second (Bitcoin Core's merge semantics), so `combine/2`
+  is idempotent (`combine(a, a) == {:ok, a}`) and commutative up to record
+  order for non-conflicting inputs.
   """
   @spec combine(t(), t()) :: {:ok, t()} | {:error, atom()}
-  def combine(%PSBT{} = psbt_a, %PSBT{} = psbt_b) do
+  def combine(
+        %PSBT{global: %{unsigned_tx: %Transaction{}}} = psbt_a,
+        %PSBT{
+          global: %{unsigned_tx: %Transaction{}} = _global_b
+        } = psbt_b
+      ) do
     if same_unsigned_tx?(psbt_a.global.unsigned_tx, psbt_b.global.unsigned_tx) do
       with {:ok, global} <- Global.combine(psbt_a.global, psbt_b.global),
            {:ok, inputs} <- combine_pairs(psbt_a.inputs, psbt_b.inputs, &In.combine/2),
@@ -200,6 +256,10 @@ defmodule Bitcoinex.PSBT do
       {:error, :mismatched_tx}
     end
   end
+
+  # A hand-built PSBT may lack the mandatory unsigned tx (or the whole global
+  # map); there is nothing to compare, so refuse rather than raise.
+  def combine(%PSBT{}, %PSBT{}), do: {:error, :missing_unsigned_tx}
 
   # BIP-174 Combiner precondition: the two PSBTs must describe the same unsigned
   # transaction. Compare the full serialization byte-for-byte (not just the txid)
@@ -327,19 +387,38 @@ defmodule Bitcoinex.PSBT do
 
   @doc """
     to_file writes a PSBT to file as binary.
+
+    Returns `{:error, :missing_unsigned_tx}` for a PSBT without a global
+    unsigned transaction: it is mandatory in v0, so serializing without one
+    would emit a PSBT this module's own decoder rejects.
   """
-  @spec to_file(t(), String.t()) :: :ok | {:error, File.posix()}
+  @spec to_file(t(), String.t()) :: :ok | {:error, File.posix() | :missing_unsigned_tx}
   def to_file(packet, filename) do
-    bin = serialize(packet)
-    File.write(filename, bin)
+    case ensure_unsigned_tx(packet) do
+      :ok -> File.write(filename, serialize(packet))
+      error -> error
+    end
   end
 
-  @spec encode_b64(t()) :: String.t()
+  @doc """
+    Encodes a PSBT as base64.
+
+    Returns `{:error, :missing_unsigned_tx}` for a PSBT without a global
+    unsigned transaction (see `to_file/2`).
+  """
+  @spec encode_b64(t()) :: String.t() | {:error, :missing_unsigned_tx}
   def encode_b64(packet) do
-    packet
-    |> serialize()
-    |> Base.encode64()
+    case ensure_unsigned_tx(packet) do
+      :ok -> packet |> serialize() |> Base.encode64()
+      error -> error
+    end
   end
+
+  defp ensure_unsigned_tx(%PSBT{global: %{unsigned_tx: unsigned_tx}})
+       when unsigned_tx != nil,
+       do: :ok
+
+  defp ensure_unsigned_tx(_packet), do: {:error, :missing_unsigned_tx}
 
   @spec parse(binary()) :: {:ok, t()} | {:error, term()}
   defp parse(<<@magic::big-size(32), @separator::big-size(8), psbt::binary>>) do
@@ -427,6 +506,7 @@ defmodule Bitcoinex.PSBT.Utils do
   @doc """
   Reads a single compact-size-prefixed value off the front of a binary.
   """
+  @spec parse_compact_size_value(binary()) :: {binary(), binary()}
   def parse_compact_size_value(key_value) do
     {value_length, key_value} = TxUtils.get_counter(key_value)
     <<value::binary-size(value_length), remaining::binary>> = key_value
@@ -442,6 +522,8 @@ defmodule Bitcoinex.PSBT.Utils do
 
   Returns `{:ok, {accumulator, remaining_binary}}` on success.
   """
+  @spec parse_key_value(binary(), struct(), function()) ::
+          {:ok, {struct(), binary()}} | {:error, term()}
   def parse_key_value(psbt, accumulator, parse_func) do
     parse_key_value(psbt, accumulator, parse_func, MapSet.new())
   end
@@ -474,6 +556,7 @@ defmodule Bitcoinex.PSBT.Utils do
   Serializes a key-value record: compact-size key length, key, compact-size
   value length, value.
   """
+  @spec serialize_kv(binary(), binary()) :: binary()
   def serialize_kv(key, value) do
     key_length = TxUtils.serialize_compact_size_unsigned_int(byte_size(key))
     value_length = TxUtils.serialize_compact_size_unsigned_int(byte_size(value))
@@ -484,6 +567,7 @@ defmodule Bitcoinex.PSBT.Utils do
   Appends an item to a list-valued field, treating `nil` as the empty list.
   Preserves insertion order.
   """
+  @spec append(list() | nil, term()) :: list()
   def append(nil, item), do: [item]
   def append(items, item) when is_list(items), do: items ++ [item]
 
@@ -491,6 +575,7 @@ defmodule Bitcoinex.PSBT.Utils do
   Serializes a repeatable (list-valued) field, mapping each item through
   `serialize_func`. A `nil` field serializes to nothing.
   """
+  @spec serialize_repeatable(list() | nil, (term() -> binary())) :: binary()
   def serialize_repeatable(nil, _serialize_func), do: <<>>
 
   def serialize_repeatable(items, serialize_func) when is_list(items) do
@@ -502,6 +587,8 @@ defmodule Bitcoinex.PSBT.Utils do
   0xFC) are collected into the `:proprietary` field, all others into `:unknown`.
   Returns `{field_name, record}` where record is `%{key: key, value: value}`.
   """
+  @spec classify_unknown_record(binary(), binary()) ::
+          {:proprietary | :unknown, %{key: binary(), value: binary()}}
   def classify_unknown_record(<<0xFC, _rest::binary>> = key, value) do
     {:proprietary, %{key: key, value: value}}
   end
@@ -514,10 +601,26 @@ defmodule Bitcoinex.PSBT.Utils do
   Parses the 78-byte raw extended key from a PSBT `xpub` key into an ExtendedKey.
   The PSBT encoding omits the Base58 checksum that `ExtendedKey` expects, so it
   is appended before parsing.
+
+  BIP-174 defines the key-data as an extended *public* key; an extended private
+  key is rejected with `{:error, :private_key_not_allowed}` — PSBTs are meant
+  to be shared, and no private key may pass through this module.
   """
   @spec parse_xpub_keydata(binary()) :: {:ok, ExtendedKey.t()} | {:error, term()}
   def parse_xpub_keydata(<<raw_extended_key::binary-size(78)>>) do
-    ExtendedKey.parse_extended_key(Base58.append_checksum(raw_extended_key))
+    with {:ok, xkey} <- ExtendedKey.parse_extended_key(Base58.append_checksum(raw_extended_key)),
+         :ok <- ensure_public_xkey(xkey) do
+      {:ok, xkey}
+    end
+  end
+
+  @doc """
+  Returns `:ok` for an extended public key, `{:error, :private_key_not_allowed}`
+  for an extended private key.
+  """
+  @spec ensure_public_xkey(ExtendedKey.t()) :: :ok | {:error, :private_key_not_allowed}
+  def ensure_public_xkey(%ExtendedKey{} = xkey) do
+    if ExtendedKey.public_key?(xkey), do: :ok, else: {:error, :private_key_not_allowed}
   end
 
   @doc """
@@ -555,6 +658,7 @@ defmodule Bitcoinex.PSBT.Utils do
   takes whichever side is set, keeps the value if both agree, and returns
   `{:error, :conflicting_field}` if both are set and differ.
   """
+  @spec combine_singleton(term(), term()) :: {:ok, term()} | {:error, :conflicting_field}
   def combine_singleton(nil, value), do: {:ok, value}
   def combine_singleton(value, nil), do: {:ok, value}
   def combine_singleton(value, value), do: {:ok, value}
@@ -563,10 +667,17 @@ defmodule Bitcoinex.PSBT.Utils do
   @doc """
   Combines two repeatable (list-valued) fields into their union, identifying
   records by `key_fun`. Two records that share a key but differ in value are a
-  `{:error, :conflicting_field}`. The union is sorted by key so the result is
-  canonical and independent of argument order (the Combiner is commutative). An
-  empty union normalizes back to `nil`.
+  `{:error, :conflicting_field}`.
+
+  The union keeps the first list's records in their existing order and appends
+  only records new from the second list (Bitcoin Core's `Merge` semantics), so
+  `combine(a, a) == a` unconditionally and combining reproduces the official
+  BIP-174 Combiner vector byte-for-byte. Commutativity holds up to record
+  order — the same record *set* results either way — which is all BIP-174
+  asks of key-value maps. An empty union normalizes back to `nil`.
   """
+  @spec combine_repeatable(list() | nil, list() | nil, (term() -> term())) ::
+          {:ok, list() | nil} | {:error, :conflicting_field}
   def combine_repeatable(list_a, list_b, key_fun) do
     merged =
       Enum.reduce_while(to_list(list_b), {:ok, to_list(list_a)}, fn record, {:ok, accumulator} ->
@@ -583,13 +694,51 @@ defmodule Bitcoinex.PSBT.Utils do
 
     case merged do
       {:ok, []} -> {:ok, nil}
-      {:ok, records} -> {:ok, Enum.sort_by(records, key_fun)}
       other -> other
     end
   end
 
   defp to_list(nil), do: []
   defp to_list(list) when is_list(list), do: list
+
+  @doc """
+  Validates a caller-supplied `KeyOrigin`: the fingerprint must be exactly 4
+  bytes and every derivation index a concrete uint32 (`DerivationPath`
+  wildcards like `:any` cannot be serialized into a PSBT). Guards the Updater
+  against values that would corrupt or raise at encode time.
+  """
+  @spec validate_key_origin(KeyOrigin.t()) :: :ok | {:error, :invalid_key_origin}
+  def validate_key_origin(%KeyOrigin{
+        fingerprint: <<_::binary-size(4)>>,
+        derivation: %DerivationPath{child_nums: child_nums}
+      })
+      when is_list(child_nums) do
+    if Enum.all?(child_nums, fn i -> is_integer(i) and i >= 0 and i <= 0xFFFFFFFF end) do
+      :ok
+    else
+      {:error, :invalid_key_origin}
+    end
+  end
+
+  def validate_key_origin(_origin), do: {:error, :invalid_key_origin}
+
+  @doc """
+  Appends a record to a repeatable (list-valued, `nil`-as-empty) field unless a
+  record with the same key (per `key_fun`) is already present — a PSBT map may
+  not contain duplicate keys, so an Updater must not create one.
+  """
+  @spec append_unique(list() | nil, term(), (term() -> term())) ::
+          {:ok, list()} | {:error, :duplicate_key}
+  def append_unique(items, item, key_fun) do
+    items = items || []
+    key = key_fun.(item)
+
+    if Enum.any?(items, fn existing -> key_fun.(existing) == key end) do
+      {:error, :duplicate_key}
+    else
+      {:ok, items ++ [item]}
+    end
+  end
 end
 
 defmodule Bitcoinex.PSBT.Global do
@@ -603,7 +752,13 @@ defmodule Bitcoinex.PSBT.Global do
   alias Bitcoinex.Transaction.Utils, as: TxUtils
   alias Bitcoinex.PSBT.Utils, as: PsbtUtils
 
-  @type t() :: %__MODULE__{}
+  @type t() :: %__MODULE__{
+          unsigned_tx: Transaction.t() | nil,
+          xpub: list(%{xkey: ExtendedKey.t(), origin: KeyOrigin.t()}) | nil,
+          version: non_neg_integer() | nil,
+          proprietary: list(%{key: binary(), value: binary()}) | nil,
+          unknown: list(%{key: binary(), value: binary()}) | nil
+        }
 
   defstruct [
     :unsigned_tx,
@@ -629,17 +784,32 @@ defmodule Bitcoinex.PSBT.Global do
   Adds a field to a Global map. Accepted fields:
 
     * `:unsigned_tx` — a `Transaction.t()`
-    * `:xpub` — `%{xkey: ExtendedKey.t(), origin: KeyOrigin.t()}` (repeatable)
-    * `:version` — a non-negative integer
+    * `:xpub` — `%{xkey: ExtendedKey.t(), origin: KeyOrigin.t()}` (repeatable); the
+      key must be an extended *public* key (`{:error, :private_key_not_allowed}`)
+    * `:version` — `0` (only PSBT v0 is supported; any other integer is
+      `{:error, :unsupported_version}`)
     * `:proprietary` / `:unknown` — `%{key: binary(), value: binary()}` (repeatable)
+
+  Repeatable fields reject a record whose key is already present
+  (`{:error, :duplicate_key}`): a PSBT map may not contain duplicate keys, so
+  the Updater must not create one its own decoder would reject.
   """
   @spec add_field(t(), atom(), any()) :: {:ok, t()} | {:error, atom()}
   def add_field(%Global{} = global, :unsigned_tx, %Transaction{} = tx) do
     {:ok, %Global{global | unsigned_tx: tx}}
   end
 
-  def add_field(%Global{} = global, :xpub, %{xkey: %ExtendedKey{}, origin: %KeyOrigin{}} = xpub) do
-    {:ok, %Global{global | xpub: PsbtUtils.append(global.xpub, xpub)}}
+  def add_field(
+        %Global{} = global,
+        :xpub,
+        %{xkey: %ExtendedKey{} = xkey, origin: %KeyOrigin{} = origin} = xpub
+      ) do
+    with :ok <- PsbtUtils.ensure_public_xkey(xkey),
+         :ok <- PsbtUtils.validate_key_origin(origin),
+         {:ok, xpubs} <-
+           PsbtUtils.append_unique(global.xpub, xpub, & &1.xkey) do
+      {:ok, %Global{global | xpub: xpubs}}
+    end
   end
 
   # Only PSBT v0 is supported, so 0 is the only version we will emit.
@@ -652,11 +822,15 @@ defmodule Bitcoinex.PSBT.Global do
   end
 
   def add_field(%Global{} = global, :proprietary, %{key: _, value: _} = record) do
-    {:ok, %Global{global | proprietary: PsbtUtils.append(global.proprietary, record)}}
+    with {:ok, records} <- PsbtUtils.append_unique(global.proprietary, record, & &1.key) do
+      {:ok, %Global{global | proprietary: records}}
+    end
   end
 
   def add_field(%Global{} = global, :unknown, %{key: _, value: _} = record) do
-    {:ok, %Global{global | unknown: PsbtUtils.append(global.unknown, record)}}
+    with {:ok, records} <- PsbtUtils.append_unique(global.unknown, record, & &1.key) do
+      {:ok, %Global{global | unknown: records}}
+    end
   end
 
   def add_field(%Global{}, _field, _value), do: {:error, :invalid_field}
@@ -699,7 +873,8 @@ defmodule Bitcoinex.PSBT.Global do
 
   # BIP-174: the global unsigned tx must be serialized in the legacy
   # (non-witness) format. Re-serializing without witnesses must reproduce the
-  # exact bytes; otherwise the input carried a segwit marker/flag/witness.
+  # exact bytes; a mismatch means the value carried a segwit marker/flag/witness
+  # or any other non-canonical encoding (e.g. a non-minimal compact size).
   defp legacy_serialized?(txn, txn_bytes) do
     TxUtils.serialize(%{txn | witnesses: []}) == txn_bytes
   end
@@ -718,7 +893,7 @@ defmodule Bitcoinex.PSBT.Global do
       {:ok, txn} ->
         cond do
           not legacy_serialized?(txn, txn_bytes) ->
-            {:error, :unsigned_tx_has_witness_serialization}
+            {:error, :unsigned_tx_not_canonically_serialized}
 
           not all_script_sigs_empty?(txn) ->
             {:error, :unsigned_tx_has_script_sig}
@@ -740,22 +915,28 @@ defmodule Bitcoinex.PSBT.Global do
         xpub = %{xkey: xkey, origin: PsbtUtils.parse_key_origin(value)}
         {%Global{global | xpub: PsbtUtils.append(global.xpub, xpub)}, psbt}
 
+      {:error, :private_key_not_allowed} ->
+        {:error, :private_key_not_allowed}
+
       {:error, _reason} ->
         {:error, :invalid_xpub}
     end
   end
 
+  # BIP-174: the version is a 32-bit little-endian unsigned int. Only v0 is
+  # supported: a PSBT that advertises any other version follows a spec
+  # (BIP-370 v2, etc.) whose fields we do not implement, so we must not parse
+  # it as if it were v0.
   defp parse(<<@psbt_global_version::big-size(8)>>, psbt, global) do
-    {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    <<version::little-unsigned-32>> = value
+    case PsbtUtils.parse_compact_size_value(psbt) do
+      {<<0::little-unsigned-32>>, psbt} ->
+        {%Global{global | version: 0}, psbt}
 
-    # Only BIP-174 PSBT v0 is supported. A PSBT that advertises any other version
-    # follows a spec (BIP-370 v2, etc.) whose fields we do not implement, so we
-    # must not parse it as if it were v0.
-    if version == 0 do
-      {%Global{global | version: version}, psbt}
-    else
-      {:error, :unsupported_version}
+      {<<_version::little-unsigned-32>>, _psbt} ->
+        {:error, :unsupported_version}
+
+      _ ->
+        {:error, :invalid_version}
     end
   end
 
@@ -822,7 +1003,29 @@ defmodule Bitcoinex.PSBT.In do
   alias Bitcoinex.Transaction.Utils, as: TxUtils
   alias Bitcoinex.Secp256k1.{Point, Signature}
 
-  @type t() :: %__MODULE__{}
+  @type key_value_record() :: %{key: binary(), value: binary()}
+  @type hash_preimage_record() :: %{hash: binary(), preimage: binary()}
+
+  @type t() :: %__MODULE__{
+          non_witness_utxo: Transaction.t() | nil,
+          witness_utxo: Out.t() | nil,
+          partial_sig:
+            list(%{public_key: Point.t(), signature: binary(), sighash_flag: non_neg_integer()})
+            | nil,
+          sighash_type: non_neg_integer() | nil,
+          redeem_script: Script.t() | nil,
+          witness_script: Script.t() | nil,
+          bip32_derivation: list(%{public_key: Point.t(), origin: KeyOrigin.t()}) | nil,
+          final_scriptsig: Script.t() | nil,
+          final_scriptwitness: Witness.t() | nil,
+          por_commitment: binary() | nil,
+          ripemd160: list(hash_preimage_record()) | nil,
+          sha256: list(hash_preimage_record()) | nil,
+          hash160: list(hash_preimage_record()) | nil,
+          hash256: list(hash_preimage_record()) | nil,
+          proprietary: list(key_value_record()) | nil,
+          unknown: list(key_value_record()) | nil
+        }
 
   defstruct [
     :non_witness_utxo,
@@ -885,7 +1088,12 @@ defmodule Bitcoinex.PSBT.In do
     {:ok, %In{input | non_witness_utxo: tx}}
   end
 
-  def add_field(%In{} = input, :witness_utxo, %Out{script_pub_key: script_pub_key} = utxo) do
+  def add_field(
+        %In{} = input,
+        :witness_utxo,
+        %Out{script_pub_key: script_pub_key, value: value} = utxo
+      )
+      when is_integer(value) and value >= 0 do
     case normalize_hex(script_pub_key) do
       {:ok, hex} -> {:ok, %In{input | witness_utxo: %Out{utxo | script_pub_key: hex}}}
       :error -> {:error, :invalid_field}
@@ -905,12 +1113,13 @@ defmodule Bitcoinex.PSBT.In do
     # Signatures are kept as their raw DER bytes so they round-trip verbatim, but
     # still validate that those bytes are well-formed DER so a garbage partial_sig
     # is rejected rather than stored.
-    case Signature.der_parse_signature(signature) do
-      {:ok, _signature} ->
-        {:ok, %In{input | partial_sig: PsbtUtils.append(input.partial_sig, record)}}
-
-      {:error, _reason} ->
-        {:error, :invalid_partial_sig}
+    with {:ok, _signature} <- Signature.der_parse_signature(signature),
+         {:ok, partial_sigs} <-
+           PsbtUtils.append_unique(input.partial_sig, record, &Point.sec(&1.public_key)) do
+      {:ok, %In{input | partial_sig: partial_sigs}}
+    else
+      {:error, :duplicate_key} -> {:error, :duplicate_key}
+      {:error, _reason} -> {:error, :invalid_partial_sig}
     end
   end
 
@@ -934,9 +1143,13 @@ defmodule Bitcoinex.PSBT.In do
   def add_field(
         %In{} = input,
         :bip32_derivation,
-        %{public_key: %Point{}, origin: %KeyOrigin{}} = record
+        %{public_key: %Point{}, origin: %KeyOrigin{} = origin} = record
       ) do
-    {:ok, %In{input | bip32_derivation: PsbtUtils.append(input.bip32_derivation, record)}}
+    with :ok <- PsbtUtils.validate_key_origin(origin),
+         {:ok, records} <-
+           PsbtUtils.append_unique(input.bip32_derivation, record, &Point.sec(&1.public_key)) do
+      {:ok, %In{input | bip32_derivation: records}}
+    end
   end
 
   def add_field(%In{} = input, :final_scriptwitness, %Witness{txinwitness: items} = witness)
@@ -972,11 +1185,15 @@ defmodule Bitcoinex.PSBT.In do
   end
 
   def add_field(%In{} = input, :proprietary, %{key: _, value: _} = record) do
-    {:ok, %In{input | proprietary: PsbtUtils.append(input.proprietary, record)}}
+    with {:ok, records} <- PsbtUtils.append_unique(input.proprietary, record, & &1.key) do
+      {:ok, %In{input | proprietary: records}}
+    end
   end
 
   def add_field(%In{} = input, :unknown, %{key: _, value: _} = record) do
-    {:ok, %In{input | unknown: PsbtUtils.append(input.unknown, record)}}
+    with {:ok, records} <- PsbtUtils.append_unique(input.unknown, record, & &1.key) do
+      {:ok, %In{input | unknown: records}}
+    end
   end
 
   def add_field(%In{}, _field, _value), do: {:error, :invalid_field}
@@ -988,7 +1205,10 @@ defmodule Bitcoinex.PSBT.In do
        when is_binary(hash) and is_binary(preimage) do
     if hash_fun.(preimage) == hash do
       record = %{hash: hash, preimage: preimage}
-      {:ok, Map.put(input, field, PsbtUtils.append(Map.get(input, field), record))}
+
+      with {:ok, records} <- PsbtUtils.append_unique(Map.get(input, field), record, & &1.hash) do
+        {:ok, Map.put(input, field, records)}
+      end
     else
       {:error, :invalid_hash_preimage}
     end
@@ -1332,6 +1552,8 @@ defmodule Bitcoinex.PSBT.In do
   end
 
   # Normalizes a Script, hex string, or raw binary into a Script and applies it.
+  # NOTE: hex is tried first, so a raw binary whose bytes are all ASCII hex
+  # digits is read as hex. Pass a %Script{} (or hex) to avoid the ambiguity.
   defp with_script(%Script{} = script, put_fun), do: {:ok, put_fun.(script)}
 
   defp with_script(script, put_fun) when is_binary(script) do
@@ -1404,6 +1626,8 @@ defmodule Bitcoinex.PSBT.In do
     {%In{input | witness_utxo: out}, psbt}
   end
 
+  # partial_sig is repeatable: one record per signing pubkey (BIP-174 keys them
+  # by pubkey), so a multisig input legitimately carries several.
   defp parse(
          <<@psbt_in_partial_sig::big-size(8), public_key_bytes::binary-size(33)>>,
          psbt,
@@ -1419,14 +1643,23 @@ defmodule Bitcoinex.PSBT.In do
     end
   end
 
-  defp parse(<<@psbt_in_sighash_type::big-size(8)>>, psbt, input) do
-    {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    <<sighash_type::little-unsigned-32>> = value
+  # 65-byte (uncompressed) pubkeys are valid in BIP-174 but unsupported here:
+  # `Secp256k1.Point` carries no compression flag, so an uncompressed key could
+  # not be re-serialized faithfully. Reject with a distinct reason rather than
+  # conflating it with a malformed key.
+  defp parse(<<@psbt_in_partial_sig::big-size(8), _public_key::binary-size(65)>>, _psbt, _input) do
+    {:error, :uncompressed_public_key}
+  end
 
-    if sighash_type in @valid_sighash_flags do
-      {%In{input | sighash_type: sighash_type}, psbt}
-    else
-      {:error, :invalid_sighash_type}
+  # BIP-174: the sighash type is a 32-bit little-endian unsigned int, stored
+  # here as an integer and validated against the known ECDSA sighash flags.
+  defp parse(<<@psbt_in_sighash_type::big-size(8)>>, psbt, input) do
+    case PsbtUtils.parse_compact_size_value(psbt) do
+      {<<sighash_type::little-unsigned-32>>, psbt} when sighash_type in @valid_sighash_flags ->
+        {%In{input | sighash_type: sighash_type}, psbt}
+
+      _ ->
+        {:error, :invalid_sighash_type}
     end
   end
 
@@ -1457,6 +1690,14 @@ defmodule Bitcoinex.PSBT.In do
       {:error, _reason} ->
         {:error, :invalid_bip32_derivation}
     end
+  end
+
+  defp parse(
+         <<@psbt_in_bip32_derivation::big-size(8), _public_key::binary-size(65)>>,
+         _psbt,
+         _input
+       ) do
+    {:error, :uncompressed_public_key}
   end
 
   defp parse(<<@psbt_in_final_scriptsig::big-size(8)>>, psbt, input) do
@@ -1679,7 +1920,13 @@ defmodule Bitcoinex.PSBT.Out do
   alias Bitcoinex.PSBT.Utils, as: PsbtUtils
   alias Bitcoinex.Secp256k1.Point
 
-  @type t() :: %__MODULE__{}
+  @type t() :: %__MODULE__{
+          redeem_script: Script.t() | nil,
+          witness_script: Script.t() | nil,
+          bip32_derivation: list(%{public_key: Point.t(), origin: KeyOrigin.t()}) | nil,
+          proprietary: list(%{key: binary(), value: binary()}) | nil,
+          unknown: list(%{key: binary(), value: binary()}) | nil
+        }
 
   defstruct [
     :redeem_script,
@@ -1718,17 +1965,25 @@ defmodule Bitcoinex.PSBT.Out do
   def add_field(
         %Out{} = output,
         :bip32_derivation,
-        %{public_key: %Point{}, origin: %KeyOrigin{}} = record
+        %{public_key: %Point{}, origin: %KeyOrigin{} = origin} = record
       ) do
-    {:ok, %Out{output | bip32_derivation: PsbtUtils.append(output.bip32_derivation, record)}}
+    with :ok <- PsbtUtils.validate_key_origin(origin),
+         {:ok, records} <-
+           PsbtUtils.append_unique(output.bip32_derivation, record, &Point.sec(&1.public_key)) do
+      {:ok, %Out{output | bip32_derivation: records}}
+    end
   end
 
   def add_field(%Out{} = output, :proprietary, %{key: _, value: _} = record) do
-    {:ok, %Out{output | proprietary: PsbtUtils.append(output.proprietary, record)}}
+    with {:ok, records} <- PsbtUtils.append_unique(output.proprietary, record, & &1.key) do
+      {:ok, %Out{output | proprietary: records}}
+    end
   end
 
   def add_field(%Out{} = output, :unknown, %{key: _, value: _} = record) do
-    {:ok, %Out{output | unknown: PsbtUtils.append(output.unknown, record)}}
+    with {:ok, records} <- PsbtUtils.append_unique(output.unknown, record, & &1.key) do
+      {:ok, %Out{output | unknown: records}}
+    end
   end
 
   def add_field(%Out{}, _field, _value), do: {:error, :invalid_field}
@@ -1822,6 +2077,14 @@ defmodule Bitcoinex.PSBT.Out do
       {:error, _reason} ->
         {:error, :invalid_bip32_derivation}
     end
+  end
+
+  defp parse(
+         <<@psbt_out_bip32_derivation::big-size(8), _public_key::binary-size(65)>>,
+         _psbt,
+         _output
+       ) do
+    {:error, :uncompressed_public_key}
   end
 
   # A key whose leading byte is a known output type but which did not match the

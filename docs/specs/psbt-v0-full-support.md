@@ -25,7 +25,7 @@ Two prior stacked PRs (#44 "Refactor PSBT module & add new PSBT fields", #70 "Ad
 - Finalizer: `PSBT.finalize/1` (+ per-input) for legacy + segwit-v0 script types: p2pkh, p2sh, p2wpkh, p2wsh, and (nested) p2sh-p2wpkh / p2sh-p2wsh, including bare/p2sh/p2wsh multisig.
 - Extractor: `PSBT.extract_tx/1`.
 - `PSBT.txid/1` — the txid of the global unsigned tx.
-- Migrate all in-struct representations to `Bitcoinex` structs — pubkeys → `Secp256k1.Point.t()`, signatures → `Secp256k1.Signature.t()`, scripts → `Bitcoinex.Script.t()`, extended keys → `ExtendedKey.t()`, derivation paths → `ExtendedKey.DerivationPath.t()` — never encoded strings/byte-arrays (see §3.5).
+- Migrate all in-struct representations to `Bitcoinex` structs — pubkeys → `Secp256k1.Point.t()`, signatures → raw DER `binary()` validated via `Secp256k1.Signature.der_parse_signature/1` (see the signature note in §3.5 for why not `Signature.t()`), scripts → `Bitcoinex.Script.t()`, extended keys → `ExtendedKey.t()`, derivation paths → `ExtendedKey.DerivationPath.t()` — never encoded hex/Base58 strings (see §3.5).
 
 **Out of scope** (and who owns it)
 - **Signing** — callers produce signatures (via `Bitcoinex.Ecdsa`/their HSM) and place them with `add_input_field(.., :partial_sig, ..)`. The Finalizer never signs.
@@ -76,7 +76,7 @@ Today parsed values are stored inconsistently — pubkeys/scripts/sigs as lowerc
 | Field | Old rep | New rep |
 |---|---|---|
 | `partial_sig.public_key` | hex string | `Secp256k1.Point.t()` |
-| `partial_sig.signature` | hex string | `Secp256k1.Signature.t()` (via `Secp256k1.Signature.der_parse_signature/1`; sighash byte stored alongside — see note) |
+| `partial_sig.signature` | hex string | raw DER `binary()` (validated via `Secp256k1.Signature.der_parse_signature/1`; `sighash_flag` stored alongside — see note) |
 | `redeem_script`, `witness_script`, `final_scriptsig` | hex string | `Bitcoinex.Script.t()` |
 | `witness_utxo` | `Transaction.Out` | `Transaction.Out` (unchanged) |
 | `final_scriptwitness` | `Transaction.Witness` | `Transaction.Witness` (unchanged) |
@@ -86,7 +86,7 @@ Today parsed values are stored inconsistently — pubkeys/scripts/sigs as lowerc
 
 `Script` already exposes `get_script_type/1`, `is_p2wpkh?/1`, `extract_multi_policy/1`, `parse_script/1`, `to_hex/1`; `Point` exposes `parse_public_key/1`, `sec/1`, `x_bytes/1`.
 
-**Signature note (required):** signatures in PSBTs are represented as `Secp256k1.Signature.t()` structs — never hex/DER strings. A PSBT `partial_sig` value is DER-encoded ECDSA **plus a trailing 1-byte sighash flag**, so store `%{public_key: Point.t(), signature: Signature.t(), sighash: 0..0xFF}`; parse via `Signature.der_parse_signature/1` on the leading bytes, serialize via `Signature.serialize_signature/1 <> <<sighash>>`. BIP-174 mandates canonical low-S DER, so this re-serialization is byte-identical for well-formed sigs; the round-trip vector tests (§8) assert it. (`final_scriptsig`/`final_scriptwitness` remain `Script`/`Witness` and carry their raw pushed sig bytes as-is — only the interpreted `partial_sig` uses `Signature`.)
+**Signature note (required, amended in review):** a PSBT `partial_sig` value is DER-encoded ECDSA **plus a trailing 1-byte sighash flag**, stored as `%{public_key: Point.t(), signature: binary(), sighash_flag: 0x01|0x02|0x03 (| 0x80)}`. The `signature` is kept as its **raw DER bytes**, *not* a `Secp256k1.Signature.t()`: re-serializing a parsed `Signature` yields canonical DER, which is not guaranteed to reproduce a non-canonically-encoded input, so raw bytes are what make `partial_sig` round-trip losslessly (the original `Signature.t()` design was revised for exactly this reason). The bytes are still validated as parseable DER via `Signature.der_parse_signature/1` so garbage is rejected. (`final_scriptsig`/`final_scriptwitness` remain `Script`/`Witness` and carry their raw pushed sig bytes as-is.)
 
 **Ergonomic `add_field`:** clauses accept *either* a struct or its raw binary/hex (PR #70 pattern: `add_field(input, :redeem_script, <<..>>)` and `add_field(input, :redeem_script, %Script{})` both work), normalizing to the struct rep internally.
 
@@ -105,13 +105,14 @@ Introduce a small shared struct `Bitcoinex.PSBT.KeyOrigin` — `defstruct [:fing
 
 `combine(psbt_a, psbt_b)` per BIP-174 Combiner rules:
 
-1. **Precondition:** both `global.unsigned_tx` must be equal (same txid *and* identical serialization). Else `{:error, :mismatched_tx}`.
-2. Result has the same length input/output lists; combine positionally.
+1. **Precondition:** both `global.unsigned_tx` must be equal (identical serialization, byte for byte). Else `{:error, :mismatched_tx}`; a PSBT with no unsigned tx at all → `{:error, :missing_unsigned_tx}`.
+2. Result has the same length input/output lists; combine positionally. Mismatched map counts (hand-built PSBTs) → `{:error, :map_count_mismatch}`.
 3. For each map (global, each input, each output): **union** of fields.
-   - Singleton fields (`sighash_type`, `redeem_script`, `witness_script`, `witness_utxo`, `non_witness_utxo`, `final_scriptsig`, `final_scriptwitness`, `version`, `por_commitment`): if only one side has it, take it; if both have it and they are equal, keep it; if both have it and they differ → `{:error, :conflicting_field}`.
-   - Repeatable fields (`partial_sig`, `bip32_derivation`, `xpub`, hash preimages, `proprietary`, `unknown`): union keyed by the full key (pubkey / hash / raw key). On a key collision with differing values → `{:error, :conflicting_field}`.
+   - Singleton fields (`sighash_type`, `redeem_script`, `witness_script`, `witness_utxo`, `non_witness_utxo`, `final_scriptsig`, `final_scriptwitness`, `por_commitment`): if only one side has it, take it; if both have it and they are equal, keep it; if both have it and they differ → `{:error, :conflicting_field}`. (Erroring on conflicts is explicitly sanctioned by BIP-174: a Combiner "may refuse to combine PSBTs with conflicting content".)
+   - `version` (amended in review): BIP-174 directs combiners to keep the **highest** version when the two sides differ, so it merges via `max/2` rather than conflict-erroring. Unreachable through the public API today (only v0 is accepted anywhere), but correct if that changes.
+   - Repeatable fields (`partial_sig`, `bip32_derivation`, `xpub`, hash preimages, `proprietary`, `unknown`): union keyed by the full key (pubkey / hash / raw key), keeping the first PSBT's records in order and appending records new from the second (Bitcoin Core's `Merge` semantics). On a key collision with differing values → `{:error, :conflicting_field}`.
 
-**Invariant:** `combine` is commutative and idempotent for non-conflicting inputs — `combine(a,b) == combine(b,a)` and `combine(a,a) == a`.
+**Invariant (amended in review):** `combine` is idempotent — `combine(a,a) == a` for any decodable `a` — reproduces the official BIP-174 Combiner vector byte-for-byte, and is commutative **up to record order** for non-conflicting inputs (the same record set results either way; the first argument's records lead). A canonical-sort design was tried first and rejected: it broke the vector byte-match and unconditional idempotence.
 
 ### 3.8 Finalizer — `finalize/1`
 
@@ -166,7 +167,7 @@ Every scalar in a PSBT is either a **little-endian integer** or a **raw byte str
 | `sighash_type` (in 0x03) | **32-bit little-endian** uint | store `integer`; parse/serialize `<<n::little-size(32)>>`; validate against `@valid_sighash_flags` |
 | `version` (global 0xFB) | **32-bit little-endian** uint | store `integer`; parse/serialize `<<n::little-size(32)>>` |
 | `witness_utxo` amount | **64-bit little-endian** | `Transaction.Out` (`little-64`) |
-| `partial_sig` value | DER sig + 1 trailing **sighash byte** | `Signature.t()` + `sighash :: 0..0xFF` (§3.5); the trailing byte has no endianness |
+| `partial_sig` value | DER sig + 1 trailing **sighash byte** | raw DER `binary()` + `sighash_flag` integer (§3.5); the trailing byte has no endianness |
 | pubkeys (SEC), scripts, hash preimages (0x0a–0x0d) keys/vals, `por_commitment`, `redeem`/`witness_script`, `final_script*` | raw byte strings | stored as `Point`/`Script`/`binary` verbatim — no reordering |
 
 **Two traps called out explicitly:**
@@ -212,7 +213,7 @@ All in `lib/psbt.ex` and `lib/transaction.ex` (plus the small new `KeyOrigin` mo
 - `serialize_global/1` — full ordered emit (§3.3).
 
 ### 4.5 `Bitcoinex.PSBT.In`
-- `defstruct` add `:ripemd160, :sha256, :hash160, :hash256, :unknown`; normalize `:proprietary` to list. Fields become typed (§3.5): `partial_sig` → `%{public_key: Point.t(), signature: Signature.t(), sighash: 0..0xFF}`, `redeem_script`/`witness_script`/`final_scriptsig` → `Script.t()`, `bip32_derivation` item → `%{public_key: Point.t(), origin: KeyOrigin.t()}`.
+- `defstruct` add `:ripemd160, :sha256, :hash160, :hash256, :unknown`; normalize `:proprietary` to list. Fields become typed (§3.5): `partial_sig` → `%{public_key: Point.t(), signature: binary() (raw DER), sighash_flag: 0x01|0x02|0x03 (| 0x80)}` (list; repeatable), `redeem_script`/`witness_script`/`final_scriptsig` → `Script.t()`, `bip32_derivation` item → `%{public_key: Point.t(), origin: KeyOrigin.t()}`.
 - `@valid_sighash_flags` constant (0x01,0x02,0x03,0x81,0x82,0x83); `sighash_type` stored as `integer`, wire encoding `<<n::little-size(32)>>` (§3.12), not the current raw-binary pass-through.
 - `add_field/3` clauses for every field (atom-dispatch), each with a guard validating type/shape (mirror PR #70 psbt.ex:602–759 but v0-only).
 - `parse/3` — add clauses 0x09 `por_commitment`, 0x0a `ripemd160`, 0x0b `sha256`, 0x0c `hash160`, 0x0d `hash256` (each `%{hash: binary, preimage: binary}`), 0xFC `proprietary` (append to list), `:unknown` catch-all. Remove any v2/taproot clauses.
