@@ -6,6 +6,13 @@ defmodule Bitcoinex.PSBT do
   Each map consists of a sequence of key-value records, terminated by a 0x00 byte.
 
   Reference: https://github.com/bitcoin/bips/blob/master/bip-0174.mediawiki
+
+  Only PSBT version 0 (BIP-174) is supported; version 2 (BIP-370) and the
+  BIP-371 taproot fields are not. Public keys in `partial_sig` and
+  `bip32_derivation` records must be 33-byte compressed SEC keys: decoded keys
+  are stored as `Secp256k1.Point` structs, which re-serialize compressed, so
+  legacy uncompressed (65-byte) keys are rejected rather than silently
+  re-encoded to a different key.
   """
   alias Bitcoinex.PSBT
   alias Bitcoinex.PSBT.Global
@@ -55,12 +62,14 @@ defmodule Bitcoinex.PSBT do
   end
 
   # Parsing operates on untrusted input; a malformed binary (e.g. a value whose
-  # declared length exceeds the remaining bytes) raises during binary matching.
-  # Convert any such raise into a clean error rather than crashing the caller.
+  # declared length exceeds the remaining bytes) raises a MatchError/ArgumentError
+  # during binary matching. Convert those into a clean error rather than crashing
+  # the caller, while letting unexpected exceptions (real bugs) propagate.
   defp safe_parse(psbt_binary) do
     parse(psbt_binary)
   rescue
-    _ -> {:error, :invalid_psbt}
+    _error in [MatchError, ArgumentError, FunctionClauseError] ->
+      {:error, :invalid_psbt}
   end
 
   @doc """
@@ -214,7 +223,8 @@ defmodule Bitcoinex.PSBT do
          {:ok, input_count} <- input_count(global),
          {:ok, {inputs, psbt}} <- In.parse_inputs(psbt, input_count),
          output_count = length(global.unsigned_tx.outputs),
-         {:ok, {outputs, _psbt}} <- Out.parse_outputs(psbt, output_count) do
+         {:ok, {outputs, remaining}} <- Out.parse_outputs(psbt, output_count),
+         :ok <- ensure_fully_consumed(remaining) do
       {:ok,
        %PSBT{
          global: global,
@@ -225,6 +235,11 @@ defmodule Bitcoinex.PSBT do
   end
 
   defp parse(_), do: {:error, :invalid_magic}
+
+  # BIP-174: a PSBT must be fully consumed; any bytes after the last output map
+  # make it invalid.
+  defp ensure_fully_consumed(<<>>), do: :ok
+  defp ensure_fully_consumed(_remaining), do: {:error, :trailing_bytes}
 
   # PSBT v0 requires a global unsigned transaction; its input count fixes the
   # number of input maps that follow.
@@ -371,7 +386,8 @@ defmodule Bitcoinex.PSBT.Utils do
   reinterpreted) followed by little-endian uint32 derivation indexes.
   """
   @spec parse_key_origin(binary()) :: KeyOrigin.t()
-  def parse_key_origin(<<fingerprint::binary-size(4), path::binary>>) do
+  def parse_key_origin(<<fingerprint::binary-size(4), path::binary>>)
+      when rem(byte_size(path), 4) == 0 do
     child_nums = for <<index::little-unsigned-32 <- path>>, do: index
     %KeyOrigin{fingerprint: fingerprint, derivation: %DerivationPath{child_nums: child_nums}}
   end
@@ -433,6 +449,8 @@ defmodule Bitcoinex.PSBT.Global do
   Global properties of a partially signed bitcoin transaction.
   """
   alias Bitcoinex.PSBT.Global
+  alias Bitcoinex.PSBT.KeyOrigin
+  alias Bitcoinex.ExtendedKey
   alias Bitcoinex.Transaction
   alias Bitcoinex.Transaction.Utils, as: TxUtils
   alias Bitcoinex.PSBT.Utils, as: PsbtUtils
@@ -472,7 +490,7 @@ defmodule Bitcoinex.PSBT.Global do
     {:ok, %Global{global | unsigned_tx: tx}}
   end
 
-  def add_field(%Global{} = global, :xpub, %{xkey: _, origin: _} = xpub) do
+  def add_field(%Global{} = global, :xpub, %{xkey: %ExtendedKey{}, origin: %KeyOrigin{}} = xpub) do
     {:ok, %Global{global | xpub: PsbtUtils.append(global.xpub, xpub)}}
   end
 
@@ -924,13 +942,15 @@ defmodule Bitcoinex.PSBT.In do
   end
 
   defp parse(<<@psbt_in_redeem_script::big-size(8)>>, psbt, input) do
-    {script, psbt} = parse_script(psbt)
-    {%In{input | redeem_script: script}, psbt}
+    with {:ok, {script, psbt}} <- parse_script(psbt) do
+      {%In{input | redeem_script: script}, psbt}
+    end
   end
 
   defp parse(<<@psbt_in_witness_script::big-size(8)>>, psbt, input) do
-    {script, psbt} = parse_script(psbt)
-    {%In{input | witness_script: script}, psbt}
+    with {:ok, {script, psbt}} <- parse_script(psbt) do
+      {%In{input | witness_script: script}, psbt}
+    end
   end
 
   defp parse(
@@ -951,8 +971,9 @@ defmodule Bitcoinex.PSBT.In do
   end
 
   defp parse(<<@psbt_in_final_scriptsig::big-size(8)>>, psbt, input) do
-    {script, psbt} = parse_script(psbt)
-    {%In{input | final_scriptsig: script}, psbt}
+    with {:ok, {script, psbt}} <- parse_script(psbt) do
+      {%In{input | final_scriptsig: script}, psbt}
+    end
   end
 
   defp parse(<<@psbt_in_final_scriptwitness::big-size(8)>>, psbt, input) do
@@ -1019,8 +1040,11 @@ defmodule Bitcoinex.PSBT.In do
   # Parses a length-prefixed script value into a Script struct.
   defp parse_script(psbt) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    {:ok, script} = Script.parse_script(Base.encode16(value, case: :lower))
-    {script, psbt}
+
+    case Script.parse_script(Base.encode16(value, case: :lower)) do
+      {:ok, script} -> {:ok, {script, psbt}}
+      {:error, _reason} -> {:error, :invalid_script}
+    end
   end
 
   @spec serialize_inputs(list(t())) :: binary()
@@ -1259,13 +1283,15 @@ defmodule Bitcoinex.PSBT.Out do
   end
 
   defp parse(<<@psbt_out_redeem_script::big-size(8)>>, psbt, output) do
-    {script, psbt} = parse_script(psbt)
-    {%Out{output | redeem_script: script}, psbt}
+    with {:ok, {script, psbt}} <- parse_script(psbt) do
+      {%Out{output | redeem_script: script}, psbt}
+    end
   end
 
   defp parse(<<@psbt_out_witness_script::big-size(8)>>, psbt, output) do
-    {script, psbt} = parse_script(psbt)
-    {%Out{output | witness_script: script}, psbt}
+    with {:ok, {script, psbt}} <- parse_script(psbt) do
+      {%Out{output | witness_script: script}, psbt}
+    end
   end
 
   defp parse(
@@ -1301,8 +1327,11 @@ defmodule Bitcoinex.PSBT.Out do
   # Parses a length-prefixed script value into a Script struct.
   defp parse_script(psbt) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    {:ok, script} = Script.parse_script(Base.encode16(value, case: :lower))
-    {script, psbt}
+
+    case Script.parse_script(Base.encode16(value, case: :lower)) do
+      {:ok, script} -> {:ok, {script, psbt}}
+      {:error, _reason} -> {:error, :invalid_script}
+    end
   end
 
   @spec serialize_outputs(list(t())) :: binary()
