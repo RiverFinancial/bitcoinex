@@ -76,7 +76,7 @@ defmodule Bitcoinex.PSBTTest do
   # Synthetic vector exercising the v0 fields absent from the official vectors:
   # global version/proprietary/unknown, input por_commitment, the four hash
   # preimage fields, and input/output proprietary/unknown records.
-  @new_fields_vector "cHNidP8BADwCAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/////AegDAAAAAAAAAAAAAAAB+wQCAAAABfxwcm9wCmdsb2JhbHByb3AEd3Vuaw1nbG9iYWx1bmtub3duAAEJFnBvci1jb21taXRtZW50LW1lc3NhZ2UVCs3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3ND3JpcGVtZC1wcmVpbWFnZSELq6urq6urq6urq6urq6urq6urq6urq6urq6urq6urq6sPc2hhMjU2LXByZWltYWdlFQzNzc3Nzc3Nzc3Nzc3Nzc3Nzc3NzRBoYXNoMTYwLXByZWltYWdlIQ2rq6urq6urq6urq6urq6urq6urq6urq6urq6urq6urqxBoYXNoMjU2LXByZWltYWdlA/xpcAlpbnB1dHByb3ADmWl1DGlucHV0dW5rbm93bgAD/G9wCm91dHB1dHByb3ADiG91DW91dHB1dHVua25vd24A"
+  @new_fields_vector "cHNidP8BADwCAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/////AegDAAAAAAAAAAAAAAAB+wQAAAAABfxwcm9wCmdsb2JhbHByb3AEd3Vuaw1nbG9iYWx1bmtub3duAAEJFnBvci1jb21taXRtZW50LW1lc3NhZ2UVCk50bu0iT0UamJWX8T2JNHNhgYUdD3JpcGVtZC1wcmVpbWFnZSELtc5Hq7tvPHfRpSeMkAGzq12mN5sRq9/8a87IuSXKhg0Pc2hhMjU2LXByZWltYWdlFQxF8P/vzbRSLfKCyO6gCoqFEFZ7IRBoYXNoMTYwLXByZWltYWdlIQ1eNrfhh93WPk7FuAEEhtlhVtlvsDhTctcJyIcN7uTdbBBoYXNoMjU2LXByZWltYWdlA/xpcAlpbnB1dHByb3ADmWl1DGlucHV0dW5rbm93bgAD/G9wCm91dHB1dHByb3ADiG91DW91dHB1dHVua25vd24A"
 
   # Named indexes into @bip174_valid_vectors used by the representation tests.
   @sighash_vector_index 2
@@ -140,21 +140,35 @@ defmodule Bitcoinex.PSBTTest do
     end
 
     test "parses global version, proprietary, and unknown records", %{psbt: psbt} do
-      assert psbt.global.version == 2
+      assert psbt.global.version == 0
       assert psbt.global.proprietary == [%{key: <<0xFC, "prop">>, value: "globalprop"}]
       assert psbt.global.unknown == [%{key: <<0x77, "unk">>, value: "globalunknown"}]
     end
 
     test "parses input por_commitment and hash preimage fields", %{psbt: psbt} do
       input = hd(psbt.inputs)
-      hash20 = :binary.copy(<<0xCD>>, 20)
-      hash32 = :binary.copy(<<0xAB>>, 32)
-
+      # Each key hash is the actual digest of its preimage (BIP-174 requires it,
+      # and decode/1 now validates it).
       assert input.por_commitment == "por-commitment-message"
-      assert input.ripemd160 == [%{hash: hash20, preimage: "ripemd-preimage"}]
-      assert input.sha256 == [%{hash: hash32, preimage: "sha256-preimage"}]
-      assert input.hash160 == [%{hash: hash20, preimage: "hash160-preimage"}]
-      assert input.hash256 == [%{hash: hash32, preimage: "hash256-preimage"}]
+
+      assert input.ripemd160 == [
+               %{hash: :crypto.hash(:ripemd160, "ripemd-preimage"), preimage: "ripemd-preimage"}
+             ]
+
+      assert input.sha256 == [
+               %{hash: Bitcoinex.Utils.sha256("sha256-preimage"), preimage: "sha256-preimage"}
+             ]
+
+      assert input.hash160 == [
+               %{hash: Bitcoinex.Utils.hash160("hash160-preimage"), preimage: "hash160-preimage"}
+             ]
+
+      assert input.hash256 == [
+               %{
+                 hash: Bitcoinex.Utils.double_sha256("hash256-preimage"),
+                 preimage: "hash256-preimage"
+               }
+             ]
     end
 
     test "parses input and output proprietary and unknown records", %{psbt: psbt} do
@@ -165,6 +179,21 @@ defmodule Bitcoinex.PSBTTest do
       assert input.unknown == [%{key: <<0x99, "iu">>, value: "inputunknown"}]
       assert output.proprietary == [%{key: <<0xFC, "op">>, value: "outputprop"}]
       assert output.unknown == [%{key: <<0x88, "ou">>, value: "outputunknown"}]
+    end
+
+    test "rejects a hash-preimage record whose key hash is not the digest of the preimage" do
+      {:ok, psbt} = PSBT.decode(@new_fields_vector)
+      [input] = psbt.inputs
+      # Corrupt the sha256 record's hash so it no longer matches its preimage,
+      # then re-encode (serialization does not validate) and re-decode.
+      corrupted = %{
+        psbt
+        | inputs: [
+            %{input | sha256: [%{hash: :binary.copy(<<0>>, 32), preimage: "sha256-preimage"}]}
+          ]
+      }
+
+      assert {:error, :invalid_hash_preimage} = PSBT.decode(PSBT.encode_b64(corrupted))
     end
   end
 
@@ -186,6 +215,14 @@ defmodule Bitcoinex.PSBTTest do
 
     test "rejects a partial_sig whose trailing sighash flag is invalid" do
       assert {:error, :invalid_partial_sig} = PSBT.decode(@invalid_partial_sig_sighash)
+    end
+
+    test "rejects a PSBT advertising a non-v0 global version" do
+      # Bitcoin Core rpc_psbt.json invalid[19]: PSBT_GLOBAL_VERSION = 1.
+      v1_psbt =
+        "cHNidP8B+wQBAAAAAQB1AgAAAAEmgXE3Ht/yhek3re6ks3t4AAwFZsuzrWRkFxPKQhcb9gAAAAAA/v///wLT3/UFAAAAABl2qRTQxZkDxbrChodg6Q/VIaRmWqdlIIisAOH1BQAAAAAXqRQ1RebjO4MsRwUPJNPuuTycA5SLx4ezLhMAAAEA/aUBAQAAAAABAomjxx6rTSDgNxu7pMxpj6KVyUY6+i45f4UzzLYvlWflAQAAABcWABS+GNFSqbASA52vPafeT1M0nuy5hf////+G+KpDpx3/FEiJOlMKcjfva0YIu7LdLQFx5jrsakiQtAEAAAAXFgAU/j6e8adF6XTZAsQ1WUOryzS9U1P/////AgDC6wsAAAAAGXapFIXP8Ql/2eAIuzSvcJxiGXs4l4pIiKxy/vhOLAAAABepFDOXJboh79Yqx1OpvNBn1semo50FhwJHMEQCICcSviLgJw85T1aDEdx8qaaJcLgCX907JAIp8H+KXzokAiABizjX3NMU5zTJJ2vW+0D2czJbxLqhRMgA0vLwLbJ2XAEhA9LhVnSUG61KmWNyy4fhhW02UmBtmFYv45xenn5BPyEFAkgwRQIhANErhS2F3Nlh0vX0q2YGVN9u7cx5TAwzzlzDCf+1/OWNAiBnM4qODhclwZf7GoivWfUeROQlWyAWfIaEAxwF0fJZKgEhAiO3K+7wll0Qvgd47+zWH8rG95pOoWk5M4BzRGT4TyqzAAAAAAAAAA=="
+
+      assert {:error, :unsupported_version} = PSBT.decode(v1_psbt)
     end
 
     test "partial_sig uses Point and Signature structs" do
@@ -284,6 +321,40 @@ defmodule Bitcoinex.PSBTTest do
     end
   end
 
+  describe "add_global_field(:unsigned_tx)" do
+    setup do
+      {:ok, base} = PSBT.decode(valid_vector(@p2sh_p2wsh_vector_index))
+      %{tx: base.global.unsigned_tx, base: base}
+    end
+
+    test "refuses to replace an existing unsigned tx", %{base: base, tx: tx} do
+      assert {:error, :unsigned_tx_already_set} = PSBT.add_global_field(base, :unsigned_tx, tx)
+    end
+
+    test "rejects a tx whose input/output counts do not match the PSBT's maps", %{tx: tx} do
+      # A PSBT skeleton with no unsigned tx and more input maps than the tx has
+      # inputs (the p2sh-p2wsh vector's tx has a single input).
+      skeleton = %PSBT{
+        global: %Bitcoinex.PSBT.Global{},
+        inputs: [%Bitcoinex.PSBT.In{}, %Bitcoinex.PSBT.In{}],
+        outputs: [%Bitcoinex.PSBT.Out{}]
+      }
+
+      assert {:error, :tx_io_count_mismatch} = PSBT.add_global_field(skeleton, :unsigned_tx, tx)
+    end
+
+    test "rejects a signed tx", %{tx: tx} do
+      skeleton = %PSBT{
+        global: %Bitcoinex.PSBT.Global{},
+        inputs: Enum.map(tx.inputs, fn _ -> %Bitcoinex.PSBT.In{} end),
+        outputs: Enum.map(tx.outputs, fn _ -> %Bitcoinex.PSBT.Out{} end)
+      }
+
+      signed = %{tx | inputs: [%{hd(tx.inputs) | script_sig: "0014abcdef"} | tl(tx.inputs)]}
+      assert {:error, :tx_not_unsigned} = PSBT.add_global_field(skeleton, :unsigned_tx, signed)
+    end
+  end
+
   describe "txid/1" do
     test "returns the txid of the global unsigned tx" do
       {:ok, psbt} = PSBT.decode(valid_vector(@p2sh_p2wsh_vector_index))
@@ -304,12 +375,16 @@ defmodule Bitcoinex.PSBTTest do
       %{psbt: psbt}
     end
 
-    test "adds a global version and round-trips it", %{psbt: psbt} do
-      {:ok, psbt} = PSBT.add_global_field(psbt, :version, 2)
-      assert psbt.global.version == 2
+    test "adds the v0 global version and round-trips it", %{psbt: psbt} do
+      {:ok, psbt} = PSBT.add_global_field(psbt, :version, 0)
+      assert psbt.global.version == 0
 
       {:ok, decoded} = PSBT.decode(PSBT.encode_b64(psbt))
-      assert decoded.global.version == 2
+      assert decoded.global.version == 0
+    end
+
+    test "rejects a non-zero global version (only PSBT v0 is supported)", %{psbt: psbt} do
+      assert {:error, :unsupported_version} = PSBT.add_global_field(psbt, :version, 2)
     end
 
     test "adds an input sighash_type", %{psbt: psbt} do
@@ -333,6 +408,29 @@ defmodule Bitcoinex.PSBTTest do
       assert {:ok, from_struct} = PSBT.add_input_field(psbt, 0, :redeem_script, script)
       assert hd(from_hex.inputs).redeem_script == script
       assert hd(from_struct.inputs).redeem_script == script
+    end
+
+    test "normalizes a witness_utxo scriptPubKey to lowercase so encode never raises", %{
+      psbt: psbt
+    } do
+      spk = "0014D85C2B71D0060B09C9886AEB815E50991DDA124D"
+      utxo = %Bitcoinex.Transaction.Out{value: 1000, script_pub_key: spk}
+
+      assert {:ok, psbt} = PSBT.add_input_field(psbt, 0, :witness_utxo, utxo)
+      assert hd(psbt.inputs).witness_utxo.script_pub_key == String.downcase(spk)
+      # Regression: uppercase hex used to be accepted and then raise here.
+      assert is_binary(PSBT.encode_b64(psbt))
+    end
+
+    test "normalizes final_scriptwitness items to lowercase", %{psbt: psbt} do
+      witness = %Bitcoinex.Transaction.Witness{txinwitness: ["00AABB", "CCDD"]}
+      assert {:ok, psbt} = PSBT.add_input_field(psbt, 0, :final_scriptwitness, witness)
+      assert hd(psbt.inputs).final_scriptwitness.txinwitness == ["00aabb", "ccdd"]
+    end
+
+    test "rejects a witness_utxo whose scriptPubKey is not valid hex", %{psbt: psbt} do
+      utxo = %Bitcoinex.Transaction.Out{value: 1000, script_pub_key: "not-hex!"}
+      assert {:error, :invalid_field} = PSBT.add_input_field(psbt, 0, :witness_utxo, utxo)
     end
 
     test "preserves the raw bip32 fingerprint bytes (no endianness reversal)", %{psbt: psbt} do
@@ -433,13 +531,20 @@ defmodule Bitcoinex.PSBTTest do
       assert PSBT.combine(a, a) == {:ok, a}
     end
 
-    test "keeps the higher PSBT version when the two differ" do
+    test "combining two v0 PSBTs preserves the version" do
       {:ok, base} = PSBT.decode(valid_vector(@p2sh_p2wsh_vector_index))
-      {:ok, a} = PSBT.add_global_field(base, :version, 1)
-      {:ok, b} = PSBT.add_global_field(base, :version, 2)
+      {:ok, a} = PSBT.add_global_field(base, :version, 0)
+      {:ok, b} = PSBT.add_global_field(base, :version, 0)
 
       assert {:ok, combined} = PSBT.combine(a, b)
-      assert combined.global.version == 2
+      assert combined.global.version == 0
+    end
+
+    test "rejects PSBTs whose input-map counts do not match (no silent truncation)" do
+      {:ok, a} = PSBT.decode(valid_vector(@p2sh_p2wsh_vector_index))
+      # Same unsigned tx, but a desynced (hand-corrupted) input-map list.
+      b = %PSBT{a | inputs: []}
+      assert {:error, :map_count_mismatch} = PSBT.combine(a, b)
     end
 
     test "rejects PSBTs describing different transactions" do
