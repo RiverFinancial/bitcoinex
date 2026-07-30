@@ -12,6 +12,7 @@ defmodule Bitcoinex.PSBT do
   alias Bitcoinex.PSBT.In
   alias Bitcoinex.PSBT.Out
   alias Bitcoinex.Transaction
+  alias Bitcoinex.Transaction.Witness
 
   @type t() :: %__MODULE__{
           global: Global.t(),
@@ -153,6 +154,68 @@ defmodule Bitcoinex.PSBT do
            {:ok, outputs} <- combine_pairs(psbt_a.outputs, psbt_b.outputs, &Out.combine/2) do
         {:ok, %PSBT{global: global, inputs: inputs, outputs: outputs}}
       end
+    end
+  end
+
+  @doc """
+  Finalizes every input that can be finalized (the BIP-174 Input Finalizer
+  role), leaving the rest untouched (best-effort, matching Bitcoin Core). For
+  each finalizable input it builds the `final_scriptsig` and/or
+  `final_scriptwitness` from the collected signatures and scripts and removes
+  the now-redundant fields.
+  """
+  @spec finalize(t()) :: t()
+  def finalize(%PSBT{} = psbt) do
+    inputs =
+      psbt.inputs
+      |> Enum.zip(psbt.global.unsigned_tx.inputs)
+      |> Enum.map(fn {input, tx_input} -> In.finalize(input, tx_input) end)
+
+    %PSBT{psbt | inputs: inputs}
+  end
+
+  @doc """
+  Returns true if every input has been finalized.
+  """
+  @spec finalized?(t()) :: boolean()
+  def finalized?(%PSBT{} = psbt), do: Enum.all?(psbt.inputs, &In.finalized?/1)
+
+  @doc """
+  Extracts the fully-signed network transaction from a finalized PSBT (the
+  BIP-174 Transaction Extractor role). Returns `{:error, :not_finalized}` unless
+  every input is finalized.
+  """
+  @spec extract_tx(t()) :: {:ok, Transaction.t()} | {:error, :not_finalized}
+  def extract_tx(%PSBT{} = psbt) do
+    if finalized?(psbt) do
+      tx = psbt.global.unsigned_tx
+
+      inputs =
+        psbt.inputs
+        |> Enum.zip(tx.inputs)
+        |> Enum.map(fn {input, tx_input} ->
+          %{tx_input | script_sig: extracted_script_sig(input)}
+        end)
+
+      {:ok, %Transaction{tx | inputs: inputs, witnesses: extracted_witnesses(psbt.inputs)}}
+    else
+      {:error, :not_finalized}
+    end
+  end
+
+  defp extracted_script_sig(%{final_scriptsig: nil}), do: ""
+  defp extracted_script_sig(%{final_scriptsig: script}), do: Bitcoinex.Script.to_hex(script)
+
+  # Returns the witness list for the extracted tx, or nil if no input has a
+  # witness (so the tx serializes in legacy format). Non-witness inputs get an
+  # empty witness stack.
+  defp extracted_witnesses(inputs) do
+    if Enum.any?(inputs, fn input -> input.final_scriptwitness != nil end) do
+      Enum.map(inputs, fn input ->
+        input.final_scriptwitness || %Witness{txinwitness: []}
+      end)
+    else
+      nil
     end
   end
 
@@ -853,6 +916,223 @@ defmodule Bitcoinex.PSBT.In do
   defp public_key_key(%{public_key: public_key}), do: Point.sec(public_key)
   defp hash_key(%{hash: hash}), do: hash
   defp record_key(%{key: key}), do: key
+
+  @doc """
+  Returns true if this input has been finalized (has a final scriptSig and/or
+  scriptWitness).
+  """
+  @spec finalized?(t()) :: boolean()
+  def finalized?(%In{final_scriptsig: nil, final_scriptwitness: nil}), do: false
+  def finalized?(%In{}), do: true
+
+  @doc """
+  Attempts to finalize this input (the BIP-174 Input Finalizer role), given the
+  transaction input that references it (used to locate the scriptPubKey and to
+  validate any non-witness UTXO). Returns the finalized input, or the input
+  unchanged if it cannot be finalized (best-effort, matching Bitcoin Core).
+  """
+  @spec finalize(t(), Transaction.In.t()) :: t()
+  def finalize(%In{} = input, tx_input) do
+    with false <- finalized?(input),
+         {:ok, script_pub_key} <- script_pub_key(input, tx_input),
+         {:ok, final_scriptsig, final_scriptwitness} <- build_finalization(input, script_pub_key) do
+      finalized_input(input, final_scriptsig, final_scriptwitness)
+    else
+      _ -> input
+    end
+  end
+
+  # Resolves the scriptPubKey being spent, from the witness UTXO or, for a
+  # non-witness UTXO, the referenced output (after checking the txid matches).
+  defp script_pub_key(%In{witness_utxo: %Out{} = utxo}, _tx_input) do
+    Script.parse_script(utxo.script_pub_key)
+  end
+
+  defp script_pub_key(%In{non_witness_utxo: %Transaction{} = tx}, tx_input) do
+    if Transaction.transaction_id(tx) == tx_input.prev_txid do
+      case Enum.at(tx.outputs, tx_input.prev_vout) do
+        nil -> :error
+        output -> Script.parse_script(output.script_pub_key)
+      end
+    else
+      :error
+    end
+  end
+
+  defp script_pub_key(_input, _tx_input), do: :error
+
+  # Builds {final_scriptsig, final_scriptwitness} for the input's script type, or
+  # :cannot_finalize if the collected data is insufficient or the type is
+  # unsupported.
+  defp build_finalization(input, script_pub_key) do
+    case Script.get_script_type(script_pub_key) do
+      :p2pkh -> finalize_p2pkh(input)
+      :p2wpkh -> finalize_p2wpkh(input)
+      :p2sh -> finalize_p2sh(input)
+      :p2wsh -> finalize_p2wsh(input, input.witness_script)
+      :multi -> finalize_bare_multisig(input, script_pub_key)
+      _other -> :cannot_finalize
+    end
+  end
+
+  defp finalize_p2pkh(input) do
+    case single_signature(input) do
+      {:ok, signature, public_key} ->
+        {:ok, script_from_bytes(push_data(signature) <> push_data(public_key)), nil}
+
+      :cannot_finalize ->
+        :cannot_finalize
+    end
+  end
+
+  defp finalize_p2wpkh(input) do
+    case single_signature(input) do
+      {:ok, signature, public_key} ->
+        {:ok, nil, witness([signature, public_key])}
+
+      :cannot_finalize ->
+        :cannot_finalize
+    end
+  end
+
+  defp finalize_p2sh(%In{redeem_script: nil}), do: :cannot_finalize
+
+  defp finalize_p2sh(%In{redeem_script: redeem_script} = input) do
+    redeem_bytes = Script.serialize_script(redeem_script)
+
+    cond do
+      Script.is_p2wpkh?(redeem_script) ->
+        case single_signature(input) do
+          {:ok, signature, public_key} ->
+            {:ok, script_from_bytes(push_data(redeem_bytes)), witness([signature, public_key])}
+
+          :cannot_finalize ->
+            :cannot_finalize
+        end
+
+      Script.is_p2wsh?(redeem_script) ->
+        case finalize_p2wsh(input, input.witness_script) do
+          {:ok, nil, final_scriptwitness} ->
+            {:ok, script_from_bytes(push_data(redeem_bytes)), final_scriptwitness}
+
+          :cannot_finalize ->
+            :cannot_finalize
+        end
+
+      Script.is_multi?(redeem_script) ->
+        case multisig_signatures(redeem_script, input.partial_sig) do
+          {:ok, signatures} ->
+            scriptsig =
+              <<0x00>> <>
+                Enum.map_join(signatures, &push_data/1) <> push_data(redeem_bytes)
+
+            {:ok, script_from_bytes(scriptsig), nil}
+
+          :cannot_finalize ->
+            :cannot_finalize
+        end
+
+      true ->
+        :cannot_finalize
+    end
+  end
+
+  defp finalize_p2wsh(_input, nil), do: :cannot_finalize
+
+  defp finalize_p2wsh(input, witness_script) do
+    case multisig_signatures(witness_script, input.partial_sig) do
+      {:ok, signatures} ->
+        stack_items = signatures ++ [Script.serialize_script(witness_script)]
+        {:ok, nil, witness([<<>> | stack_items])}
+
+      :cannot_finalize ->
+        :cannot_finalize
+    end
+  end
+
+  defp finalize_bare_multisig(input, script_pub_key) do
+    case multisig_signatures(script_pub_key, input.partial_sig) do
+      {:ok, signatures} ->
+        {:ok, script_from_bytes(<<0x00>> <> Enum.map_join(signatures, &push_data/1)), nil}
+
+      :cannot_finalize ->
+        :cannot_finalize
+    end
+  end
+
+  # Extracts exactly one signature and its pubkey for single-key script types.
+  defp single_signature(%In{partial_sig: [partial_sig]}) do
+    {:ok, signature_bytes(partial_sig), Point.sec(partial_sig.public_key)}
+  end
+
+  defp single_signature(_input), do: :cannot_finalize
+
+  # Collects the m signatures required by a multisig script, in the order the
+  # pubkeys appear in the script.
+  defp multisig_signatures(multisig_script, partial_sigs) do
+    if Script.is_multi?(multisig_script) do
+      {:ok, required, public_keys} = Script.extract_multi_policy(multisig_script)
+
+      signatures =
+        public_keys
+        |> Enum.map(&find_partial_sig(partial_sigs, &1))
+        |> Enum.reject(&is_nil/1)
+        |> Enum.map(&signature_bytes/1)
+
+      if length(signatures) >= required do
+        {:ok, Enum.take(signatures, required)}
+      else
+        :cannot_finalize
+      end
+    else
+      :cannot_finalize
+    end
+  end
+
+  defp find_partial_sig(partial_sigs, public_key) do
+    Enum.find(partial_sigs || [], fn partial_sig ->
+      Point.sec(partial_sig.public_key) == Point.sec(public_key)
+    end)
+  end
+
+  defp signature_bytes(%{signature: signature, sighash: sighash}) do
+    Signature.der_serialize_signature(signature) <> <<sighash>>
+  end
+
+  # Builds a witness stack from raw byte items.
+  defp witness(items) do
+    %Witness{txinwitness: Enum.map(items, &Base.encode16(&1, case: :lower))}
+  end
+
+  defp script_from_bytes(bytes) do
+    {:ok, script} = Script.parse_script(Base.encode16(bytes, case: :lower))
+    script
+  end
+
+  # Minimal Bitcoin script data push for the given bytes.
+  defp push_data(data) do
+    length = byte_size(data)
+
+    cond do
+      length < 0x4C -> <<length>> <> data
+      length <= 0xFF -> <<0x4C, length>> <> data
+      length <= 0xFFFF -> <<0x4D, length::little-size(16)>> <> data
+      true -> <<0x4E, length::little-size(32)>> <> data
+    end
+  end
+
+  # Keeps only the fields a finalized input retains (BIP-174): the UTXO records,
+  # the final scriptSig/scriptWitness, and any proprietary/unknown records.
+  defp finalized_input(input, final_scriptsig, final_scriptwitness) do
+    %In{
+      non_witness_utxo: input.non_witness_utxo,
+      witness_utxo: input.witness_utxo,
+      final_scriptsig: final_scriptsig,
+      final_scriptwitness: final_scriptwitness,
+      proprietary: input.proprietary,
+      unknown: input.unknown
+    }
+  end
 
   # Normalizes a Script, hex string, or raw binary into a Script and applies it.
   defp with_script(%Script{} = script, put_fun), do: {:ok, put_fun.(script)}

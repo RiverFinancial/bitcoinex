@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Added
+- `PSBT.finalize/1` and `PSBT.finalized?/1` (Input Finalizer): assembles `final_scriptsig`/`final_scriptwitness` from the collected signatures and scripts for p2pkh, p2wpkh, (nested) p2sh-p2wpkh, bare/p2sh/p2wsh multisig, and p2sh-p2wsh inputs, ordering multisig signatures by the script's pubkey order. Best-effort per input (matching Bitcoin Core): inputs it cannot finalize are left untouched.
+- `PSBT.extract_tx/1` (Transaction Extractor): produces the fully-signed network `Transaction` from a finalized PSBT, or `{:error, :not_finalized}`.
 - `PSBT.combine/2` (Combiner): merges two PSBTs describing the same unsigned transaction, unioning repeatable fields by key and requiring singleton fields to agree. Returns `{:error, :mismatched_tx}` for different transactions and `{:error, :conflicting_field}` on conflicting values. Repeatable records are ordered canonically so the operation is commutative and idempotent.
 - `PSBT.from_tx/1` (Creator), `PSBT.txid/1`, and the Updater API — `PSBT.add_global_field/3`, `PSBT.add_input_field/4`, `PSBT.add_output_field/4` (each dispatching on a field-name atom via `PSBT.Global.add_field/3`, `PSBT.In.add_field/3`, `PSBT.Out.add_field/3`).
 ### Changed
