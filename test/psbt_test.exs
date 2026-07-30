@@ -307,11 +307,13 @@ defmodule Bitcoinex.PSBTTest do
           final_scriptsig: nil,
           final_scriptwitness: nil,
           non_witness_utxo: nil,
-          partial_sig: %{
-            public_key: "03b1341ccba7683b6af4f1238cd6e97e7167d569fac47f1e48d47541844355bd46",
-            signature:
-              "304302200424b58effaaa694e1559ea5c93bbfd4a89064224055cdf070b6771469442d07021f5c8eb0fea6516d60b8acb33ad64ede60e8785bfb3aa94b99bdf86151db9a9a01"
-          },
+          partial_sig: [
+            %{
+              public_key: "03b1341ccba7683b6af4f1238cd6e97e7167d569fac47f1e48d47541844355bd46",
+              signature:
+                "304302200424b58effaaa694e1559ea5c93bbfd4a89064224055cdf070b6771469442d07021f5c8eb0fea6516d60b8acb33ad64ede60e8785bfb3aa94b99bdf86151db9a9a01"
+            }
+          ],
           por_commitment: nil,
           proprietary: nil,
           redeem_script: "0020771fd18ad459666dd49f3d564e3dbc42f4c84774e360ada16816a8ed488d5681",
@@ -750,6 +752,106 @@ defmodule Bitcoinex.PSBTTest do
       assert input.unknown == [%{key: <<0x99, "iu">>, value: "inputunknown"}]
       assert output.proprietary == [%{key: <<0xFC, "op">>, value: "outputprop"}]
       assert output.unknown == [%{key: <<0x88, "ou">>, value: "outputunknown"}]
+    end
+  end
+
+  # The expected result of the BIP-174 Combiner worked example: every input
+  # carries TWO partial_sig records (one per signer). Guards the repeatability
+  # of partial_sig — a singleton representation keeps only the last record.
+  @two_partial_sigs_vector "cHNidP8BAJoCAAAAAljoeiG1ba8MI76OcHBFbDNvfLqlyHV5JPVFiHuyq911AAAAAAD/////g40EJ9DsZQpoqka7CwmK6kQiwHGyyng1Kgd5WdB86h0BAAAAAP////8CcKrwCAAAAAAWABTYXCtx0AYLCcmIauuBXlCZHdoSTQDh9QUAAAAAFgAUAK6pouXw+HaliN9VRuh0LR2HAI8AAAAAAAEAuwIAAAABqtc5MQGL0l+ErkALaISL4J23BurCrBgpi6vucatlb4sAAAAASEcwRAIgWPb8fGoz4bMVSNSByCbAFb0wE1qtQs1neQ2rZtKtJDsCIEoc7SYExnNbY5PltBaR3XiwDwxZQvufdRhW+qk4FX26Af7///8CgPD6AgAAAAAXqRQPuUY0IWlrgsgzryQceMF9295JNIfQ8gonAQAAABepFCnKdPigj4GZlCgYXJe12FLkBj9hh2UAAAAiAgKVg785rgpgl0etGZrd1jT6YQhVnWxc05tMIYPxq5bgf0cwRAIgdAGK1BgAl7hzMjwAFXILNoTMgSOJEEjn282bVa1nnJkCIHPTabdA4+tT3O+jOCPIBwUUylWn3ZVE8VfBZ5EyYRGMASICAtq2H/SaFNtqfQKwzR+7ePxLGDErW05U2uTbovv+9TbXSDBFAiEA9hA4swjcHahlo0hSdG8BV3KTQgjG0kRUOTzZm98iF3cCIAVuZ1pnWm0KArhbFOXikHTYolqbV2C+ooFvZhkQoAbqAQEDBAEAAAABBEdSIQKVg785rgpgl0etGZrd1jT6YQhVnWxc05tMIYPxq5bgfyEC2rYf9JoU22p9ArDNH7t4/EsYMStbTlTa5Nui+/71NtdSriIGApWDvzmuCmCXR60Zmt3WNPphCFWdbFzTm0whg/GrluB/ENkMak8AAACAAAAAgAAAAIAiBgLath/0mhTban0CsM0fu3j8SxgxK1tOVNrk26L7/vU21xDZDGpPAAAAgAAAAIABAACAAAEBIADC6wsAAAAAF6kUt/X69A49QKWkWbHbNTXyty+pIeiHIgIDCJ3BDHrG21T5EymvYXMz2ziM6tDCMfcjN50bmQMLAtxHMEQCIGLrelVhB6fHP0WsSrWh3d9vcHX7EnWWmn84Pv/3hLyyAiAMBdu3Rw2/LwhVfdNWxzJcHtMJE+mWzThAlF2xIijaXwEiAgI63ZBPPW3PWd25BrDe4jUpt/+57VDl6GFRkmhgIh8Oc0cwRAIgZfRbpZmLWaJ//hp77QFq8fH5DVSzqo90UKpfVqJRA70CIH9yRwOtHtuWaAsoS1bU/8uI9/t1nqu+CKow8puFE4PSAQEDBAEAAAABBCIAIIwjUxc3Q7WV37Sge3K6jkLjeX2nTof+fZ10l+OyAokDAQVHUiEDCJ3BDHrG21T5EymvYXMz2ziM6tDCMfcjN50bmQMLAtwhAjrdkE89bc9Z3bkGsN7iNSm3/7ntUOXoYVGSaGAiHw5zUq4iBgI63ZBPPW3PWd25BrDe4jUpt/+57VDl6GFRkmhgIh8OcxDZDGpPAAAAgAAAAIADAACAIgYDCJ3BDHrG21T5EymvYXMz2ziM6tDCMfcjN50bmQMLAtwQ2QxqTwAAAIAAAACAAgAAgAAiAgOppMN/WZbTqiXbrGtXCvBlA5RJKUJGCzVHU+2e7KWHcRDZDGpPAAAAgAAAAIAEAACAACICAn9jmXV9Lv9VoTatAsaEsYOLZVbl8bazQoKpS2tQBRCWENkMak8AAACAAAAAgAUAAIAA"
+
+  describe "repeatable partial_sig" do
+    test "an input with two partial_sig records keeps both and round-trips" do
+      assert {:ok, psbt} = PSBT.decode(@two_partial_sigs_vector)
+
+      for input <- psbt.inputs do
+        assert length(input.partial_sig) == 2
+      end
+
+      assert PSBT.encode_b64(psbt) == @two_partial_sigs_vector
+    end
+  end
+
+  # Builds a minimal one-input/one-output PSBT binary around the unsigned tx
+  # of @new_fields_vector, with `records` spliced into the given map.
+  defp psbt_with_records(records, location) do
+    {:ok, psbt} = PSBT.decode(@new_fields_vector)
+    tx_bytes = Bitcoinex.Transaction.Utils.serialize(psbt.global.unsigned_tx)
+
+    tx_record =
+      <<0x01, 0x00>> <>
+        Bitcoinex.Transaction.Utils.serialize_compact_size_unsigned_int(byte_size(tx_bytes)) <>
+        tx_bytes
+
+    {global_records, input_records, output_records} =
+      case location do
+        :global -> {records, <<>>, <<>>}
+        :input -> {<<>>, records, <<>>}
+        :output -> {<<>>, <<>>, records}
+      end
+
+    binary =
+      <<0x70736274::big-size(32), 0xFF>> <>
+        tx_record <>
+        global_records <> <<0x00>> <> input_records <> <<0x00>> <> output_records <> <<0x00>>
+
+    Base.encode64(binary)
+  end
+
+  defp record(key, value) do
+    <<byte_size(key)>> <> key <> <<byte_size(value)>> <> value
+  end
+
+  describe "malformed and unsupported inputs" do
+    test "truncated PSBTs are rejected" do
+      {:ok, valid_bytes} = Base.decode64(hd(@bip174_valid_vectors))
+      truncated = binary_part(valid_bytes, 0, byte_size(valid_bytes) - 5)
+      assert {:error, _reason} = PSBT.decode(Base.encode64(truncated))
+    end
+
+    test "65-byte (uncompressed) pubkeys are rejected with a distinct reason" do
+      uncompressed = <<0x04>> <> :binary.copy(<<0xAB>>, 64)
+      signature = :binary.copy(<<0x30>>, 8)
+      origin = <<0, 0, 0, 0>>
+
+      partial_sig = record(<<0x02>> <> uncompressed, signature)
+      in_bip32 = record(<<0x06>> <> uncompressed, origin)
+      out_bip32 = record(<<0x02>> <> uncompressed, origin)
+
+      assert {:error, :uncompressed_public_key} =
+               PSBT.decode(psbt_with_records(partial_sig, :input))
+
+      assert {:error, :uncompressed_public_key} =
+               PSBT.decode(psbt_with_records(in_bip32, :input))
+
+      assert {:error, :uncompressed_public_key} =
+               PSBT.decode(psbt_with_records(out_bip32, :output))
+    end
+
+    test "sighash_type is stored and re-emitted as 4 little-endian bytes" do
+      psbt_b64 = psbt_with_records(record(<<0x03>>, <<0x01, 0x00, 0x00, 0x00>>), :input)
+      assert {:ok, psbt} = PSBT.decode(psbt_b64)
+      assert hd(psbt.inputs).sighash_type == <<0x01, 0x00, 0x00, 0x00>>
+      assert PSBT.encode_b64(psbt) == psbt_b64
+    end
+
+    test "a sighash_type value that is not 4 bytes is rejected" do
+      psbt_b64 = psbt_with_records(record(<<0x03>>, <<0x01>>), :input)
+      assert {:error, :invalid_sighash_type} = PSBT.decode(psbt_b64)
+    end
+
+    test "a global version value that is not 4 bytes is rejected" do
+      psbt_b64 = psbt_with_records(record(<<0xFB>>, <<0x02, 0x00>>), :global)
+      assert {:error, :invalid_version} = PSBT.decode(psbt_b64)
+    end
+  end
+
+  describe "encoding a PSBT without an unsigned tx" do
+    test "encode_b64/1 and to_file/2 return an error instead of emitting an invalid PSBT" do
+      psbt = %PSBT{global: %Global{}, inputs: [], outputs: []}
+      assert {:error, :missing_unsigned_tx} = PSBT.encode_b64(psbt)
+      assert {:error, :missing_unsigned_tx} = PSBT.to_file(psbt, "./test/never-written.psbt")
+      refute File.exists?("./test/never-written.psbt")
     end
   end
 end

@@ -6,6 +6,17 @@ defmodule Bitcoinex.PSBT do
   Each map consists of a sequence of key-value records, terminated by a 0x00 byte.
 
   Reference: https://github.com/bitcoin/bips/blob/master/bip-0174.mediawiki
+
+  Known limitations (deliberate):
+
+  * 65-byte (uncompressed) public keys in `partial_sig` and `bip32_derivation`
+    records are rejected with `{:error, :uncompressed_public_key}`. BIP-174
+    permits them, but they cannot be represented faithfully here, so they are
+    refused outright rather than silently re-compressed.
+  * Serialization always emits records in ascending key-type order with
+    unknown records last (as Bitcoin Core does). `decode |> encode_b64` is
+    byte-identical for canonically-ordered PSBTs; a PSBT whose records arrive
+    in a different order decodes to the same struct but re-encodes canonically.
   """
   alias Bitcoinex.PSBT
   alias Bitcoinex.PSBT.Global
@@ -77,19 +88,38 @@ defmodule Bitcoinex.PSBT do
 
   @doc """
     to_file writes a PSBT to file as binary.
+
+    Returns `{:error, :missing_unsigned_tx}` for a PSBT without a global
+    unsigned transaction: it is mandatory in v0, so serializing without one
+    would emit a PSBT this module's own decoder rejects.
   """
-  @spec to_file(t(), String.t()) :: :ok | {:error, File.posix()}
+  @spec to_file(t(), String.t()) :: :ok | {:error, File.posix() | :missing_unsigned_tx}
   def to_file(packet, filename) do
-    bin = serialize(packet)
-    File.write(filename, bin)
+    case ensure_unsigned_tx(packet) do
+      :ok -> File.write(filename, serialize(packet))
+      error -> error
+    end
   end
 
-  @spec encode_b64(t()) :: String.t()
+  @doc """
+    Encodes a PSBT as base64.
+
+    Returns `{:error, :missing_unsigned_tx}` for a PSBT without a global
+    unsigned transaction (see `to_file/2`).
+  """
+  @spec encode_b64(t()) :: String.t() | {:error, :missing_unsigned_tx}
   def encode_b64(packet) do
-    packet
-    |> serialize()
-    |> Base.encode64()
+    case ensure_unsigned_tx(packet) do
+      :ok -> packet |> serialize() |> Base.encode64()
+      error -> error
+    end
   end
+
+  defp ensure_unsigned_tx(%PSBT{global: %{unsigned_tx: unsigned_tx}})
+       when unsigned_tx != nil,
+       do: :ok
+
+  defp ensure_unsigned_tx(_packet), do: {:error, :missing_unsigned_tx}
 
   @spec parse(binary()) :: {:ok, t()} | {:error, term()}
   defp parse(<<@magic::big-size(32), @separator::big-size(8), psbt::binary>>) do
@@ -134,6 +164,7 @@ defmodule Bitcoinex.PSBT.Utils do
   @doc """
   Reads a single compact-size-prefixed value off the front of a binary.
   """
+  @spec parse_compact_size_value(binary()) :: {binary(), binary()}
   def parse_compact_size_value(key_value) do
     {value_length, key_value} = TxUtils.get_counter(key_value)
     <<value::binary-size(value_length), remaining::binary>> = key_value
@@ -149,6 +180,8 @@ defmodule Bitcoinex.PSBT.Utils do
 
   Returns `{:ok, {accumulator, remaining_binary}}` on success.
   """
+  @spec parse_key_value(binary(), struct(), function()) ::
+          {:ok, {struct(), binary()}} | {:error, term()}
   def parse_key_value(psbt, accumulator, parse_func) do
     parse_key_value(psbt, accumulator, parse_func, MapSet.new())
   end
@@ -181,6 +214,7 @@ defmodule Bitcoinex.PSBT.Utils do
   Serializes a key-value record: compact-size key length, key, compact-size
   value length, value.
   """
+  @spec serialize_kv(binary(), binary()) :: binary()
   def serialize_kv(key, value) do
     key_length = TxUtils.serialize_compact_size_unsigned_int(byte_size(key))
     value_length = TxUtils.serialize_compact_size_unsigned_int(byte_size(value))
@@ -191,6 +225,7 @@ defmodule Bitcoinex.PSBT.Utils do
   Appends an item to a list-valued field, treating `nil` as the empty list.
   Preserves insertion order.
   """
+  @spec append(list() | nil, term()) :: list()
   def append(nil, item), do: [item]
   def append(items, item) when is_list(items), do: items ++ [item]
 
@@ -198,6 +233,7 @@ defmodule Bitcoinex.PSBT.Utils do
   Serializes a repeatable (list-valued) field, mapping each item through
   `serialize_func`. A `nil` field serializes to nothing.
   """
+  @spec serialize_repeatable(list() | nil, (term() -> binary())) :: binary()
   def serialize_repeatable(nil, _serialize_func), do: <<>>
 
   def serialize_repeatable(items, serialize_func) when is_list(items) do
@@ -209,6 +245,8 @@ defmodule Bitcoinex.PSBT.Utils do
   0xFC) are collected into the `:proprietary` field, all others into `:unknown`.
   Returns `{field_name, record}` where record is `%{key: key, value: value}`.
   """
+  @spec classify_unknown_record(binary(), binary()) ::
+          {:proprietary | :unknown, %{key: binary(), value: binary()}}
   def classify_unknown_record(<<0xFC, _rest::binary>> = key, value) do
     {:proprietary, %{key: key, value: value}}
   end
@@ -249,7 +287,8 @@ defmodule Bitcoinex.PSBT.Global do
 
   # BIP-174: the global unsigned tx must be serialized in the legacy
   # (non-witness) format. Re-serializing without witnesses must reproduce the
-  # exact bytes; otherwise the input carried a segwit marker/flag/witness.
+  # exact bytes; a mismatch means the value carried a segwit marker/flag/witness
+  # or any other non-canonical encoding (e.g. a non-minimal compact size).
   defp legacy_serialized?(txn, txn_bytes) do
     TxUtils.serialize(%{txn | witnesses: []}) == txn_bytes
   end
@@ -268,7 +307,7 @@ defmodule Bitcoinex.PSBT.Global do
       {:ok, txn} ->
         cond do
           not legacy_serialized?(txn, txn_bytes) ->
-            {:error, :unsigned_tx_has_witness_serialization}
+            {:error, :unsigned_tx_not_canonically_serialized}
 
           not all_script_sigs_empty?(txn) ->
             {:error, :unsigned_tx_has_script_sig}
@@ -298,9 +337,16 @@ defmodule Bitcoinex.PSBT.Global do
     {%Global{global | xpub: global_xpub}, psbt}
   end
 
+  # BIP-174: the version is a 32-bit little-endian unsigned int. The raw
+  # 4 bytes are stored as-is here; interpretation is left to later stages.
   defp parse(<<@psbt_global_version::big-size(8)>>, psbt, global) do
-    {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    {%Global{global | version: value}, psbt}
+    case PsbtUtils.parse_compact_size_value(psbt) do
+      {<<_::little-unsigned-32>> = value, psbt} ->
+        {%Global{global | version: value}, psbt}
+
+      _ ->
+        {:error, :invalid_version}
+    end
   end
 
   # A key whose leading byte is a known global type but which did not match the
@@ -438,6 +484,8 @@ defmodule Bitcoinex.PSBT.In do
     {%In{input | witness_utxo: out}, psbt}
   end
 
+  # partial_sig is repeatable: one record per signing pubkey (BIP-174 keys them
+  # by pubkey), so a multisig input legitimately carries several.
   defp parse(<<@psbt_in_partial_sig::big-size(8), public_key::binary-size(33)>>, psbt, input) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
 
@@ -446,12 +494,27 @@ defmodule Bitcoinex.PSBT.In do
       signature: Base.encode16(value, case: :lower)
     }
 
-    {%In{input | partial_sig: partial_sig}, psbt}
+    {%In{input | partial_sig: PsbtUtils.append(input.partial_sig, partial_sig)}, psbt}
   end
 
+  # 65-byte (uncompressed) pubkeys are valid in BIP-174 but unsupported here:
+  # `Secp256k1.Point` carries no compression flag, so an uncompressed key could
+  # not be re-serialized faithfully. Reject with a distinct reason rather than
+  # conflating it with a malformed key.
+  defp parse(<<@psbt_in_partial_sig::big-size(8), _public_key::binary-size(65)>>, _psbt, _input) do
+    {:error, :uncompressed_public_key}
+  end
+
+  # BIP-174: the sighash type is a 32-bit little-endian unsigned int. The raw
+  # 4 bytes are stored as-is here; interpretation is left to later stages.
   defp parse(<<@psbt_in_sighash_type::big-size(8)>>, psbt, input) do
-    {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    {%In{input | sighash_type: value}, psbt}
+    case PsbtUtils.parse_compact_size_value(psbt) do
+      {<<_::little-unsigned-32>> = value, psbt} ->
+        {%In{input | sighash_type: value}, psbt}
+
+      _ ->
+        {:error, :invalid_sighash_type}
+    end
   end
 
   defp parse(<<@psbt_in_redeem_script::big-size(8)>>, psbt, input) do
@@ -478,6 +541,14 @@ defmodule Bitcoinex.PSBT.In do
       })
 
     {%In{input | bip32_derivation: bip32_derivation}, psbt}
+  end
+
+  defp parse(
+         <<@psbt_in_bip32_derivation::big-size(8), _public_key::binary-size(65)>>,
+         _psbt,
+         _input
+       ) do
+    {:error, :uncompressed_public_key}
   end
 
   defp parse(<<@psbt_in_final_scriptsig::big-size(8)>>, psbt, input) do
@@ -541,7 +612,7 @@ defmodule Bitcoinex.PSBT.In do
     serialized =
       serialize_kv(:non_witness_utxo, input.non_witness_utxo) <>
         serialize_kv(:witness_utxo, input.witness_utxo) <>
-        serialize_kv(:partial_sig, input.partial_sig) <>
+        PsbtUtils.serialize_repeatable(input.partial_sig, &serialize_partial_sig/1) <>
         serialize_kv(:sighash_type, input.sighash_type) <>
         serialize_kv(:redeem_script, input.redeem_script) <>
         serialize_kv(:witness_script, input.witness_script) <>
@@ -576,12 +647,6 @@ defmodule Bitcoinex.PSBT.In do
         TxUtils.serialize_compact_size_unsigned_int(byte_size(script)) <> script
 
     PsbtUtils.serialize_kv(<<@psbt_in_witness_utxo::big-size(8)>>, value)
-  end
-
-  defp serialize_kv(:partial_sig, partial_sig) do
-    key_data = Base.decode16!(partial_sig.public_key, case: :lower)
-    value = Base.decode16!(partial_sig.signature, case: :lower)
-    PsbtUtils.serialize_kv(<<@psbt_in_partial_sig::big-size(8)>> <> key_data, value)
   end
 
   defp serialize_kv(:sighash_type, sighash_type) do
@@ -629,6 +694,12 @@ defmodule Bitcoinex.PSBT.In do
     value = <<bip32_derivation.pfp::little-size(32)>> <> derivation
 
     PsbtUtils.serialize_kv(<<@psbt_in_bip32_derivation::big-size(8)>> <> key_data, value)
+  end
+
+  defp serialize_partial_sig(partial_sig) do
+    key_data = Base.decode16!(partial_sig.public_key, case: :lower)
+    value = Base.decode16!(partial_sig.signature, case: :lower)
+    PsbtUtils.serialize_kv(<<@psbt_in_partial_sig::big-size(8)>> <> key_data, value)
   end
 
   defp serialize_hash_preimages(_key_type, nil), do: <<>>
@@ -711,6 +782,14 @@ defmodule Bitcoinex.PSBT.Out do
       })
 
     {%Out{output | bip32_derivation: bip32_derivation}, psbt}
+  end
+
+  defp parse(
+         <<@psbt_out_bip32_derivation::big-size(8), _public_key::binary-size(65)>>,
+         _psbt,
+         _output
+       ) do
+    {:error, :uncompressed_public_key}
   end
 
   # A key whose leading byte is a known output type but which did not match the
