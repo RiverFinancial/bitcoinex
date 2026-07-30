@@ -11,6 +11,7 @@ defmodule Bitcoinex.PSBT do
   alias Bitcoinex.PSBT.Global
   alias Bitcoinex.PSBT.In
   alias Bitcoinex.PSBT.Out
+  alias Bitcoinex.Transaction
 
   @type t() :: %__MODULE__{
           global: Global.t(),
@@ -60,6 +61,87 @@ defmodule Bitcoinex.PSBT do
     parse(psbt_binary)
   rescue
     _ -> {:error, :invalid_psbt}
+  end
+
+  @doc """
+  Builds a PSBT from an unsigned transaction (the BIP-174 Creator role).
+
+  The transaction must be unsigned: every input's scriptSig must be empty and it
+  must carry no witnesses. Returns one empty input map per transaction input and
+  one empty output map per transaction output.
+  """
+  @spec from_tx(Transaction.t()) :: {:ok, t()} | {:error, atom()}
+  def from_tx(%Transaction{} = tx) do
+    cond do
+      Enum.any?(tx.inputs, fn input -> input.script_sig not in [nil, ""] end) ->
+        {:error, :tx_not_unsigned}
+
+      tx.witnesses not in [nil, []] ->
+        {:error, :tx_not_unsigned}
+
+      true ->
+        {:ok,
+         %PSBT{
+           global: Global.from_unsigned_tx(tx),
+           inputs: Enum.map(tx.inputs, fn _input -> In.new() end),
+           outputs: Enum.map(tx.outputs, fn _output -> Out.new() end)
+         }}
+    end
+  end
+
+  @doc """
+  Returns the txid of the PSBT's global unsigned transaction.
+  """
+  @spec txid(t()) :: {:ok, String.t()} | {:error, :no_unsigned_tx}
+  def txid(%PSBT{global: %{unsigned_tx: nil}}), do: {:error, :no_unsigned_tx}
+  def txid(%PSBT{global: %{unsigned_tx: tx}}), do: {:ok, Transaction.transaction_id(tx)}
+
+  @doc """
+  Adds a field to the PSBT's global map (the BIP-174 Updater role).
+  See `Bitcoinex.PSBT.Global.add_field/3` for the accepted fields.
+  """
+  @spec add_global_field(t(), atom(), any()) :: {:ok, t()} | {:error, atom()}
+  def add_global_field(%PSBT{} = psbt, field, value) do
+    case Global.add_field(psbt.global, field, value) do
+      {:ok, global} -> {:ok, %PSBT{psbt | global: global}}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @doc """
+  Adds a field to the input map at `index`.
+  See `Bitcoinex.PSBT.In.add_field/3` for the accepted fields.
+  """
+  @spec add_input_field(t(), non_neg_integer(), atom(), any()) :: {:ok, t()} | {:error, atom()}
+  def add_input_field(%PSBT{} = psbt, index, field, value) do
+    case put_item_field(psbt.inputs, index, &In.add_field(&1, field, value)) do
+      {:ok, inputs} -> {:ok, %PSBT{psbt | inputs: inputs}}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @doc """
+  Adds a field to the output map at `index`.
+  See `Bitcoinex.PSBT.Out.add_field/3` for the accepted fields.
+  """
+  @spec add_output_field(t(), non_neg_integer(), atom(), any()) :: {:ok, t()} | {:error, atom()}
+  def add_output_field(%PSBT{} = psbt, index, field, value) do
+    case put_item_field(psbt.outputs, index, &Out.add_field(&1, field, value)) do
+      {:ok, outputs} -> {:ok, %PSBT{psbt | outputs: outputs}}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  # Applies add_field_fun to the item at index, replacing it in the list.
+  defp put_item_field(items, index, add_field_fun) do
+    if index < 0 or index >= length(items) do
+      {:error, :index_out_of_range}
+    else
+      case add_field_fun.(Enum.at(items, index)) do
+        {:ok, item} -> {:ok, List.replace_at(items, index, item)}
+        {:error, reason} -> {:error, reason}
+      end
+    end
   end
 
   @spec serialize(t()) :: binary()
@@ -117,10 +199,29 @@ defmodule Bitcoinex.PSBT do
   end
 end
 
+defmodule Bitcoinex.PSBT.KeyOrigin do
+  @moduledoc """
+  A BIP-32 key origin as encoded in PSBT `xpub` and `bip32_derivation` fields:
+  a 4-byte master key fingerprint followed by a derivation path.
+  """
+  alias Bitcoinex.ExtendedKey.DerivationPath
+
+  @type t() :: %__MODULE__{
+          fingerprint: binary(),
+          derivation: DerivationPath.t()
+        }
+
+  @enforce_keys [:fingerprint, :derivation]
+  defstruct [:fingerprint, :derivation]
+end
+
 defmodule Bitcoinex.PSBT.Utils do
   @moduledoc """
   Contains utility functions used throughout PSBT serialization.
   """
+  alias Bitcoinex.{Base58, ExtendedKey}
+  alias Bitcoinex.ExtendedKey.DerivationPath
+  alias Bitcoinex.PSBT.KeyOrigin
   alias Bitcoinex.Transaction.Utils, as: TxUtils
 
   @doc """
@@ -208,6 +309,45 @@ defmodule Bitcoinex.PSBT.Utils do
   def classify_unknown_record(key, value) do
     {:unknown, %{key: key, value: value}}
   end
+
+  @doc """
+  Parses the 78-byte raw extended key from a PSBT `xpub` key into an ExtendedKey.
+  The PSBT encoding omits the Base58 checksum that `ExtendedKey` expects, so it
+  is appended before parsing.
+  """
+  @spec parse_xpub_keydata(binary()) :: {:ok, ExtendedKey.t()} | {:error, term()}
+  def parse_xpub_keydata(<<raw_extended_key::binary-size(78)>>) do
+    ExtendedKey.parse_extended_key(Base58.append_checksum(raw_extended_key))
+  end
+
+  @doc """
+  Serializes an ExtendedKey to the 78-byte raw form used in PSBT `xpub` keys
+  (i.e. without the trailing 4-byte Base58 checksum).
+  """
+  @spec serialize_xpub_keydata(ExtendedKey.t()) :: binary()
+  def serialize_xpub_keydata(xkey) do
+    binary_part(ExtendedKey.serialize_extended_key(xkey), 0, 78)
+  end
+
+  @doc """
+  Parses a key origin value: a 4-byte master fingerprint (stored verbatim, not
+  reinterpreted) followed by little-endian uint32 derivation indexes.
+  """
+  @spec parse_key_origin(binary()) :: KeyOrigin.t()
+  def parse_key_origin(<<fingerprint::binary-size(4), path::binary>>) do
+    child_nums = for <<index::little-unsigned-32 <- path>>, do: index
+    %KeyOrigin{fingerprint: fingerprint, derivation: %DerivationPath{child_nums: child_nums}}
+  end
+
+  @doc """
+  Serializes a key origin: the 4-byte fingerprint followed by little-endian
+  uint32 derivation indexes.
+  """
+  @spec serialize_key_origin(KeyOrigin.t()) :: binary()
+  def serialize_key_origin(%KeyOrigin{fingerprint: fingerprint, derivation: derivation}) do
+    path = for index <- derivation.child_nums, into: <<>>, do: <<index::little-size(32)>>
+    fingerprint <> path
+  end
 end
 
 defmodule Bitcoinex.PSBT.Global do
@@ -218,7 +358,6 @@ defmodule Bitcoinex.PSBT.Global do
   alias Bitcoinex.Transaction
   alias Bitcoinex.Transaction.Utils, as: TxUtils
   alias Bitcoinex.PSBT.Utils, as: PsbtUtils
-  alias Bitcoinex.Base58
 
   @type t() :: %__MODULE__{}
 
@@ -233,6 +372,46 @@ defmodule Bitcoinex.PSBT.Global do
   @psbt_global_unsigned_tx 0x00
   @psbt_global_xpub 0x01
   @psbt_global_version 0xFB
+
+  @doc """
+  Builds a Global map wrapping an unsigned transaction.
+  """
+  @spec from_unsigned_tx(Transaction.t()) :: t()
+  def from_unsigned_tx(%Transaction{} = tx) do
+    %Global{unsigned_tx: %{tx | witnesses: nil}}
+  end
+
+  @doc """
+  Adds a field to a Global map. Accepted fields:
+
+    * `:unsigned_tx` — a `Transaction.t()`
+    * `:xpub` — `%{xkey: ExtendedKey.t(), origin: KeyOrigin.t()}` (repeatable)
+    * `:version` — a non-negative integer
+    * `:proprietary` / `:unknown` — `%{key: binary(), value: binary()}` (repeatable)
+  """
+  @spec add_field(t(), atom(), any()) :: {:ok, t()} | {:error, atom()}
+  def add_field(%Global{} = global, :unsigned_tx, %Transaction{} = tx) do
+    {:ok, %Global{global | unsigned_tx: tx}}
+  end
+
+  def add_field(%Global{} = global, :xpub, %{xkey: _, origin: _} = xpub) do
+    {:ok, %Global{global | xpub: PsbtUtils.append(global.xpub, xpub)}}
+  end
+
+  def add_field(%Global{} = global, :version, version)
+      when is_integer(version) and version >= 0 do
+    {:ok, %Global{global | version: version}}
+  end
+
+  def add_field(%Global{} = global, :proprietary, %{key: _, value: _} = record) do
+    {:ok, %Global{global | proprietary: PsbtUtils.append(global.proprietary, record)}}
+  end
+
+  def add_field(%Global{} = global, :unknown, %{key: _, value: _} = record) do
+    {:ok, %Global{global | unknown: PsbtUtils.append(global.unknown, record)}}
+  end
+
+  def add_field(%Global{}, _field, _value), do: {:error, :invalid_field}
 
   @spec parse_global(binary()) :: {:ok, {t(), binary()}} | {:error, term()}
   def parse_global(psbt) do
@@ -274,25 +453,23 @@ defmodule Bitcoinex.PSBT.Global do
     end
   end
 
-  defp parse(<<@psbt_global_xpub::big-size(8), xpub::binary-size(78)>>, psbt, global) do
+  defp parse(<<@psbt_global_xpub::big-size(8), raw_extended_key::binary-size(78)>>, psbt, global) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
 
-    <<master_fingerprint::little-unsigned-32, paths::binary>> = value
-    derivation = for <<index::little-unsigned-32 <- paths>>, do: index
+    case PsbtUtils.parse_xpub_keydata(raw_extended_key) do
+      {:ok, xkey} ->
+        xpub = %{xkey: xkey, origin: PsbtUtils.parse_key_origin(value)}
+        {%Global{global | xpub: PsbtUtils.append(global.xpub, xpub)}, psbt}
 
-    global_xpub =
-      PsbtUtils.append(global.xpub, %{
-        xpub: Base58.encode(xpub),
-        master_pfp: master_fingerprint,
-        derivation: derivation
-      })
-
-    {%Global{global | xpub: global_xpub}, psbt}
+      {:error, _reason} ->
+        {:error, :invalid_xpub}
+    end
   end
 
   defp parse(<<@psbt_global_version::big-size(8)>>, psbt, global) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    {%Global{global | version: value}, psbt}
+    <<version::little-unsigned-32>> = value
+    {%Global{global | version: version}, psbt}
   end
 
   # A key whose leading byte is a known global type but which did not match the
@@ -330,15 +507,12 @@ defmodule Bitcoinex.PSBT.Global do
   end
 
   defp serialize_kv(:version, version) do
-    PsbtUtils.serialize_kv(<<@psbt_global_version::big-size(8)>>, version)
+    PsbtUtils.serialize_kv(<<@psbt_global_version::big-size(8)>>, <<version::little-size(32)>>)
   end
 
-  defp serialize_xpub(xpub) do
-    {:ok, key_data} = Base58.decode(xpub.xpub)
-
-    derivation = for index <- xpub.derivation, into: <<>>, do: <<index::little-size(32)>>
-    value = <<xpub.master_pfp::little-size(32)>> <> derivation
-
+  defp serialize_xpub(%{xkey: xkey, origin: origin}) do
+    key_data = PsbtUtils.serialize_xpub_keydata(xkey)
+    value = PsbtUtils.serialize_key_origin(origin)
     PsbtUtils.serialize_kv(<<@psbt_global_xpub::big-size(8)>> <> key_data, value)
   end
 
@@ -351,12 +525,15 @@ defmodule Bitcoinex.PSBT.In do
   @moduledoc """
   Input properties of a partially signed bitcoin transaction.
   """
+  alias Bitcoinex.Script
   alias Bitcoinex.Transaction
   alias Bitcoinex.Transaction.Witness
   alias Bitcoinex.Transaction.Out
   alias Bitcoinex.PSBT.In
+  alias Bitcoinex.PSBT.KeyOrigin
   alias Bitcoinex.PSBT.Utils, as: PsbtUtils
   alias Bitcoinex.Transaction.Utils, as: TxUtils
+  alias Bitcoinex.Secp256k1.{Point, Signature}
 
   @type t() :: %__MODULE__{}
 
@@ -394,6 +571,126 @@ defmodule Bitcoinex.PSBT.In do
   @psbt_in_hash160 0x0C
   @psbt_in_hash256 0x0D
 
+  @valid_sighash_flags [0x01, 0x02, 0x03, 0x81, 0x82, 0x83]
+
+  @doc """
+  Returns an empty input map.
+  """
+  @spec new() :: t()
+  def new(), do: %In{}
+
+  @doc """
+  Adds a field to an input map. Accepted fields:
+
+    * `:non_witness_utxo` — a `Transaction.t()`
+    * `:witness_utxo` — a `Transaction.Out.t()`
+    * `:partial_sig` — `%{public_key: Point.t(), signature: Signature.t(), sighash: 0..255}` (repeatable)
+    * `:sighash_type` — one of the valid sighash flag integers
+    * `:redeem_script` / `:witness_script` / `:final_scriptsig` — a `Script.t()` or its hex/binary
+    * `:bip32_derivation` — `%{public_key: Point.t(), origin: KeyOrigin.t()}` (repeatable)
+    * `:final_scriptwitness` — a `Transaction.Witness.t()`
+    * `:por_commitment` — a binary
+    * `:ripemd160` / `:sha256` / `:hash160` / `:hash256` — `%{hash: binary(), preimage: binary()}` (repeatable)
+    * `:proprietary` / `:unknown` — `%{key: binary(), value: binary()}` (repeatable)
+  """
+  @spec add_field(t(), atom(), any()) :: {:ok, t()} | {:error, atom()}
+  def add_field(%In{} = input, :non_witness_utxo, %Transaction{} = tx) do
+    {:ok, %In{input | non_witness_utxo: tx}}
+  end
+
+  def add_field(%In{} = input, :witness_utxo, %Out{} = utxo) do
+    {:ok, %In{input | witness_utxo: utxo}}
+  end
+
+  def add_field(
+        %In{} = input,
+        :partial_sig,
+        %{
+          public_key: %Point{},
+          signature: %Signature{},
+          sighash: sighash
+        } = record
+      )
+      when sighash in @valid_sighash_flags do
+    {:ok, %In{input | partial_sig: PsbtUtils.append(input.partial_sig, record)}}
+  end
+
+  def add_field(%In{} = input, :sighash_type, sighash_type)
+      when sighash_type in @valid_sighash_flags do
+    {:ok, %In{input | sighash_type: sighash_type}}
+  end
+
+  def add_field(%In{} = input, :redeem_script, script) do
+    with_script(script, fn script -> %In{input | redeem_script: script} end)
+  end
+
+  def add_field(%In{} = input, :witness_script, script) do
+    with_script(script, fn script -> %In{input | witness_script: script} end)
+  end
+
+  def add_field(%In{} = input, :final_scriptsig, script) do
+    with_script(script, fn script -> %In{input | final_scriptsig: script} end)
+  end
+
+  def add_field(
+        %In{} = input,
+        :bip32_derivation,
+        %{public_key: %Point{}, origin: %KeyOrigin{}} = record
+      ) do
+    {:ok, %In{input | bip32_derivation: PsbtUtils.append(input.bip32_derivation, record)}}
+  end
+
+  def add_field(%In{} = input, :final_scriptwitness, %Witness{} = witness) do
+    {:ok, %In{input | final_scriptwitness: witness}}
+  end
+
+  def add_field(%In{} = input, :por_commitment, por_commitment)
+      when is_binary(por_commitment) do
+    {:ok, %In{input | por_commitment: por_commitment}}
+  end
+
+  def add_field(%In{} = input, :ripemd160, %{hash: hash, preimage: preimage} = record)
+      when byte_size(hash) == 20 and is_binary(preimage) do
+    {:ok, %In{input | ripemd160: PsbtUtils.append(input.ripemd160, record)}}
+  end
+
+  def add_field(%In{} = input, :sha256, %{hash: hash, preimage: preimage} = record)
+      when byte_size(hash) == 32 and is_binary(preimage) do
+    {:ok, %In{input | sha256: PsbtUtils.append(input.sha256, record)}}
+  end
+
+  def add_field(%In{} = input, :hash160, %{hash: hash, preimage: preimage} = record)
+      when byte_size(hash) == 20 and is_binary(preimage) do
+    {:ok, %In{input | hash160: PsbtUtils.append(input.hash160, record)}}
+  end
+
+  def add_field(%In{} = input, :hash256, %{hash: hash, preimage: preimage} = record)
+      when byte_size(hash) == 32 and is_binary(preimage) do
+    {:ok, %In{input | hash256: PsbtUtils.append(input.hash256, record)}}
+  end
+
+  def add_field(%In{} = input, :proprietary, %{key: _, value: _} = record) do
+    {:ok, %In{input | proprietary: PsbtUtils.append(input.proprietary, record)}}
+  end
+
+  def add_field(%In{} = input, :unknown, %{key: _, value: _} = record) do
+    {:ok, %In{input | unknown: PsbtUtils.append(input.unknown, record)}}
+  end
+
+  def add_field(%In{}, _field, _value), do: {:error, :invalid_field}
+
+  # Normalizes a Script, hex string, or raw binary into a Script and applies it.
+  defp with_script(%Script{} = script, put_fun), do: {:ok, put_fun.(script)}
+
+  defp with_script(script, put_fun) when is_binary(script) do
+    case Script.parse_script(script) do
+      {:ok, script} -> {:ok, put_fun.(script)}
+      {:error, _reason} -> {:error, :invalid_script}
+    end
+  end
+
+  defp with_script(_script, _put_fun), do: {:error, :invalid_field}
+
   @spec parse_inputs(binary(), non_neg_integer()) ::
           {:ok, {list(t()), binary()}} | {:error, term()}
   def parse_inputs(psbt, num_inputs) do
@@ -430,51 +727,57 @@ defmodule Bitcoinex.PSBT.In do
     {%In{input | witness_utxo: out}, psbt}
   end
 
-  defp parse(<<@psbt_in_partial_sig::big-size(8), public_key::binary-size(33)>>, psbt, input) do
+  defp parse(
+         <<@psbt_in_partial_sig::big-size(8), public_key_bytes::binary-size(33)>>,
+         psbt,
+         input
+       ) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
 
-    partial_sig = %{
-      public_key: Base.encode16(public_key, case: :lower),
-      signature: Base.encode16(value, case: :lower)
-    }
-
-    {%In{input | partial_sig: partial_sig}, psbt}
+    with {:ok, public_key} <- Point.parse_public_key(public_key_bytes),
+         {:ok, partial_sig} <- parse_partial_sig(public_key, value) do
+      {%In{input | partial_sig: PsbtUtils.append(input.partial_sig, partial_sig)}, psbt}
+    else
+      {:error, _reason} -> {:error, :invalid_partial_sig}
+    end
   end
 
   defp parse(<<@psbt_in_sighash_type::big-size(8)>>, psbt, input) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    {%In{input | sighash_type: value}, psbt}
+    <<sighash_type::little-unsigned-32>> = value
+    {%In{input | sighash_type: sighash_type}, psbt}
   end
 
   defp parse(<<@psbt_in_redeem_script::big-size(8)>>, psbt, input) do
-    {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    {%In{input | redeem_script: Base.encode16(value, case: :lower)}, psbt}
+    {script, psbt} = parse_script(psbt)
+    {%In{input | redeem_script: script}, psbt}
   end
 
   defp parse(<<@psbt_in_witness_script::big-size(8)>>, psbt, input) do
-    {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    {%In{input | witness_script: Base.encode16(value, case: :lower)}, psbt}
+    {script, psbt} = parse_script(psbt)
+    {%In{input | witness_script: script}, psbt}
   end
 
-  defp parse(<<@psbt_in_bip32_derivation::big-size(8), public_key::binary-size(33)>>, psbt, input) do
+  defp parse(
+         <<@psbt_in_bip32_derivation::big-size(8), public_key_bytes::binary-size(33)>>,
+         psbt,
+         input
+       ) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
 
-    <<master_fingerprint::little-unsigned-32, paths::binary>> = value
-    derivation = for <<index::little-unsigned-32 <- paths>>, do: index
+    case Point.parse_public_key(public_key_bytes) do
+      {:ok, public_key} ->
+        record = %{public_key: public_key, origin: PsbtUtils.parse_key_origin(value)}
+        {%In{input | bip32_derivation: PsbtUtils.append(input.bip32_derivation, record)}, psbt}
 
-    bip32_derivation =
-      PsbtUtils.append(input.bip32_derivation, %{
-        public_key: Base.encode16(public_key, case: :lower),
-        pfp: master_fingerprint,
-        derivation: derivation
-      })
-
-    {%In{input | bip32_derivation: bip32_derivation}, psbt}
+      {:error, _reason} ->
+        {:error, :invalid_bip32_derivation}
+    end
   end
 
   defp parse(<<@psbt_in_final_scriptsig::big-size(8)>>, psbt, input) do
-    {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    {%In{input | final_scriptsig: Base.encode16(value, case: :lower)}, psbt}
+    {script, psbt} = parse_script(psbt)
+    {%In{input | final_scriptsig: script}, psbt}
   end
 
   defp parse(<<@psbt_in_final_scriptwitness::big-size(8)>>, psbt, input) do
@@ -524,6 +827,27 @@ defmodule Bitcoinex.PSBT.In do
     {Map.update(input, field, [record], &PsbtUtils.append(&1, record)), psbt}
   end
 
+  # Splits a PSBT partial_sig value into its DER signature and trailing sighash byte.
+  defp parse_partial_sig(public_key, value) do
+    signature_length = byte_size(value) - 1
+    <<der_signature::binary-size(signature_length), sighash::8>> = value
+
+    case Signature.der_parse_signature(der_signature) do
+      {:ok, signature} ->
+        {:ok, %{public_key: public_key, signature: signature, sighash: sighash}}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  # Parses a length-prefixed script value into a Script struct.
+  defp parse_script(psbt) do
+    {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
+    {:ok, script} = Script.parse_script(Base.encode16(value, case: :lower))
+    {script, psbt}
+  end
+
   @spec serialize_inputs(list(t())) :: binary()
   def serialize_inputs(inputs) when is_list(inputs) do
     Enum.map_join(inputs, &serialize_input/1)
@@ -533,7 +857,7 @@ defmodule Bitcoinex.PSBT.In do
     serialized =
       serialize_kv(:non_witness_utxo, input.non_witness_utxo) <>
         serialize_kv(:witness_utxo, input.witness_utxo) <>
-        serialize_kv(:partial_sig, input.partial_sig) <>
+        PsbtUtils.serialize_repeatable(input.partial_sig, &serialize_partial_sig/1) <>
         serialize_kv(:sighash_type, input.sighash_type) <>
         serialize_kv(:redeem_script, input.redeem_script) <>
         serialize_kv(:witness_script, input.witness_script) <>
@@ -570,34 +894,31 @@ defmodule Bitcoinex.PSBT.In do
     PsbtUtils.serialize_kv(<<@psbt_in_witness_utxo::big-size(8)>>, value)
   end
 
-  defp serialize_kv(:partial_sig, partial_sig) do
-    key_data = Base.decode16!(partial_sig.public_key, case: :lower)
-    value = Base.decode16!(partial_sig.signature, case: :lower)
-    PsbtUtils.serialize_kv(<<@psbt_in_partial_sig::big-size(8)>> <> key_data, value)
-  end
-
   defp serialize_kv(:sighash_type, sighash_type) do
-    PsbtUtils.serialize_kv(<<@psbt_in_sighash_type::big-size(8)>>, sighash_type)
+    PsbtUtils.serialize_kv(
+      <<@psbt_in_sighash_type::big-size(8)>>,
+      <<sighash_type::little-size(32)>>
+    )
   end
 
-  defp serialize_kv(:redeem_script, redeem_script) do
+  defp serialize_kv(:redeem_script, script) do
     PsbtUtils.serialize_kv(
       <<@psbt_in_redeem_script::big-size(8)>>,
-      Base.decode16!(redeem_script, case: :lower)
+      Script.serialize_script(script)
     )
   end
 
-  defp serialize_kv(:witness_script, witness_script) do
+  defp serialize_kv(:witness_script, script) do
     PsbtUtils.serialize_kv(
       <<@psbt_in_witness_script::big-size(8)>>,
-      Base.decode16!(witness_script, case: :lower)
+      Script.serialize_script(script)
     )
   end
 
-  defp serialize_kv(:final_scriptsig, final_scriptsig) do
+  defp serialize_kv(:final_scriptsig, script) do
     PsbtUtils.serialize_kv(
       <<@psbt_in_final_scriptsig::big-size(8)>>,
-      Base.decode16!(final_scriptsig, case: :lower)
+      Script.serialize_script(script)
     )
   end
 
@@ -612,15 +933,15 @@ defmodule Bitcoinex.PSBT.In do
     PsbtUtils.serialize_kv(<<@psbt_in_por_commitment::big-size(8)>>, por_commitment)
   end
 
-  defp serialize_bip32_derivation(bip32_derivation) do
-    key_data = Base.decode16!(bip32_derivation.public_key, case: :lower)
+  defp serialize_partial_sig(%{public_key: public_key, signature: signature, sighash: sighash}) do
+    key = <<@psbt_in_partial_sig::big-size(8)>> <> Point.sec(public_key)
+    value = Signature.der_serialize_signature(signature) <> <<sighash>>
+    PsbtUtils.serialize_kv(key, value)
+  end
 
-    derivation =
-      for index <- bip32_derivation.derivation, into: <<>>, do: <<index::little-size(32)>>
-
-    value = <<bip32_derivation.pfp::little-size(32)>> <> derivation
-
-    PsbtUtils.serialize_kv(<<@psbt_in_bip32_derivation::big-size(8)>> <> key_data, value)
+  defp serialize_bip32_derivation(%{public_key: public_key, origin: origin}) do
+    key = <<@psbt_in_bip32_derivation::big-size(8)>> <> Point.sec(public_key)
+    PsbtUtils.serialize_kv(key, PsbtUtils.serialize_key_origin(origin))
   end
 
   defp serialize_hash_preimages(_key_type, nil), do: <<>>
@@ -640,8 +961,11 @@ defmodule Bitcoinex.PSBT.Out do
   @moduledoc """
   Output properties of a partially signed bitcoin transaction.
   """
+  alias Bitcoinex.Script
   alias Bitcoinex.PSBT.Out
+  alias Bitcoinex.PSBT.KeyOrigin
   alias Bitcoinex.PSBT.Utils, as: PsbtUtils
+  alias Bitcoinex.Secp256k1.Point
 
   @type t() :: %__MODULE__{}
 
@@ -656,6 +980,57 @@ defmodule Bitcoinex.PSBT.Out do
   @psbt_out_redeem_script 0x00
   @psbt_out_witness_script 0x01
   @psbt_out_bip32_derivation 0x02
+
+  @doc """
+  Returns an empty output map.
+  """
+  @spec new() :: t()
+  def new(), do: %Out{}
+
+  @doc """
+  Adds a field to an output map. Accepted fields:
+
+    * `:redeem_script` / `:witness_script` — a `Script.t()` or its hex/binary
+    * `:bip32_derivation` — `%{public_key: Point.t(), origin: KeyOrigin.t()}` (repeatable)
+    * `:proprietary` / `:unknown` — `%{key: binary(), value: binary()}` (repeatable)
+  """
+  @spec add_field(t(), atom(), any()) :: {:ok, t()} | {:error, atom()}
+  def add_field(%Out{} = output, :redeem_script, script) do
+    with_script(script, fn script -> %Out{output | redeem_script: script} end)
+  end
+
+  def add_field(%Out{} = output, :witness_script, script) do
+    with_script(script, fn script -> %Out{output | witness_script: script} end)
+  end
+
+  def add_field(
+        %Out{} = output,
+        :bip32_derivation,
+        %{public_key: %Point{}, origin: %KeyOrigin{}} = record
+      ) do
+    {:ok, %Out{output | bip32_derivation: PsbtUtils.append(output.bip32_derivation, record)}}
+  end
+
+  def add_field(%Out{} = output, :proprietary, %{key: _, value: _} = record) do
+    {:ok, %Out{output | proprietary: PsbtUtils.append(output.proprietary, record)}}
+  end
+
+  def add_field(%Out{} = output, :unknown, %{key: _, value: _} = record) do
+    {:ok, %Out{output | unknown: PsbtUtils.append(output.unknown, record)}}
+  end
+
+  def add_field(%Out{}, _field, _value), do: {:error, :invalid_field}
+
+  defp with_script(%Script{} = script, put_fun), do: {:ok, put_fun.(script)}
+
+  defp with_script(script, put_fun) when is_binary(script) do
+    case Script.parse_script(script) do
+      {:ok, script} -> {:ok, put_fun.(script)}
+      {:error, _reason} -> {:error, :invalid_script}
+    end
+  end
+
+  defp with_script(_script, _put_fun), do: {:error, :invalid_field}
 
   @spec parse_outputs(binary(), non_neg_integer()) ::
           {:ok, {list(t()), binary()}} | {:error, term()}
@@ -676,33 +1051,30 @@ defmodule Bitcoinex.PSBT.Out do
   end
 
   defp parse(<<@psbt_out_redeem_script::big-size(8)>>, psbt, output) do
-    {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    {%Out{output | redeem_script: Base.encode16(value, case: :lower)}, psbt}
+    {script, psbt} = parse_script(psbt)
+    {%Out{output | redeem_script: script}, psbt}
   end
 
   defp parse(<<@psbt_out_witness_script::big-size(8)>>, psbt, output) do
-    {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    {%Out{output | witness_script: Base.encode16(value, case: :lower)}, psbt}
+    {script, psbt} = parse_script(psbt)
+    {%Out{output | witness_script: script}, psbt}
   end
 
   defp parse(
-         <<@psbt_out_bip32_derivation::big-size(8), public_key::binary-size(33)>>,
+         <<@psbt_out_bip32_derivation::big-size(8), public_key_bytes::binary-size(33)>>,
          psbt,
          output
        ) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
 
-    <<master_fingerprint::little-unsigned-32, paths::binary>> = value
-    derivation = for <<index::little-unsigned-32 <- paths>>, do: index
+    case Point.parse_public_key(public_key_bytes) do
+      {:ok, public_key} ->
+        record = %{public_key: public_key, origin: PsbtUtils.parse_key_origin(value)}
+        {%Out{output | bip32_derivation: PsbtUtils.append(output.bip32_derivation, record)}, psbt}
 
-    bip32_derivation =
-      PsbtUtils.append(output.bip32_derivation, %{
-        public_key: Base.encode16(public_key, case: :lower),
-        pfp: master_fingerprint,
-        derivation: derivation
-      })
-
-    {%Out{output | bip32_derivation: bip32_derivation}, psbt}
+      {:error, _reason} ->
+        {:error, :invalid_bip32_derivation}
+    end
   end
 
   # A key whose leading byte is a known output type but which did not match the
@@ -716,6 +1088,13 @@ defmodule Bitcoinex.PSBT.Out do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
     {field, record} = PsbtUtils.classify_unknown_record(key, value)
     {Map.update(output, field, [record], &PsbtUtils.append(&1, record)), psbt}
+  end
+
+  # Parses a length-prefixed script value into a Script struct.
+  defp parse_script(psbt) do
+    {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
+    {:ok, script} = Script.parse_script(Base.encode16(value, case: :lower))
+    {script, psbt}
   end
 
   @spec serialize_outputs(list(t())) :: binary()
@@ -736,29 +1115,23 @@ defmodule Bitcoinex.PSBT.Out do
 
   defp serialize_kv(_field, nil), do: <<>>
 
-  defp serialize_kv(:redeem_script, redeem_script) do
+  defp serialize_kv(:redeem_script, script) do
     PsbtUtils.serialize_kv(
       <<@psbt_out_redeem_script::big-size(8)>>,
-      Base.decode16!(redeem_script, case: :lower)
+      Script.serialize_script(script)
     )
   end
 
-  defp serialize_kv(:witness_script, witness_script) do
+  defp serialize_kv(:witness_script, script) do
     PsbtUtils.serialize_kv(
       <<@psbt_out_witness_script::big-size(8)>>,
-      Base.decode16!(witness_script, case: :lower)
+      Script.serialize_script(script)
     )
   end
 
-  defp serialize_bip32_derivation(bip32_derivation) do
-    key_data = Base.decode16!(bip32_derivation.public_key, case: :lower)
-
-    derivation =
-      for index <- bip32_derivation.derivation, into: <<>>, do: <<index::little-size(32)>>
-
-    value = <<bip32_derivation.pfp::little-size(32)>> <> derivation
-
-    PsbtUtils.serialize_kv(<<@psbt_out_bip32_derivation::big-size(8)>> <> key_data, value)
+  defp serialize_bip32_derivation(%{public_key: public_key, origin: origin}) do
+    key = <<@psbt_out_bip32_derivation::big-size(8)>> <> Point.sec(public_key)
+    PsbtUtils.serialize_kv(key, PsbtUtils.serialize_key_origin(origin))
   end
 
   defp serialize_record(%{key: key, value: value}) do

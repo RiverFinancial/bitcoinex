@@ -5,6 +5,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Added
+- `PSBT.from_tx/1` (Creator), `PSBT.txid/1`, and the Updater API — `PSBT.add_global_field/3`, `PSBT.add_input_field/4`, `PSBT.add_output_field/4` (each dispatching on a field-name atom via `PSBT.Global.add_field/3`, `PSBT.In.add_field/3`, `PSBT.Out.add_field/3`).
+### Changed
+- **Breaking:** decoded PSBT fields are now typed `Bitcoinex` structs rather than hex/Base58 strings or integer lists: pubkeys are `Secp256k1.Point.t()`, signatures `Secp256k1.Signature.t()`, scripts (`redeem_script`/`witness_script`/`final_scriptsig`) `Script.t()`, extended keys `ExtendedKey.t()`, and BIP-32 key origins a new `PSBT.KeyOrigin` struct (`fingerprint` as raw 4 bytes, `derivation` as `ExtendedKey.DerivationPath.t()`). `sighash_type` and global `version` are now integers. `partial_sig` is now a list (BIP-174 allows multiple signatures per input).
 ### Fixed
 - `Transaction.Utils.serialize_compact_size_unsigned_int/1` now encodes values above `0xFFFFFFFF` as a `0xFF`-prefixed little-endian uint64. The final `cond` branch previously read `compact_size <= 0xFF` (unreachable), so any such value raised `CondClauseError`.
 - PSBT (de)serialization is now lossless for all BIP-174 v0 fields. `PSBT.encode_b64/1` previously dropped the global `version`, per-input `por_commitment`, and any proprietary records (`Global.serialize_global/1` carried a `TODO: serialize all other fields`), so `decode |> encode_b64` was not the identity for many PSBTs.
