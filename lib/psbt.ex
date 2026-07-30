@@ -11,9 +11,12 @@ defmodule Bitcoinex.PSBT do
   alias Bitcoinex.PSBT.Global
   alias Bitcoinex.PSBT.In
   alias Bitcoinex.PSBT.Out
-  alias Bitcoinex.Transaction.Utils, as: TxUtils
 
-  @type t() :: %__MODULE__{}
+  @type t() :: %__MODULE__{
+          global: Global.t(),
+          inputs: list(In.t()),
+          outputs: list(Out.t())
+        }
 
   defstruct [
     :global,
@@ -30,10 +33,10 @@ defmodule Bitcoinex.PSBT do
   Decodes a base64 encoded string into a PSBT.
   """
   @spec decode(String.t()) :: {:ok, t()} | {:error, term()}
-  def decode(psbt_b64) when is_binary(psbt_b64) do
-    case Base.decode64(psbt_b64) do
-      {:ok, psbt_b64} ->
-        parse(psbt_b64)
+  def decode(psbt_base64) when is_binary(psbt_base64) do
+    case Base.decode64(psbt_base64) do
+      {:ok, psbt_binary} ->
+        safe_parse(psbt_binary)
 
       :error ->
         {:error, :decode_error}
@@ -47,7 +50,16 @@ defmodule Bitcoinex.PSBT do
   def from_file(filename) do
     filename
     |> File.read!()
-    |> parse()
+    |> safe_parse()
+  end
+
+  # Parsing operates on untrusted input; a malformed binary (e.g. a value whose
+  # declared length exceeds the remaining bytes) raises during binary matching.
+  # Convert any such raise into a clean error rather than crashing the caller.
+  defp safe_parse(psbt_binary) do
+    parse(psbt_binary)
+  rescue
+    _ -> {:error, :invalid_psbt}
   end
 
   @spec serialize(t()) :: binary()
@@ -77,20 +89,31 @@ defmodule Bitcoinex.PSBT do
     |> Base.encode64()
   end
 
+  @spec parse(binary()) :: {:ok, t()} | {:error, term()}
   defp parse(<<@magic::big-size(32), @separator::big-size(8), psbt::binary>>) do
-    # key-value pairs for all global data
-    {global, psbt} = Global.parse_global(psbt)
-    in_counter = length(global.unsigned_tx.inputs)
-    {inputs, psbt} = In.parse_inputs(psbt, in_counter)
-    out_counter = length(global.unsigned_tx.outputs)
-    {outputs, _} = Out.parse_outputs(psbt, out_counter)
+    with {:ok, {global, psbt}} <- Global.parse_global(psbt),
+         {:ok, input_count} <- input_count(global),
+         {:ok, {inputs, psbt}} <- In.parse_inputs(psbt, input_count),
+         output_count = length(global.unsigned_tx.outputs),
+         {:ok, {outputs, _psbt}} <- Out.parse_outputs(psbt, output_count) do
+      {:ok,
+       %PSBT{
+         global: global,
+         inputs: inputs,
+         outputs: outputs
+       }}
+    end
+  end
 
-    {:ok,
-     %PSBT{
-       global: global,
-       inputs: inputs,
-       outputs: outputs
-     }}
+  defp parse(_), do: {:error, :invalid_magic}
+
+  # PSBT v0 requires a global unsigned transaction; its input count fixes the
+  # number of input maps that follow.
+  defp input_count(global) do
+    case global.unsigned_tx do
+      nil -> {:error, :missing_unsigned_tx}
+      unsigned_tx -> {:ok, length(unsigned_tx.inputs)}
+    end
   end
 end
 
@@ -100,32 +123,90 @@ defmodule Bitcoinex.PSBT.Utils do
   """
   alias Bitcoinex.Transaction.Utils, as: TxUtils
 
+  @doc """
+  Reads a single compact-size-prefixed value off the front of a binary.
+  """
   def parse_compact_size_value(key_value) do
-    {len, key_value} = TxUtils.get_counter(key_value)
-    <<value::binary-size(len), remaining::binary>> = key_value
+    {value_length, key_value} = TxUtils.get_counter(key_value)
+    <<value::binary-size(value_length), remaining::binary>> = key_value
     {value, remaining}
   end
 
-  # parses key value pairs with a provided parse function
-  def parse_key_value(psbt, kv, parse_func) do
-    case psbt do
-      # separator
-      <<0x00::big-size(8), psbt::binary>> ->
-        {kv, psbt}
+  @doc """
+  Parses a sequence of key-value records terminated by the 0x00 map separator,
+  dispatching each record to `parse_func`.
 
-      _ ->
-        case parse_compact_size_value(psbt) do
-          {key, psbt} ->
-            {kv, psbt} = parse_func.(key, psbt, kv)
-            parse_key_value(psbt, kv, parse_func)
-        end
+  Rejects duplicate keys within the map (BIP-174) with `{:error, :duplicate_key}`,
+  and propagates any `{:error, reason}` raised by `parse_func`.
+
+  Returns `{:ok, {accumulator, remaining_binary}}` on success.
+  """
+  def parse_key_value(psbt, accumulator, parse_func) do
+    parse_key_value(psbt, accumulator, parse_func, MapSet.new())
+  end
+
+  defp parse_key_value(<<0x00, remaining::binary>>, accumulator, _parse_func, _seen_keys) do
+    {:ok, {accumulator, remaining}}
+  end
+
+  defp parse_key_value(<<>>, _accumulator, _parse_func, _seen_keys) do
+    {:error, :unexpected_end_of_data}
+  end
+
+  defp parse_key_value(psbt, accumulator, parse_func, seen_keys) do
+    {key, remaining} = parse_compact_size_value(psbt)
+
+    if MapSet.member?(seen_keys, key) do
+      {:error, :duplicate_key}
+    else
+      case parse_func.(key, remaining, accumulator) do
+        {:error, reason} ->
+          {:error, reason}
+
+        {accumulator, remaining} ->
+          parse_key_value(remaining, accumulator, parse_func, MapSet.put(seen_keys, key))
+      end
     end
   end
 
-  def serialize_kv(key, val) do
-    key_len = TxUtils.serialize_compact_size_unsigned_int(byte_size(key))
-    val_len = TxUtils.serialize_compact_size_unsigned_int(byte_size(val))
-    key_len <> key <> val_len <> val
+  @doc """
+  Serializes a key-value record: compact-size key length, key, compact-size
+  value length, value.
+  """
+  def serialize_kv(key, value) do
+    key_length = TxUtils.serialize_compact_size_unsigned_int(byte_size(key))
+    value_length = TxUtils.serialize_compact_size_unsigned_int(byte_size(value))
+    key_length <> key <> value_length <> value
+  end
+
+  @doc """
+  Appends an item to a list-valued field, treating `nil` as the empty list.
+  Preserves insertion order.
+  """
+  def append(nil, item), do: [item]
+  def append(items, item) when is_list(items), do: items ++ [item]
+
+  @doc """
+  Serializes a repeatable (list-valued) field, mapping each item through
+  `serialize_func`. A `nil` field serializes to nothing.
+  """
+  def serialize_repeatable(nil, _serialize_func), do: <<>>
+
+  def serialize_repeatable(items, serialize_func) when is_list(items) do
+    Enum.map_join(items, serialize_func)
+  end
+
+  @doc """
+  Classifies an unrecognized key-value record: proprietary keys (leading byte
+  0xFC) are collected into the `:proprietary` field, all others into `:unknown`.
+  Returns `{field_name, record}` where record is `%{key: key, value: value}`.
+  """
+  def classify_unknown_record(<<0xFC, _rest::binary>> = key, value) do
+    {:proprietary, %{key: key, value: value}}
+  end
+
+  def classify_unknown_record(key, value) do
+    {:unknown, %{key: key, value: value}}
   end
 end
 
@@ -139,112 +220,130 @@ defmodule Bitcoinex.PSBT.Global do
   alias Bitcoinex.PSBT.Utils, as: PsbtUtils
   alias Bitcoinex.Base58
 
+  @type t() :: %__MODULE__{}
+
   defstruct [
     :unsigned_tx,
     :xpub,
     :version,
-    :proprietary
+    :proprietary,
+    :unknown
   ]
 
   @psbt_global_unsigned_tx 0x00
   @psbt_global_xpub 0x01
   @psbt_global_version 0xFB
-  @psbt_global_proprietary 0xFC
 
+  @spec parse_global(binary()) :: {:ok, {t(), binary()}} | {:error, term()}
   def parse_global(psbt) do
     PsbtUtils.parse_key_value(psbt, %Global{}, &parse/3)
   end
 
+  # BIP-174: the global unsigned tx must be serialized in the legacy
+  # (non-witness) format. Re-serializing without witnesses must reproduce the
+  # exact bytes; otherwise the input carried a segwit marker/flag/witness.
+  defp legacy_serialized?(txn, txn_bytes) do
+    TxUtils.serialize(%{txn | witnesses: []}) == txn_bytes
+  end
+
+  # BIP-174: every input in the unsigned tx must have an empty scriptSig.
+  defp all_script_sigs_empty?(txn) do
+    Enum.all?(txn.inputs, fn input -> input.script_sig in [nil, ""] end)
+  end
+
   # unsigned transaction
   defp parse(<<@psbt_global_unsigned_tx::big-size(8)>>, psbt, global) do
-    {txn_len, psbt} = TxUtils.get_counter(psbt)
+    {txn_length, psbt} = TxUtils.get_counter(psbt)
+    <<txn_bytes::binary-size(txn_length), psbt::binary>> = psbt
 
-    <<txn_bytes::binary-size(txn_len), psbt::binary>> = psbt
-    # todo, different decode function for txn, directly in bytes
     case Transaction.decode(Base.encode16(txn_bytes, case: :lower)) do
       {:ok, txn} ->
-        {%Global{global | unsigned_tx: txn}, psbt}
+        cond do
+          not legacy_serialized?(txn, txn_bytes) ->
+            {:error, :unsigned_tx_has_witness_serialization}
 
-      {:error, error_msg} ->
-        {:error, error_msg}
+          not all_script_sigs_empty?(txn) ->
+            {:error, :unsigned_tx_has_script_sig}
+
+          true ->
+            {%Global{global | unsigned_tx: txn}, psbt}
+        end
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
   defp parse(<<@psbt_global_xpub::big-size(8), xpub::binary-size(78)>>, psbt, global) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
 
-    <<master::little-unsigned-32, paths::binary>> = value
-
-    indexes = for <<chunk::little-unsigned-32 <- paths>>, do: chunk
+    <<master_fingerprint::little-unsigned-32, paths::binary>> = value
+    derivation = for <<index::little-unsigned-32 <- paths>>, do: index
 
     global_xpub =
-      case global.xpub do
-        nil ->
-          [
-            %{
-              xpub: Base58.encode(xpub),
-              master_pfp: master,
-              derivation: indexes
-            }
-          ]
+      PsbtUtils.append(global.xpub, %{
+        xpub: Base58.encode(xpub),
+        master_pfp: master_fingerprint,
+        derivation: derivation
+      })
 
-        _ ->
-          global.xpub ++
-            [
-              %{
-                xpub: Base58.encode(xpub),
-                master_pfp: master,
-                derivation: indexes
-              }
-            ]
-      end
-
-    global = %Global{global | xpub: global_xpub}
-
-    {global, psbt}
+    {%Global{global | xpub: global_xpub}, psbt}
   end
 
   defp parse(<<@psbt_global_version::big-size(8)>>, psbt, global) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    global = %Global{global | version: value}
-    {global, psbt}
+    {%Global{global | version: value}, psbt}
   end
 
-  defp parse(<<@psbt_global_proprietary::big-size(8)>>, psbt, global) do
+  # A key whose leading byte is a known global type but which did not match the
+  # exact format above is malformed (BIP-174: wrong key length for its type).
+  defp parse(<<type, _rest::binary>>, _psbt, _global)
+       when type in [@psbt_global_unsigned_tx, @psbt_global_xpub, @psbt_global_version] do
+    {:error, :invalid_key_format}
+  end
+
+  defp parse(key, psbt, global) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    global = %Global{global | proprietary: value}
-    {global, psbt}
+    {field, record} = PsbtUtils.classify_unknown_record(key, value)
+    {Map.update(global, field, [record], &PsbtUtils.append(&1, record)), psbt}
   end
 
-  defp serialize_kv(:unsigned_tx, value) when value != nil do
-    PsbtUtils.serialize_kv(<<@psbt_global_unsigned_tx::big-size(8)>>, TxUtils.serialize(value))
-  end
-
-  defp serialize_kv(:xpub, value) when value != nil do
-    key = <<@psbt_global_xpub::big-size(8)>>
-    {:ok, key_data} = Base58.decode(value.xpub)
-
-    val =
-      <<value.master_pfp::little-size(32)>> <>
-        (for(chunk <- value.derivation, do: <<chunk::little-size(32)>>)
-         |> :erlang.list_to_binary())
-
-    PsbtUtils.serialize_kv(key <> key_data, val)
-  end
-
+  @spec serialize_global(t()) :: binary()
   def serialize_global(global) do
-    # TODO: serialize all other fields in global.
-    serialized_global = serialize_kv(:unsigned_tx, global.unsigned_tx)
+    serialized =
+      serialize_kv(:unsigned_tx, global.unsigned_tx) <>
+        PsbtUtils.serialize_repeatable(global.xpub, &serialize_xpub/1) <>
+        serialize_kv(:version, global.version) <>
+        PsbtUtils.serialize_repeatable(global.proprietary, &serialize_record/1) <>
+        PsbtUtils.serialize_repeatable(global.unknown, &serialize_record/1)
 
-    bip32 =
-      if global.xpub != nil do
-        for(bip32 <- global.xpub, do: serialize_kv(:xpub, bip32))
-        |> :erlang.list_to_binary()
-      else
-        <<>>
-      end
+    serialized <> <<0x00::big-size(8)>>
+  end
 
-    serialized_global <> bip32 <> <<0x00::big-size(8)>>
+  defp serialize_kv(_field, nil), do: <<>>
+
+  defp serialize_kv(:unsigned_tx, unsigned_tx) do
+    PsbtUtils.serialize_kv(
+      <<@psbt_global_unsigned_tx::big-size(8)>>,
+      TxUtils.serialize(unsigned_tx)
+    )
+  end
+
+  defp serialize_kv(:version, version) do
+    PsbtUtils.serialize_kv(<<@psbt_global_version::big-size(8)>>, version)
+  end
+
+  defp serialize_xpub(xpub) do
+    {:ok, key_data} = Base58.decode(xpub.xpub)
+
+    derivation = for index <- xpub.derivation, into: <<>>, do: <<index::little-size(32)>>
+    value = <<xpub.master_pfp::little-size(32)>> <> derivation
+
+    PsbtUtils.serialize_kv(<<@psbt_global_xpub::big-size(8)>> <> key_data, value)
+  end
+
+  defp serialize_record(%{key: key, value: value}) do
+    PsbtUtils.serialize_kv(key, value)
   end
 end
 
@@ -259,6 +358,8 @@ defmodule Bitcoinex.PSBT.In do
   alias Bitcoinex.PSBT.Utils, as: PsbtUtils
   alias Bitcoinex.Transaction.Utils, as: TxUtils
 
+  @type t() :: %__MODULE__{}
+
   defstruct [
     :non_witness_utxo,
     :witness_utxo,
@@ -270,7 +371,12 @@ defmodule Bitcoinex.PSBT.In do
     :final_scriptsig,
     :final_scriptwitness,
     :por_commitment,
-    :proprietary
+    :ripemd160,
+    :sha256,
+    :hash160,
+    :hash256,
+    :proprietary,
+    :unknown
   ]
 
   @psbt_in_non_witness_utxo 0x00
@@ -283,255 +389,250 @@ defmodule Bitcoinex.PSBT.In do
   @psbt_in_final_scriptsig 0x07
   @psbt_in_final_scriptwitness 0x08
   @psbt_in_por_commitment 0x09
-  @psbt_in_proprietary 0xFC
+  @psbt_in_ripemd160 0x0A
+  @psbt_in_sha256 0x0B
+  @psbt_in_hash160 0x0C
+  @psbt_in_hash256 0x0D
 
+  @spec parse_inputs(binary(), non_neg_integer()) ::
+          {:ok, {list(t()), binary()}} | {:error, term()}
   def parse_inputs(psbt, num_inputs) do
-    psbt
-    |> parse_input([], num_inputs)
+    parse_input(psbt, [], num_inputs)
   end
 
-  defp serialize_kv(:non_witness_utxo, value) when value != nil do
-    PsbtUtils.serialize_kv(<<@psbt_in_non_witness_utxo::big-size(8)>>, TxUtils.serialize(value))
-  end
-
-  defp serialize_kv(:witness_utxo, value) when value != nil do
-    script = Base.decode16!(value.script_pub_key, case: :lower)
-
-    val =
-      <<value.value::little-size(64)>> <>
-        TxUtils.serialize_compact_size_unsigned_int(byte_size(script)) <> script
-
-    PsbtUtils.serialize_kv(<<@psbt_in_witness_utxo::big-size(8)>>, val)
-  end
-
-  defp serialize_kv(:partial_sig, value) when value != nil do
-    key_data = Base.decode16!(value.public_key, case: :lower)
-    val = Base.decode16!(value.signature, case: :lower)
-
-    PsbtUtils.serialize_kv(<<@psbt_in_partial_sig::big-size(8)>> <> key_data, val)
-  end
-
-  defp serialize_kv(:sighash_type, value) when value != nil do
-    PsbtUtils.serialize_kv(<<@psbt_in_sighash_type::big-size(8)>>, value)
-  end
-
-  defp serialize_kv(:final_scriptsig, value) when value != nil do
-    PsbtUtils.serialize_kv(
-      <<@psbt_in_final_scriptsig::big-size(8)>>,
-      Base.decode16!(value, case: :lower)
-    )
-  end
-
-  defp serialize_kv(:redeem_script, value) when value != nil do
-    PsbtUtils.serialize_kv(
-      <<@psbt_in_redeem_script::big-size(8)>>,
-      Base.decode16!(value, case: :lower)
-    )
-  end
-
-  defp serialize_kv(:witness_script, value) when value != nil do
-    PsbtUtils.serialize_kv(
-      <<@psbt_in_witness_script::big-size(8)>>,
-      Base.decode16!(value, case: :lower)
-    )
-  end
-
-  defp serialize_kv(:final_scriptwitness, value) when value != nil do
-    PsbtUtils.serialize_kv(
-      <<@psbt_in_final_scriptwitness::big-size(8)>>,
-      Witness.serialize_witness([value])
-    )
-  end
-
-  defp serialize_kv(:bip32_derivation, value) when value != nil do
-    key_data = Base.decode16!(value.public_key, case: :lower)
-
-    val =
-      <<value.pfp::little-size(32)>> <>
-        (for(chunk <- value.derivation, do: <<chunk::little-size(32)>>)
-         |> :erlang.list_to_binary())
-
-    PsbtUtils.serialize_kv(<<@psbt_in_bip32_derivation::big-size(8)>> <> key_data, val)
-  end
-
-  defp serialize_kv(_key, _value) do
-    <<>>
-  end
-
-  def serialize_inputs(inputs) when is_list(inputs) and length(inputs) > 0 do
-    serialize_input(inputs, <<>>)
-  end
-
-  def serialize_inputs(_inputs) do
-    <<>>
-  end
-
-  defp serialize_input([], serialized_inputs), do: serialized_inputs
-
-  defp serialize_input(inputs, serialized_inputs) do
-    [input | inputs] = inputs
-
-    serialized_input =
-      Enum.reduce(
-        [
-          :non_witness_utxo,
-          :witness_utxo,
-          :sighash_type,
-          :partial_sig,
-          :redeem_script,
-          :final_scriptsig,
-          :witness_script
-        ],
-        <<>>,
-        fn k, acc ->
-          case Map.get(input, k) do
-            nil ->
-              acc
-
-            v ->
-              acc <> serialize_kv(k, v)
-          end
-        end
-      )
-
-    bip32 =
-      if input.bip32_derivation != nil do
-        for(bip32 <- input.bip32_derivation, do: serialize_kv(:bip32_derivation, bip32))
-        |> :erlang.list_to_binary()
-      else
-        <<>>
-      end
-
-    serialized_input =
-      serialized_input <>
-        bip32 <>
-        serialize_kv(:final_scriptwitness, input.final_scriptwitness) <> <<0x00::big-size(8)>>
-
-    serialize_input(inputs, serialized_inputs <> serialized_input)
-  end
-
-  defp parse_input(psbt, inputs, 0), do: {Enum.reverse(inputs), psbt}
+  defp parse_input(psbt, inputs, 0), do: {:ok, {Enum.reverse(inputs), psbt}}
 
   defp parse_input(psbt, inputs, num_inputs) do
     case PsbtUtils.parse_key_value(psbt, %In{}, &parse/3) do
-      {nil, psbt} ->
-        parse_input(psbt, inputs, num_inputs - 1)
+      {:error, reason} ->
+        {:error, reason}
 
-      {input, psbt} ->
-        input =
-          case input do
-            %{bip32_derivation: bip32_derivation} when is_list(bip32_derivation) ->
-              %{input | bip32_derivation: Enum.reverse(bip32_derivation)}
-
-            _ ->
-              input
-          end
-
+      {:ok, {input, psbt}} ->
         parse_input(psbt, [input | inputs], num_inputs - 1)
     end
   end
 
   defp parse(<<@psbt_in_non_witness_utxo::big-size(8)>>, psbt, input) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    {:ok, txn} = Transaction.decode(Base.encode16(value, case: :lower))
-    input = %In{input | non_witness_utxo: txn}
-    {input, psbt}
+
+    case Transaction.decode(Base.encode16(value, case: :lower)) do
+      {:ok, txn} ->
+        {%In{input | non_witness_utxo: txn}, psbt}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
   end
 
   defp parse(<<@psbt_in_witness_utxo::big-size(8)>>, psbt, input) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
     out = Out.output(value)
-    input = %In{input | witness_utxo: out}
-    {input, psbt}
+    {%In{input | witness_utxo: out}, psbt}
   end
 
   defp parse(<<@psbt_in_partial_sig::big-size(8), public_key::binary-size(33)>>, psbt, input) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
 
-    input = %In{
-      input
-      | partial_sig: %{
-          public_key: Base.encode16(public_key, case: :lower),
-          signature: Base.encode16(value, case: :lower)
-        }
+    partial_sig = %{
+      public_key: Base.encode16(public_key, case: :lower),
+      signature: Base.encode16(value, case: :lower)
     }
 
-    {input, psbt}
+    {%In{input | partial_sig: partial_sig}, psbt}
   end
 
   defp parse(<<@psbt_in_sighash_type::big-size(8)>>, psbt, input) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    input = %In{input | sighash_type: value}
-    {input, psbt}
+    {%In{input | sighash_type: value}, psbt}
   end
 
   defp parse(<<@psbt_in_redeem_script::big-size(8)>>, psbt, input) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    input = %In{input | redeem_script: Base.encode16(value, case: :lower)}
-    {input, psbt}
+    {%In{input | redeem_script: Base.encode16(value, case: :lower)}, psbt}
   end
 
   defp parse(<<@psbt_in_witness_script::big-size(8)>>, psbt, input) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    input = %In{input | witness_script: Base.encode16(value, case: :lower)}
-    {input, psbt}
+    {%In{input | witness_script: Base.encode16(value, case: :lower)}, psbt}
   end
 
   defp parse(<<@psbt_in_bip32_derivation::big-size(8), public_key::binary-size(33)>>, psbt, input) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
 
-    <<pfp::little-unsigned-32, paths::binary>> = value
-    indexes = for <<chunk::little-unsigned-32 <- paths>>, do: chunk
+    <<master_fingerprint::little-unsigned-32, paths::binary>> = value
+    derivation = for <<index::little-unsigned-32 <- paths>>, do: index
 
     bip32_derivation =
-      case input.bip32_derivation do
-        nil ->
-          [
-            %{
-              public_key: Base.encode16(public_key, case: :lower),
-              pfp: pfp,
-              derivation: indexes
-            }
-          ]
+      PsbtUtils.append(input.bip32_derivation, %{
+        public_key: Base.encode16(public_key, case: :lower),
+        pfp: master_fingerprint,
+        derivation: derivation
+      })
 
-        _ ->
-          [
-            %{
-              public_key: Base.encode16(public_key, case: :lower),
-              pfp: pfp,
-              derivation: indexes
-            }
-            | input.bip32_derivation
-          ]
-      end
-
-    input = %In{input | bip32_derivation: bip32_derivation}
-    {input, psbt}
+    {%In{input | bip32_derivation: bip32_derivation}, psbt}
   end
 
   defp parse(<<@psbt_in_final_scriptsig::big-size(8)>>, psbt, input) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    input = %In{input | final_scriptsig: Base.encode16(value, case: :lower)}
-    {input, psbt}
-  end
-
-  defp parse(<<@psbt_in_por_commitment::big-size(8)>>, psbt, input) do
-    {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    input = %In{input | por_commitment: value}
-    {input, psbt}
-  end
-
-  defp parse(<<@psbt_in_proprietary::big-size(8)>>, psbt, input) do
-    {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    input = %In{input | proprietary: value}
-    {input, psbt}
+    {%In{input | final_scriptsig: Base.encode16(value, case: :lower)}, psbt}
   end
 
   defp parse(<<@psbt_in_final_scriptwitness::big-size(8)>>, psbt, input) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    value = Witness.witness(value)
-    input = %In{input | final_scriptwitness: value}
-    {input, psbt}
+    {%In{input | final_scriptwitness: Witness.witness(value)}, psbt}
+  end
+
+  defp parse(<<@psbt_in_por_commitment::big-size(8)>>, psbt, input) do
+    {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
+    {%In{input | por_commitment: value}, psbt}
+  end
+
+  defp parse(<<@psbt_in_ripemd160::big-size(8), hash::binary-size(20)>>, psbt, input) do
+    {preimage, psbt} = PsbtUtils.parse_compact_size_value(psbt)
+    record = %{hash: hash, preimage: preimage}
+    {%In{input | ripemd160: PsbtUtils.append(input.ripemd160, record)}, psbt}
+  end
+
+  defp parse(<<@psbt_in_sha256::big-size(8), hash::binary-size(32)>>, psbt, input) do
+    {preimage, psbt} = PsbtUtils.parse_compact_size_value(psbt)
+    record = %{hash: hash, preimage: preimage}
+    {%In{input | sha256: PsbtUtils.append(input.sha256, record)}, psbt}
+  end
+
+  defp parse(<<@psbt_in_hash160::big-size(8), hash::binary-size(20)>>, psbt, input) do
+    {preimage, psbt} = PsbtUtils.parse_compact_size_value(psbt)
+    record = %{hash: hash, preimage: preimage}
+    {%In{input | hash160: PsbtUtils.append(input.hash160, record)}, psbt}
+  end
+
+  defp parse(<<@psbt_in_hash256::big-size(8), hash::binary-size(32)>>, psbt, input) do
+    {preimage, psbt} = PsbtUtils.parse_compact_size_value(psbt)
+    record = %{hash: hash, preimage: preimage}
+    {%In{input | hash256: PsbtUtils.append(input.hash256, record)}, psbt}
+  end
+
+  # A key whose leading byte is a known input type but which did not match the
+  # exact format above is malformed (BIP-174: wrong key length for its type).
+  defp parse(<<type, _rest::binary>>, _psbt, _input)
+       when type in @psbt_in_non_witness_utxo..@psbt_in_hash256 do
+    {:error, :invalid_key_format}
+  end
+
+  defp parse(key, psbt, input) do
+    {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
+    {field, record} = PsbtUtils.classify_unknown_record(key, value)
+    {Map.update(input, field, [record], &PsbtUtils.append(&1, record)), psbt}
+  end
+
+  @spec serialize_inputs(list(t())) :: binary()
+  def serialize_inputs(inputs) when is_list(inputs) do
+    Enum.map_join(inputs, &serialize_input/1)
+  end
+
+  defp serialize_input(input) do
+    serialized =
+      serialize_kv(:non_witness_utxo, input.non_witness_utxo) <>
+        serialize_kv(:witness_utxo, input.witness_utxo) <>
+        serialize_kv(:partial_sig, input.partial_sig) <>
+        serialize_kv(:sighash_type, input.sighash_type) <>
+        serialize_kv(:redeem_script, input.redeem_script) <>
+        serialize_kv(:witness_script, input.witness_script) <>
+        PsbtUtils.serialize_repeatable(input.bip32_derivation, &serialize_bip32_derivation/1) <>
+        serialize_kv(:final_scriptsig, input.final_scriptsig) <>
+        serialize_kv(:final_scriptwitness, input.final_scriptwitness) <>
+        serialize_kv(:por_commitment, input.por_commitment) <>
+        serialize_hash_preimages(@psbt_in_ripemd160, input.ripemd160) <>
+        serialize_hash_preimages(@psbt_in_sha256, input.sha256) <>
+        serialize_hash_preimages(@psbt_in_hash160, input.hash160) <>
+        serialize_hash_preimages(@psbt_in_hash256, input.hash256) <>
+        PsbtUtils.serialize_repeatable(input.proprietary, &serialize_record/1) <>
+        PsbtUtils.serialize_repeatable(input.unknown, &serialize_record/1)
+
+    serialized <> <<0x00::big-size(8)>>
+  end
+
+  defp serialize_kv(_field, nil), do: <<>>
+
+  defp serialize_kv(:non_witness_utxo, non_witness_utxo) do
+    PsbtUtils.serialize_kv(
+      <<@psbt_in_non_witness_utxo::big-size(8)>>,
+      TxUtils.serialize(non_witness_utxo)
+    )
+  end
+
+  defp serialize_kv(:witness_utxo, witness_utxo) do
+    script = Base.decode16!(witness_utxo.script_pub_key, case: :lower)
+
+    value =
+      <<witness_utxo.value::little-size(64)>> <>
+        TxUtils.serialize_compact_size_unsigned_int(byte_size(script)) <> script
+
+    PsbtUtils.serialize_kv(<<@psbt_in_witness_utxo::big-size(8)>>, value)
+  end
+
+  defp serialize_kv(:partial_sig, partial_sig) do
+    key_data = Base.decode16!(partial_sig.public_key, case: :lower)
+    value = Base.decode16!(partial_sig.signature, case: :lower)
+    PsbtUtils.serialize_kv(<<@psbt_in_partial_sig::big-size(8)>> <> key_data, value)
+  end
+
+  defp serialize_kv(:sighash_type, sighash_type) do
+    PsbtUtils.serialize_kv(<<@psbt_in_sighash_type::big-size(8)>>, sighash_type)
+  end
+
+  defp serialize_kv(:redeem_script, redeem_script) do
+    PsbtUtils.serialize_kv(
+      <<@psbt_in_redeem_script::big-size(8)>>,
+      Base.decode16!(redeem_script, case: :lower)
+    )
+  end
+
+  defp serialize_kv(:witness_script, witness_script) do
+    PsbtUtils.serialize_kv(
+      <<@psbt_in_witness_script::big-size(8)>>,
+      Base.decode16!(witness_script, case: :lower)
+    )
+  end
+
+  defp serialize_kv(:final_scriptsig, final_scriptsig) do
+    PsbtUtils.serialize_kv(
+      <<@psbt_in_final_scriptsig::big-size(8)>>,
+      Base.decode16!(final_scriptsig, case: :lower)
+    )
+  end
+
+  defp serialize_kv(:final_scriptwitness, final_scriptwitness) do
+    PsbtUtils.serialize_kv(
+      <<@psbt_in_final_scriptwitness::big-size(8)>>,
+      Witness.serialize_witness([final_scriptwitness])
+    )
+  end
+
+  defp serialize_kv(:por_commitment, por_commitment) do
+    PsbtUtils.serialize_kv(<<@psbt_in_por_commitment::big-size(8)>>, por_commitment)
+  end
+
+  defp serialize_bip32_derivation(bip32_derivation) do
+    key_data = Base.decode16!(bip32_derivation.public_key, case: :lower)
+
+    derivation =
+      for index <- bip32_derivation.derivation, into: <<>>, do: <<index::little-size(32)>>
+
+    value = <<bip32_derivation.pfp::little-size(32)>> <> derivation
+
+    PsbtUtils.serialize_kv(<<@psbt_in_bip32_derivation::big-size(8)>> <> key_data, value)
+  end
+
+  defp serialize_hash_preimages(_key_type, nil), do: <<>>
+
+  defp serialize_hash_preimages(key_type, records) when is_list(records) do
+    Enum.map_join(records, fn %{hash: hash, preimage: preimage} ->
+      PsbtUtils.serialize_kv(<<key_type::big-size(8)>> <> hash, preimage)
+    end)
+  end
+
+  defp serialize_record(%{key: key, value: value}) do
+    PsbtUtils.serialize_kv(key, value)
   end
 end
 
@@ -542,123 +643,46 @@ defmodule Bitcoinex.PSBT.Out do
   alias Bitcoinex.PSBT.Out
   alias Bitcoinex.PSBT.Utils, as: PsbtUtils
 
+  @type t() :: %__MODULE__{}
+
   defstruct [
     :redeem_script,
     :witness_script,
     :bip32_derivation,
-    :proprietary
+    :proprietary,
+    :unknown
   ]
 
   @psbt_out_redeem_script 0x00
-  @psbt_out_scriptwitness 0x01
+  @psbt_out_witness_script 0x01
   @psbt_out_bip32_derivation 0x02
 
-  def serialize_outputs(outputs) when is_list(outputs) and length(outputs) > 0 do
-    serialize_output(outputs, <<>>)
-  end
-
-  def serialize_outputs(_outputs) do
-    <<>>
-  end
-
-  defp serialize_kv(:redeem_script, value) when value != nil do
-    PsbtUtils.serialize_kv(
-      <<@psbt_out_redeem_script::big-size(8)>>,
-      Base.decode16!(value, case: :lower)
-    )
-  end
-
-  defp serialize_kv(:witness_script, value) when value != nil do
-    PsbtUtils.serialize_kv(
-      <<@psbt_out_scriptwitness::big-size(8)>>,
-      Base.decode16!(value, case: :lower)
-    )
-  end
-
-  defp serialize_kv(:bip32_derivation, value) when value != nil do
-    key_data = Base.decode16!(value.public_key, case: :lower)
-
-    val =
-      <<value.pfp::little-size(32)>> <>
-        (for(chunk <- value.derivation, do: <<chunk::little-size(32)>>)
-         |> :erlang.list_to_binary())
-
-    PsbtUtils.serialize_kv(<<@psbt_out_bip32_derivation::big-size(8)>> <> key_data, val)
-  end
-
-  defp serialize_kv(_key, _value) do
-    <<>>
-  end
-
-  defp serialize_output([], serialize_outputs), do: serialize_outputs
-
-  defp serialize_output(outputs, serialized_outputs) do
-    [output | outputs] = outputs
-
-    serialized_output =
-      case output do
-        %Out{bip32_derivation: nil, proprietary: nil, redeem_script: nil, witness_script: nil} ->
-          <<0x00::big-size(8)>>
-
-        _ ->
-          serialized_output =
-            serialize_kv(:redeem_script, output.redeem_script) <>
-              serialize_kv(:witness_script, output.witness_script)
-
-          bip32 =
-            if output.bip32_derivation != nil do
-              for(bip32 <- output.bip32_derivation, do: serialize_kv(:bip32_derivation, bip32))
-              |> :erlang.list_to_binary()
-            else
-              <<>>
-            end
-
-          serialized_output <> bip32 <> <<0x00::big-size(8)>>
-      end
-
-    serialize_output(outputs, serialized_outputs <> serialized_output)
-  end
-
+  @spec parse_outputs(binary(), non_neg_integer()) ::
+          {:ok, {list(t()), binary()}} | {:error, term()}
   def parse_outputs(psbt, num_outputs) do
     parse_output(psbt, [], num_outputs)
   end
 
-  defp parse_output(psbt, outputs, 0), do: {Enum.reverse(outputs), psbt}
+  defp parse_output(psbt, outputs, 0), do: {:ok, {Enum.reverse(outputs), psbt}}
 
   defp parse_output(psbt, outputs, num_outputs) do
     case PsbtUtils.parse_key_value(psbt, %Out{}, &parse/3) do
-      {output = %Out{
-         bip32_derivation: nil,
-         proprietary: nil,
-         redeem_script: nil,
-         witness_script: nil
-       }, psbt} ->
-        parse_output(psbt, [output | outputs], num_outputs - 1)
+      {:error, reason} ->
+        {:error, reason}
 
-      {output, psbt} ->
-        output =
-          case output do
-            %{bip32_derivation: bip32_derivation} when is_list(bip32_derivation) ->
-              %{output | bip32_derivation: Enum.reverse(bip32_derivation)}
-
-            _ ->
-              output
-          end
-
+      {:ok, {output, psbt}} ->
         parse_output(psbt, [output | outputs], num_outputs - 1)
     end
   end
 
   defp parse(<<@psbt_out_redeem_script::big-size(8)>>, psbt, output) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    output = %Out{output | redeem_script: Base.encode16(value, case: :lower)}
-    {output, psbt}
+    {%Out{output | redeem_script: Base.encode16(value, case: :lower)}, psbt}
   end
 
-  defp parse(<<@psbt_out_scriptwitness::big-size(8)>>, psbt, output) do
+  defp parse(<<@psbt_out_witness_script::big-size(8)>>, psbt, output) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    output = %Out{output | witness_script: Base.encode16(value, case: :lower)}
-    {output, psbt}
+    {%Out{output | witness_script: Base.encode16(value, case: :lower)}, psbt}
   end
 
   defp parse(
@@ -668,36 +692,76 @@ defmodule Bitcoinex.PSBT.Out do
        ) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
 
-    <<pfp::little-unsigned-32, paths::binary>> = value
-    indexes = for <<chunk::little-unsigned-32 <- paths>>, do: chunk
+    <<master_fingerprint::little-unsigned-32, paths::binary>> = value
+    derivation = for <<index::little-unsigned-32 <- paths>>, do: index
 
     bip32_derivation =
-      case output.bip32_derivation do
-        nil ->
-          [
-            %{
-              public_key: Base.encode16(public_key, case: :lower),
-              pfp: pfp,
-              derivation: indexes
-            }
-          ]
+      PsbtUtils.append(output.bip32_derivation, %{
+        public_key: Base.encode16(public_key, case: :lower),
+        pfp: master_fingerprint,
+        derivation: derivation
+      })
 
-        _ ->
-          [
-            %{
-              public_key: Base.encode16(public_key, case: :lower),
-              pfp: pfp,
-              derivation: indexes
-            }
-            | output.bip32_derivation
-          ]
-      end
+    {%Out{output | bip32_derivation: bip32_derivation}, psbt}
+  end
 
-    output = %Out{
-      output
-      | bip32_derivation: bip32_derivation
-    }
+  # A key whose leading byte is a known output type but which did not match the
+  # exact format above is malformed (BIP-174: wrong key length for its type).
+  defp parse(<<type, _rest::binary>>, _psbt, _output)
+       when type in @psbt_out_redeem_script..@psbt_out_bip32_derivation do
+    {:error, :invalid_key_format}
+  end
 
-    {output, psbt}
+  defp parse(key, psbt, output) do
+    {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
+    {field, record} = PsbtUtils.classify_unknown_record(key, value)
+    {Map.update(output, field, [record], &PsbtUtils.append(&1, record)), psbt}
+  end
+
+  @spec serialize_outputs(list(t())) :: binary()
+  def serialize_outputs(outputs) when is_list(outputs) do
+    Enum.map_join(outputs, &serialize_output/1)
+  end
+
+  defp serialize_output(output) do
+    serialized =
+      serialize_kv(:redeem_script, output.redeem_script) <>
+        serialize_kv(:witness_script, output.witness_script) <>
+        PsbtUtils.serialize_repeatable(output.bip32_derivation, &serialize_bip32_derivation/1) <>
+        PsbtUtils.serialize_repeatable(output.proprietary, &serialize_record/1) <>
+        PsbtUtils.serialize_repeatable(output.unknown, &serialize_record/1)
+
+    serialized <> <<0x00::big-size(8)>>
+  end
+
+  defp serialize_kv(_field, nil), do: <<>>
+
+  defp serialize_kv(:redeem_script, redeem_script) do
+    PsbtUtils.serialize_kv(
+      <<@psbt_out_redeem_script::big-size(8)>>,
+      Base.decode16!(redeem_script, case: :lower)
+    )
+  end
+
+  defp serialize_kv(:witness_script, witness_script) do
+    PsbtUtils.serialize_kv(
+      <<@psbt_out_witness_script::big-size(8)>>,
+      Base.decode16!(witness_script, case: :lower)
+    )
+  end
+
+  defp serialize_bip32_derivation(bip32_derivation) do
+    key_data = Base.decode16!(bip32_derivation.public_key, case: :lower)
+
+    derivation =
+      for index <- bip32_derivation.derivation, into: <<>>, do: <<index::little-size(32)>>
+
+    value = <<bip32_derivation.pfp::little-size(32)>> <> derivation
+
+    PsbtUtils.serialize_kv(<<@psbt_out_bip32_derivation::big-size(8)>> <> key_data, value)
+  end
+
+  defp serialize_record(%{key: key, value: value}) do
+    PsbtUtils.serialize_kv(key, value)
   end
 end

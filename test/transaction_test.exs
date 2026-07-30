@@ -3,6 +3,7 @@ defmodule Bitcoinex.TransactionTest do
   doctest Bitcoinex.Transaction
 
   alias Bitcoinex.Transaction
+  alias Bitcoinex.Transaction.Utils, as: TxUtils
 
   @txn_serialization_1 %{
     tx_hex:
@@ -231,6 +232,40 @@ defmodule Bitcoinex.TransactionTest do
       out_1 = Enum.at(txn.outputs, 1)
       assert 87_000_000 == out_1.value
       assert "76a9147480a33f950689af511e6e84c138dbbd3c3ee41588ac" == out_1.script_pub_key
+    end
+  end
+
+  describe "serialize_compact_size_unsigned_int/1" do
+    # One entry per size class boundary of the Bitcoin compact-size encoding.
+    @compact_size_cases [
+      {0, <<0x00>>},
+      {0xFC, <<0xFC>>},
+      {0xFD, <<0xFD, 0xFD, 0x00>>},
+      {0xFFFF, <<0xFD, 0xFF, 0xFF>>},
+      {0x1_0000, <<0xFE, 0x00, 0x00, 0x01, 0x00>>},
+      {0xFFFF_FFFF, <<0xFE, 0xFF, 0xFF, 0xFF, 0xFF>>},
+      {0x1_0000_0000, <<0xFF, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00>>},
+      {0xFFFF_FFFF_FFFF_FFFF, <<0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF>>}
+    ]
+
+    test "encodes each size class with the correct little-endian bytes" do
+      for {value, expected_bytes} <- @compact_size_cases do
+        assert TxUtils.serialize_compact_size_unsigned_int(value) == expected_bytes
+      end
+    end
+
+    test "round-trips through get_counter/1 for every size class" do
+      for {value, _bytes} <- @compact_size_cases do
+        encoded = TxUtils.serialize_compact_size_unsigned_int(value)
+        assert {^value, <<>>} = TxUtils.get_counter(encoded)
+      end
+    end
+
+    test "encodes values above 0xFFFFFFFF without raising (uint64 branch)" do
+      # Regression: the final cond branch previously read `<= 0xFF`, which is
+      # unreachable, so any value above 0xFFFFFFFF raised CondClauseError.
+      assert <<0xFF, _::binary-size(8)>> =
+               TxUtils.serialize_compact_size_unsigned_int(0x1_0000_0000)
     end
   end
 end

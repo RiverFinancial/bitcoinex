@@ -185,7 +185,7 @@ defmodule Bitcoinex.Transaction.Utils do
       compact_size <= 0xFFFFFFFF ->
         <<0xFE>> <> <<compact_size::little-size(32)>>
 
-      compact_size <= 0xFF ->
+      compact_size <= 0xFFFFFFFFFFFFFFFF ->
         <<0xFF>> <> <<compact_size::little-size(64)>>
     end
   end
