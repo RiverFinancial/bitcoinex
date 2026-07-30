@@ -13,6 +13,12 @@ alias Bitcoinex.PSBT
 %{"invalid" => invalid, "valid" => valid} = src |> File.read!() |> Jason.decode!()
 
 # v0-relevant indices per the vendored catalog (v2/taproot entries skipped).
+# 28-35,37,38,41-47,52,55-62 are v2/taproot per the catalog's global-level check.
+# 48,49,50,51,53,54 additionally carry BIP-370 v2 *field types* — input 0x0e
+# (PSBT_IN_PREVIOUS_TXID) / 0x0f (OUTPUT_INDEX) / 0x10 (SEQUENCE) / 0x11
+# (REQUIRED_TIME_LOCKTIME) and output 0x03 (AMOUNT) / 0x04 (SCRIPT) — which a
+# v0-only parser treats as forward-compatible unknown records (BIP-174) rather
+# than rejecting. They are v2 tests, so skip them.
 invalid_skip =
   MapSet.new([
     28,
@@ -32,7 +38,13 @@ invalid_skip =
     45,
     46,
     47,
+    48,
+    49,
+    50,
+    51,
     52,
+    53,
+    54,
     55,
     56,
     57,
