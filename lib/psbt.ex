@@ -163,12 +163,25 @@ defmodule Bitcoinex.PSBT.Utils do
 
   @doc """
   Reads a single compact-size-prefixed value off the front of a binary.
+
+  BIP-174 requires compact size uints to be minimally encoded, so a
+  non-minimal length is rejected: it cannot survive a re-serialize
+  byte-for-byte, and a non-minimally encoded zero key length would produce
+  an empty key that re-serializes as a map separator, silently corrupting
+  the PSBT on re-encode.
   """
-  @spec parse_compact_size_value(binary()) :: {binary(), binary()}
+  @spec parse_compact_size_value(binary()) ::
+          {binary(), binary()} | {:error, :non_canonical_compact_size}
   def parse_compact_size_value(key_value) do
-    {value_length, key_value} = TxUtils.get_counter(key_value)
-    <<value::binary-size(value_length), remaining::binary>> = key_value
-    {value, remaining}
+    {value_length, remaining} = TxUtils.get_counter(key_value)
+    prefix_size = byte_size(key_value) - byte_size(remaining)
+
+    if byte_size(TxUtils.serialize_compact_size_unsigned_int(value_length)) == prefix_size do
+      <<value::binary-size(value_length), remaining::binary>> = remaining
+      {value, remaining}
+    else
+      {:error, :non_canonical_compact_size}
+    end
   end
 
   @doc """
@@ -195,18 +208,28 @@ defmodule Bitcoinex.PSBT.Utils do
   end
 
   defp parse_key_value(psbt, accumulator, parse_func, seen_keys) do
-    {key, remaining} = parse_compact_size_value(psbt)
+    case parse_compact_size_value(psbt) do
+      {:error, reason} ->
+        {:error, reason}
 
-    if MapSet.member?(seen_keys, key) do
-      {:error, :duplicate_key}
-    else
-      case parse_func.(key, remaining, accumulator) do
-        {:error, reason} ->
-          {:error, reason}
+      # Unreachable via canonical encoding (a zero key length is the map
+      # separator, matched above), kept as a guard so an empty key can never
+      # reach a parse_func or re-serialize as a separator.
+      {<<>>, _remaining} ->
+        {:error, :invalid_key_format}
 
-        {accumulator, remaining} ->
-          parse_key_value(remaining, accumulator, parse_func, MapSet.put(seen_keys, key))
-      end
+      {key, remaining} ->
+        if MapSet.member?(seen_keys, key) do
+          {:error, :duplicate_key}
+        else
+          case parse_func.(key, remaining, accumulator) do
+            {:error, reason} ->
+              {:error, reason}
+
+            {accumulator, remaining} ->
+              parse_key_value(remaining, accumulator, parse_func, MapSet.put(seen_keys, key))
+          end
+        end
     end
   end
 
@@ -478,9 +501,16 @@ defmodule Bitcoinex.PSBT.In do
   defp parse(<<@psbt_in_non_witness_utxo::big-size(8)>>, psbt, input) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
 
+    # Like the global unsigned tx, the decoded utxo must reproduce the value
+    # bytes exactly: a tx with non-minimal internal varints decodes fine but
+    # re-serializes differently, silently breaking losslessness.
     case Transaction.decode(Base.encode16(value, case: :lower)) do
       {:ok, txn} ->
-        {%In{input | non_witness_utxo: txn}, psbt}
+        if TxUtils.serialize(txn) == value do
+          {%In{input | non_witness_utxo: txn}, psbt}
+        else
+          {:error, :invalid_non_witness_utxo}
+        end
 
       {:error, reason} ->
         {:error, reason}
