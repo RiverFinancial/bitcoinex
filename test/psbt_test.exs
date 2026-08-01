@@ -395,6 +395,17 @@ defmodule Bitcoinex.PSBTTest do
       witness_tx = %{tx | witnesses: [%Bitcoinex.Transaction.Witness{txinwitness: ["00"]}]}
       assert {:error, :tx_not_unsigned} = PSBT.from_tx(witness_tx)
     end
+
+    test "accepts an unsigned tx decoded from segwit serialization", %{unsigned_tx: tx} do
+      # A tx round-tripped through segwit serialization carries one *empty*
+      # witness stack per input; it is still unsigned (Core's Creator accepts
+      # it and strips the stacks), so from_tx must not reject it.
+      empty_stacks =
+        Enum.map(tx.inputs, fn _ -> %Bitcoinex.Transaction.Witness{txinwitness: []} end)
+
+      {:ok, psbt} = PSBT.from_tx(%{tx | witnesses: empty_stacks})
+      assert psbt.global.unsigned_tx == %{tx | witnesses: nil}
+    end
   end
 
   describe "add_global_field(:unsigned_tx)" do
@@ -428,6 +439,25 @@ defmodule Bitcoinex.PSBTTest do
 
       signed = %{tx | inputs: [%{hd(tx.inputs) | script_sig: "0014abcdef"} | tl(tx.inputs)]}
       assert {:error, :tx_not_unsigned} = PSBT.add_global_field(skeleton, :unsigned_tx, signed)
+    end
+
+    test "normalizes empty witness stacks away like from_tx/1", %{tx: tx} do
+      skeleton = %PSBT{
+        global: %Bitcoinex.PSBT.Global{},
+        inputs: Enum.map(tx.inputs, fn _ -> %Bitcoinex.PSBT.In{} end),
+        outputs: Enum.map(tx.outputs, fn _ -> %Bitcoinex.PSBT.Out{} end)
+      }
+
+      empty_stacks =
+        Enum.map(tx.inputs, fn _ -> %Bitcoinex.Transaction.Witness{txinwitness: []} end)
+
+      # Stored verbatim, the empty stacks would re-serialize the unsigned tx in
+      # segwit form, which the decoder rejects (:unsigned_tx_not_canonically_serialized).
+      assert {:ok, updated} =
+               PSBT.add_global_field(skeleton, :unsigned_tx, %{tx | witnesses: empty_stacks})
+
+      assert updated.global.unsigned_tx == %{tx | witnesses: nil}
+      assert {:ok, _reparsed} = PSBT.decode(PSBT.encode_b64(updated))
     end
   end
 
@@ -915,6 +945,57 @@ defmodule Bitcoinex.PSBTTest do
     end
   end
 
+  # BIP-174 requires compact size uints to be minimally encoded. Accepting a
+  # non-minimal length silently breaks losslessness (it re-serializes shorter),
+  # and a non-minimally encoded zero key length is outright dangerous: it
+  # yields an empty key that re-serializes as a map separator, so
+  # decode |> encode_b64 would emit a *different valid PSBT*.
+  describe "non-canonical compact size encodings" do
+    test "a non-minimal key length is rejected" do
+      # key length 1 encoded as <<0xFD, 0x01, 0x00>>, unknown key type 0xF0
+      evil = <<0xFD, 0x01, 0x00, 0xF0, 0x01, 0xAA>>
+
+      for location <- [:global, :input, :output] do
+        assert {:error, :non_canonical_compact_size} =
+                 PSBT.decode(psbt_with_records(evil, location))
+      end
+    end
+
+    test "a non-minimally encoded zero key length is rejected, not read as an empty key" do
+      # key length 0 encoded as <<0xFD, 0x00, 0x00>>: an empty key would
+      # re-serialize as the 0x00 map separator, corrupting the PSBT on re-encode
+      evil = <<0xFD, 0x00, 0x00, 0x01, 0xAA>>
+
+      for location <- [:global, :input, :output] do
+        assert {:error, :non_canonical_compact_size} =
+                 PSBT.decode(psbt_with_records(evil, location))
+      end
+    end
+
+    test "a non-minimal value length is rejected" do
+      # unknown key type 0xF0, value length 2 encoded as <<0xFD, 0x02, 0x00>>
+      evil = <<0x01, 0xF0, 0xFD, 0x02, 0x00, 0xAB, 0xCD>>
+
+      for location <- [:global, :input, :output] do
+        assert {:error, :invalid_psbt} = PSBT.decode(psbt_with_records(evil, location))
+      end
+    end
+
+    test "a non_witness_utxo that does not re-serialize identically is rejected" do
+      {:ok, psbt} = PSBT.decode(@new_fields_vector)
+      tx_bytes = Bitcoinex.Transaction.Utils.serialize(psbt.global.unsigned_tx)
+
+      # inflate input 0's empty scriptSig length (after version, input count,
+      # txid, and vout) from 0x00 to the non-minimal <<0xFD, 0x00, 0x00>>: the
+      # tx still decodes, but re-serializes minimally — losslessness is broken
+      <<head::binary-size(41), 0x00, rest::binary>> = tx_bytes
+      tampered = head <> <<0xFD, 0x00, 0x00>> <> rest
+
+      psbt_b64 = psbt_with_records(record(<<0x00>>, tampered), :input)
+      assert {:error, :invalid_non_witness_utxo} = PSBT.decode(psbt_b64)
+    end
+  end
+
   describe "duplicate keys in the global and output maps" do
     test "a repeated global key is rejected with :duplicate_key" do
       records = record(<<0xFB>>, <<0, 0, 0, 0>>) <> record(<<0xFB>>, <<0, 0, 0, 0>>)
@@ -1098,6 +1179,26 @@ defmodule Bitcoinex.PSBTTest do
       assert {:error, :invalid_partial_sig} = PSBT.add_input_field(psbt, 0, :partial_sig, record)
     end
 
+    test "rejects a truncated DER partial_sig without raising", %{
+      psbt: psbt,
+      public_key: public_key
+    } do
+      # These pass the 0x30 prefix match but are internally truncated;
+      # der_parse_signature previously raised ArgumentError out of the Updater.
+      truncated = [
+        <<0x30>>,
+        <<0x30, 0x02, 0x02, 0x01>>,
+        <<0x30, 0x03, 0x02, 0x04, 0x01>>
+      ]
+
+      for signature <- truncated do
+        record = %{public_key: public_key, signature: signature, sighash_flag: 0x01}
+
+        assert {:error, :invalid_partial_sig} =
+                 PSBT.add_input_field(psbt, 0, :partial_sig, record)
+      end
+    end
+
     test "rejects a KeyOrigin with a wrong-length fingerprint or wildcard path", %{
       psbt: psbt,
       public_key: public_key
@@ -1184,6 +1285,25 @@ defmodule Bitcoinex.PSBTTest do
 
       assert {:error, :non_witness_utxo_mismatch} =
                PSBT.add_input_field(psbt, 0, :non_witness_utxo, mutated)
+    end
+
+    test "rejects a non_witness_utxo the encoder cannot serialize, without raising" do
+      {:ok, base} = PSBT.decode(valid_vector(3))
+      {:ok, psbt} = PSBT.from_tx(base.global.unsigned_tx)
+      utxo = hd(base.inputs).non_witness_utxo
+
+      # Uppercase hex is decodable but not serializable (Base.decode16! with
+      # case: :lower); previously this raised MatchError out of the Updater.
+      upper = %{
+        utxo
+        | outputs:
+            List.update_at(utxo.outputs, 0, fn out ->
+              %{out | script_pub_key: String.upcase(out.script_pub_key)}
+            end)
+      }
+
+      assert {:error, :invalid_non_witness_utxo} =
+               PSBT.add_input_field(psbt, 0, :non_witness_utxo, upper)
     end
   end
 

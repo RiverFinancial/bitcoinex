@@ -108,19 +108,29 @@ defmodule Bitcoinex.PSBT do
   end
 
   # A PSBT's global unsigned transaction must carry no scriptSigs and no
-  # witnesses (BIP-174).
+  # witness data (BIP-174). A tx decoded from segwit serialization carries one
+  # *empty* witness stack per input — that is still unsigned (Core's Creator
+  # accepts these and strips them), so only a non-empty stack disqualifies.
   defp validate_unsigned_tx(%Transaction{} = tx) do
     cond do
       Enum.any?(tx.inputs, fn input -> input.script_sig not in [nil, ""] end) ->
         {:error, :tx_not_unsigned}
 
-      tx.witnesses not in [nil, []] ->
+      not unsigned_witnesses?(tx.witnesses) ->
         {:error, :tx_not_unsigned}
 
       true ->
         :ok
     end
   end
+
+  defp unsigned_witnesses?(witnesses) when witnesses in [nil, []], do: true
+
+  defp unsigned_witnesses?(witnesses) when is_list(witnesses) do
+    Enum.all?(witnesses, fn witness -> witness.txinwitness in [nil, []] end)
+  end
+
+  defp unsigned_witnesses?(_witnesses), do: false
 
   @doc """
   Returns the txid of the PSBT's global unsigned transaction.
@@ -204,14 +214,31 @@ defmodule Bitcoinex.PSBT do
             {:error, :index_out_of_range}
 
           tx_input ->
-            if Transaction.transaction_id(utxo) == tx_input.prev_txid and
-                 tx_input.prev_vout < length(utxo.outputs) do
-              :ok
-            else
-              {:error, :non_witness_utxo_mismatch}
+            case safe_transaction_id(utxo) do
+              {:ok, utxo_txid} ->
+                if utxo_txid == tx_input.prev_txid and
+                     tx_input.prev_vout < length(utxo.outputs) do
+                  :ok
+                else
+                  {:error, :non_witness_utxo_mismatch}
+                end
+
+              {:error, reason} ->
+                {:error, reason}
             end
         end
     end
+  end
+
+  # Computing the txid serializes the whole transaction, which raises on a
+  # hand-built struct with invalid (e.g. uppercase) hex in any script field.
+  # Reject those cleanly: the Updater must never crash, nor store a utxo its
+  # own encoder cannot serialize.
+  defp safe_transaction_id(%Transaction{} = tx) do
+    {:ok, Transaction.transaction_id(tx)}
+  rescue
+    _error in [MatchError, ArgumentError, FunctionClauseError] ->
+      {:error, :invalid_non_witness_utxo}
   end
 
   @doc """
@@ -439,12 +466,25 @@ defmodule Bitcoinex.PSBT.Utils do
 
   @doc """
   Reads a single compact-size-prefixed value off the front of a binary.
+
+  BIP-174 requires compact size uints to be minimally encoded, so a
+  non-minimal length is rejected: it cannot survive a re-serialize
+  byte-for-byte, and a non-minimally encoded zero key length would produce
+  an empty key that re-serializes as a map separator, silently corrupting
+  the PSBT on re-encode.
   """
-  @spec parse_compact_size_value(binary()) :: {binary(), binary()}
+  @spec parse_compact_size_value(binary()) ::
+          {binary(), binary()} | {:error, :non_canonical_compact_size}
   def parse_compact_size_value(key_value) do
-    {value_length, key_value} = TxUtils.get_counter(key_value)
-    <<value::binary-size(value_length), remaining::binary>> = key_value
-    {value, remaining}
+    {value_length, remaining} = TxUtils.get_counter(key_value)
+    prefix_size = byte_size(key_value) - byte_size(remaining)
+
+    if byte_size(TxUtils.serialize_compact_size_unsigned_int(value_length)) == prefix_size do
+      <<value::binary-size(value_length), remaining::binary>> = remaining
+      {value, remaining}
+    else
+      {:error, :non_canonical_compact_size}
+    end
   end
 
   @doc """
@@ -471,18 +511,28 @@ defmodule Bitcoinex.PSBT.Utils do
   end
 
   defp parse_key_value(psbt, accumulator, parse_func, seen_keys) do
-    {key, remaining} = parse_compact_size_value(psbt)
+    case parse_compact_size_value(psbt) do
+      {:error, reason} ->
+        {:error, reason}
 
-    if MapSet.member?(seen_keys, key) do
-      {:error, :duplicate_key}
-    else
-      case parse_func.(key, remaining, accumulator) do
-        {:error, reason} ->
-          {:error, reason}
+      # Unreachable via canonical encoding (a zero key length is the map
+      # separator, matched above), kept as a guard so an empty key can never
+      # reach a parse_func or re-serialize as a separator.
+      {<<>>, _remaining} ->
+        {:error, :invalid_key_format}
 
-        {accumulator, remaining} ->
-          parse_key_value(remaining, accumulator, parse_func, MapSet.put(seen_keys, key))
-      end
+      {key, remaining} ->
+        if MapSet.member?(seen_keys, key) do
+          {:error, :duplicate_key}
+        else
+          case parse_func.(key, remaining, accumulator) do
+            {:error, reason} ->
+              {:error, reason}
+
+            {accumulator, remaining} ->
+              parse_key_value(remaining, accumulator, parse_func, MapSet.put(seen_keys, key))
+          end
+        end
     end
   end
 
@@ -736,8 +786,11 @@ defmodule Bitcoinex.PSBT.Global do
   the Updater must not create one its own decoder would reject.
   """
   @spec add_field(t(), atom(), any()) :: {:ok, t()} | {:error, atom()}
+  # Witnesses are normalized away like `from_unsigned_tx/1` does: an unsigned
+  # tx must never serialize in segwit form (the decoder rejects it), and a tx
+  # decoded from segwit serialization carries only empty stacks anyway.
   def add_field(%Global{} = global, :unsigned_tx, %Transaction{} = tx) do
-    {:ok, %Global{global | unsigned_tx: tx}}
+    {:ok, %Global{global | unsigned_tx: %{tx | witnesses: nil}}}
   end
 
   def add_field(
@@ -1306,9 +1359,16 @@ defmodule Bitcoinex.PSBT.In do
   defp parse(<<@psbt_in_non_witness_utxo::big-size(8)>>, psbt, input) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
 
+    # Like the global unsigned tx, the decoded utxo must reproduce the value
+    # bytes exactly: a tx with non-minimal internal varints decodes fine but
+    # re-serializes differently, silently breaking losslessness.
     case Transaction.decode(Base.encode16(value, case: :lower)) do
       {:ok, txn} ->
-        {%In{input | non_witness_utxo: txn}, psbt}
+        if TxUtils.serialize(txn) == value do
+          {%In{input | non_witness_utxo: txn}, psbt}
+        else
+          {:error, :invalid_non_witness_utxo}
+        end
 
       {:error, reason} ->
         {:error, reason}
