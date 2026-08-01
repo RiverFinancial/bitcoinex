@@ -73,43 +73,35 @@ defmodule Bitcoinex.Secp256k1 do
     der_parse_signature parses a DER binary to a Signature
     """
     # @spec der_parse_signature(binary) :: {:ok, Signature.()} | {:error, String.t()}
-    def der_parse_signature(<<0x30>> <> der_sig) when is_binary(der_sig) do
-      sig_len = :binary.at(der_sig, 0)
-
-      if sig_len + 1 != byte_size(der_sig) do
+    def der_parse_signature(<<0x30, sig_len, body::binary>>) do
+      if sig_len != byte_size(body) do
         {:error, "invalid signature length"}
       else
-        case parse_sig_key(der_sig, 1) do
-          {:error, err} ->
-            {:error, err}
-
-          {r, s_pos} ->
-            case parse_sig_key(der_sig, s_pos) do
-              {:error, err} ->
-                {:error, err}
-
-              {s, sig_len} ->
-                if sig_len != byte_size(der_sig) do
-                  {:error, "invalid signature: signature is too long"}
-                else
-                  {:ok, %Signature{r: r, s: s}}
-                end
-            end
+        with {:ok, r, rest} <- parse_sig_key(body),
+             {:ok, s, rest} <- parse_sig_key(rest) do
+          if rest == <<>> do
+            {:ok, %Signature{r: r, s: s}}
+          else
+            {:error, "invalid signature: signature is too long"}
+          end
         end
       end
     end
 
     def der_parse_signature(_), do: {:error, "invalid signature"}
 
-    defp parse_sig_key(data, pos) do
-      if :binary.at(data, pos) != 0x02 do
-        {:error, "invalid signature key marker"}
-      else
-        k_len = :binary.at(data, pos + 1)
-        len_k = :binary.part(data, pos + 2, k_len)
-        {:binary.decode_unsigned(len_k), pos + 2 + k_len}
-      end
+    # Parsed with binary matching so a truncated key (declared length running
+    # past the end of the signature) is a clean error, never a raise: this is
+    # reached from PSBT partial_sig validation with caller-supplied bytes.
+    defp parse_sig_key(<<0x02, k_len, k::binary-size(k_len), rest::binary>>) do
+      {:ok, :binary.decode_unsigned(k), rest}
     end
+
+    defp parse_sig_key(<<0x02, _rest::binary>>) do
+      {:error, "invalid signature length"}
+    end
+
+    defp parse_sig_key(_data), do: {:error, "invalid signature key marker"}
 
     @spec serialize_signature(t()) :: binary
     def serialize_signature(%__MODULE__{r: r, s: s}) do

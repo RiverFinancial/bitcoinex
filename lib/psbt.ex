@@ -107,19 +107,29 @@ defmodule Bitcoinex.PSBT do
   end
 
   # A PSBT's global unsigned transaction must carry no scriptSigs and no
-  # witnesses (BIP-174).
+  # witness data (BIP-174). A tx decoded from segwit serialization carries one
+  # *empty* witness stack per input — that is still unsigned (Core's Creator
+  # accepts these and strips them), so only a non-empty stack disqualifies.
   defp validate_unsigned_tx(%Transaction{} = tx) do
     cond do
       Enum.any?(tx.inputs, fn input -> input.script_sig not in [nil, ""] end) ->
         {:error, :tx_not_unsigned}
 
-      tx.witnesses not in [nil, []] ->
+      not unsigned_witnesses?(tx.witnesses) ->
         {:error, :tx_not_unsigned}
 
       true ->
         :ok
     end
   end
+
+  defp unsigned_witnesses?(witnesses) when witnesses in [nil, []], do: true
+
+  defp unsigned_witnesses?(witnesses) when is_list(witnesses) do
+    Enum.all?(witnesses, fn witness -> witness.txinwitness in [nil, []] end)
+  end
+
+  defp unsigned_witnesses?(_witnesses), do: false
 
   @doc """
   Returns the txid of the PSBT's global unsigned transaction.
@@ -203,14 +213,31 @@ defmodule Bitcoinex.PSBT do
             {:error, :index_out_of_range}
 
           tx_input ->
-            if Transaction.transaction_id(utxo) == tx_input.prev_txid and
-                 tx_input.prev_vout < length(utxo.outputs) do
-              :ok
-            else
-              {:error, :non_witness_utxo_mismatch}
+            case safe_transaction_id(utxo) do
+              {:ok, utxo_txid} ->
+                if utxo_txid == tx_input.prev_txid and
+                     tx_input.prev_vout < length(utxo.outputs) do
+                  :ok
+                else
+                  {:error, :non_witness_utxo_mismatch}
+                end
+
+              {:error, reason} ->
+                {:error, reason}
             end
         end
     end
+  end
+
+  # Computing the txid serializes the whole transaction, which raises on a
+  # hand-built struct with invalid (e.g. uppercase) hex in any script field.
+  # Reject those cleanly: the Updater must never crash, nor store a utxo its
+  # own encoder cannot serialize.
+  defp safe_transaction_id(%Transaction{} = tx) do
+    {:ok, Transaction.transaction_id(tx)}
+  rescue
+    _error in [MatchError, ArgumentError, FunctionClauseError] ->
+      {:error, :invalid_non_witness_utxo}
   end
 
   @doc """
@@ -640,8 +667,11 @@ defmodule Bitcoinex.PSBT.Global do
   the Updater must not create one its own decoder would reject.
   """
   @spec add_field(t(), atom(), any()) :: {:ok, t()} | {:error, atom()}
+  # Witnesses are normalized away like `from_unsigned_tx/1` does: an unsigned
+  # tx must never serialize in segwit form (the decoder rejects it), and a tx
+  # decoded from segwit serialization carries only empty stacks anyway.
   def add_field(%Global{} = global, :unsigned_tx, %Transaction{} = tx) do
-    {:ok, %Global{global | unsigned_tx: tx}}
+    {:ok, %Global{global | unsigned_tx: %{tx | witnesses: nil}}}
   end
 
   def add_field(
