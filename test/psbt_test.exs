@@ -688,6 +688,57 @@ defmodule Bitcoinex.PSBTTest do
     end
   end
 
+  # BIP-174 requires compact size uints to be minimally encoded. Accepting a
+  # non-minimal length silently breaks losslessness (it re-serializes shorter),
+  # and a non-minimally encoded zero key length is outright dangerous: it
+  # yields an empty key that re-serializes as a map separator, so
+  # decode |> encode_b64 would emit a *different valid PSBT*.
+  describe "non-canonical compact size encodings" do
+    test "a non-minimal key length is rejected" do
+      # key length 1 encoded as <<0xFD, 0x01, 0x00>>, unknown key type 0xF0
+      evil = <<0xFD, 0x01, 0x00, 0xF0, 0x01, 0xAA>>
+
+      for location <- [:global, :input, :output] do
+        assert {:error, :non_canonical_compact_size} =
+                 PSBT.decode(psbt_with_records(evil, location))
+      end
+    end
+
+    test "a non-minimally encoded zero key length is rejected, not read as an empty key" do
+      # key length 0 encoded as <<0xFD, 0x00, 0x00>>: an empty key would
+      # re-serialize as the 0x00 map separator, corrupting the PSBT on re-encode
+      evil = <<0xFD, 0x00, 0x00, 0x01, 0xAA>>
+
+      for location <- [:global, :input, :output] do
+        assert {:error, :non_canonical_compact_size} =
+                 PSBT.decode(psbt_with_records(evil, location))
+      end
+    end
+
+    test "a non-minimal value length is rejected" do
+      # unknown key type 0xF0, value length 2 encoded as <<0xFD, 0x02, 0x00>>
+      evil = <<0x01, 0xF0, 0xFD, 0x02, 0x00, 0xAB, 0xCD>>
+
+      for location <- [:global, :input, :output] do
+        assert {:error, :invalid_psbt} = PSBT.decode(psbt_with_records(evil, location))
+      end
+    end
+
+    test "a non_witness_utxo that does not re-serialize identically is rejected" do
+      {:ok, psbt} = PSBT.decode(@new_fields_vector)
+      tx_bytes = Bitcoinex.Transaction.Utils.serialize(psbt.global.unsigned_tx)
+
+      # inflate input 0's empty scriptSig length (after version, input count,
+      # txid, and vout) from 0x00 to the non-minimal <<0xFD, 0x00, 0x00>>: the
+      # tx still decodes, but re-serializes minimally — losslessness is broken
+      <<head::binary-size(41), 0x00, rest::binary>> = tx_bytes
+      tampered = head <> <<0xFD, 0x00, 0x00>> <> rest
+
+      psbt_b64 = psbt_with_records(record(<<0x00>>, tampered), :input)
+      assert {:error, :invalid_non_witness_utxo} = PSBT.decode(psbt_b64)
+    end
+  end
+
   describe "duplicate keys in the global and output maps" do
     test "a repeated global key is rejected with :duplicate_key" do
       records = record(<<0xFB>>, <<0, 0, 0, 0>>) <> record(<<0xFB>>, <<0, 0, 0, 0>>)
