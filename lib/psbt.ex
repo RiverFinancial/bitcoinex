@@ -1273,24 +1273,28 @@ defmodule Bitcoinex.PSBT.In do
            PsbtUtils.combine_repeatable(input_a.proprietary, input_b.proprietary, &record_key/1),
          {:ok, unknown} <-
            PsbtUtils.combine_repeatable(input_a.unknown, input_b.unknown, &record_key/1) do
+      # Update syntax (not a fresh struct literal) so a field added to %In{}
+      # later at least survives combining from the first argument instead of
+      # being silently dropped from both sides.
       {:ok,
        %In{
-         non_witness_utxo: non_witness_utxo,
-         witness_utxo: witness_utxo,
-         partial_sig: partial_sig,
-         sighash_type: sighash_type,
-         redeem_script: redeem_script,
-         witness_script: witness_script,
-         bip32_derivation: bip32_derivation,
-         final_scriptsig: final_scriptsig,
-         final_scriptwitness: final_scriptwitness,
-         por_commitment: por_commitment,
-         ripemd160: ripemd160,
-         sha256: sha256,
-         hash160: hash160,
-         hash256: hash256,
-         proprietary: proprietary,
-         unknown: unknown
+         input_a
+         | non_witness_utxo: non_witness_utxo,
+           witness_utxo: witness_utxo,
+           partial_sig: partial_sig,
+           sighash_type: sighash_type,
+           redeem_script: redeem_script,
+           witness_script: witness_script,
+           bip32_derivation: bip32_derivation,
+           final_scriptsig: final_scriptsig,
+           final_scriptwitness: final_scriptwitness,
+           por_commitment: por_commitment,
+           ripemd160: ripemd160,
+           sha256: sha256,
+           hash160: hash160,
+           hash256: hash256,
+           proprietary: proprietary,
+           unknown: unknown
        }}
     end
   end
@@ -1772,13 +1776,17 @@ defmodule Bitcoinex.PSBT.Out do
            PsbtUtils.combine_repeatable(output_a.proprietary, output_b.proprietary, &record_key/1),
          {:ok, unknown} <-
            PsbtUtils.combine_repeatable(output_a.unknown, output_b.unknown, &record_key/1) do
+      # Update syntax (not a fresh struct literal) so a field added to %Out{}
+      # later at least survives combining from the first argument instead of
+      # being silently dropped from both sides.
       {:ok,
        %Out{
-         redeem_script: redeem_script,
-         witness_script: witness_script,
-         bip32_derivation: bip32_derivation,
-         proprietary: proprietary,
-         unknown: unknown
+         output_a
+         | redeem_script: redeem_script,
+           witness_script: witness_script,
+           bip32_derivation: bip32_derivation,
+           proprietary: proprietary,
+           unknown: unknown
        }}
     end
   end
