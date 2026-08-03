@@ -310,7 +310,13 @@ defmodule Bitcoinex.PSBT do
   # conflict. The lists must be the same length: `Enum.zip` would otherwise
   # silently truncate to the shorter one and drop maps. For validly-decoded
   # PSBTs equal txids imply equal counts, but a hand-built PSBT could desync
-  # them, so guard explicitly rather than lose data.
+  # them — or carry nil instead of a list — so guard explicitly rather than
+  # lose data or raise.
+  defp combine_pairs(maps_a, maps_b, _combiner)
+       when not is_list(maps_a) or not is_list(maps_b) do
+    {:error, :map_count_mismatch}
+  end
+
   defp combine_pairs(maps_a, maps_b, _combiner) when length(maps_a) != length(maps_b) do
     {:error, :map_count_mismatch}
   end

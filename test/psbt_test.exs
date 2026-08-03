@@ -660,6 +660,15 @@ defmodule Bitcoinex.PSBTTest do
       assert {:error, :map_count_mismatch} = PSBT.combine(a, b)
     end
 
+    test "rejects hand-built PSBTs with nil map lists, without raising" do
+      {:ok, a} = PSBT.decode(valid_vector(@p2sh_p2wsh_vector_index))
+      # nil in place of a map list previously fell past the length guard
+      # (a raising guard is false) into Enum.zip(nil, nil) — Protocol.UndefinedError
+      broken = %PSBT{a | inputs: nil}
+      assert {:error, :map_count_mismatch} = PSBT.combine(broken, broken)
+      assert {:error, :map_count_mismatch} = PSBT.combine(a, %PSBT{a | outputs: nil})
+    end
+
     test "rejects PSBTs describing different transactions" do
       {:ok, a} = PSBT.decode(valid_vector(0))
       {:ok, b} = PSBT.decode(valid_vector(@p2sh_p2wsh_vector_index))
