@@ -64,15 +64,33 @@ defmodule Bitcoinex.Transaction do
 
   # returns transaction
   defp parse(<<version::little-size(32), remaining::binary>>) do
-    {is_segwit, remaining} =
-      case remaining do
-        <<1::size(16), segwit_remaining::binary>> ->
-          {:segwit, segwit_remaining}
+    case remaining do
+      # `00 01` is ambiguous: either the segwit marker+flag (BIP-144) or a legacy
+      # transaction with 0 inputs and 1 output. A network segwit tx always has at
+      # least one input, but a PSBT's unsigned tx may legitimately have 0 inputs,
+      # so try the segwit interpretation first and fall back to legacy if it does
+      # not parse cleanly.
+      <<0::size(8), 1::size(8), segwit_remaining::binary>> ->
+        case try_parse_tx(version, segwit_remaining, :segwit) do
+          {:ok, txn} -> {:ok, txn}
+          :error -> parse_tx(version, remaining, :not_segwit)
+        end
 
-        _ ->
-          {:not_segwit, remaining}
-      end
+      _ ->
+        parse_tx(version, remaining, :not_segwit)
+    end
+  end
 
+  # Wraps parse_tx/3 so that a segwit interpretation of an ambiguous prefix which
+  # is really a legacy 0-input tx (and would raise while reading a bogus input
+  # count / stack) degrades to :error and lets parse/1 retry as legacy.
+  defp try_parse_tx(version, remaining, is_segwit) do
+    parse_tx(version, remaining, is_segwit)
+  rescue
+    _error in [MatchError, ArgumentError, FunctionClauseError] -> :error
+  end
+
+  defp parse_tx(version, remaining, is_segwit) do
     # Inputs.
     {in_counter, remaining} = TxUtils.get_counter(remaining)
     {inputs, remaining} = In.parse_inputs(in_counter, remaining)
@@ -221,6 +239,9 @@ defmodule Bitcoinex.Transaction.Witness do
   def witness(witness_bytes) do
     {stack_size, witness_bytes} = TxUtils.get_counter(witness_bytes)
 
+    # Lenient: reads one witness stack off the front and ignores whatever
+    # follows, as it has always done. Callers that must reject trailing bytes
+    # (PSBT record values) use `parse_witness/1` instead.
     {witness, _} =
       if stack_size == 0 do
         {%Witness{txinwitness: []}, witness_bytes}
@@ -438,6 +459,9 @@ defmodule Bitcoinex.Transaction.Out do
     serialize_output(outputs, [serialized_outputs, serialized_output])
   end
 
+  # Lenient: reads one output off the front and ignores whatever follows, as it
+  # has always done. Callers that must reject trailing bytes (PSBT record
+  # values) use `parse_output/1` instead.
   def output(out_bytes) do
     <<value::little-size(64), out_bytes::binary>> = out_bytes
     {script_len, out_bytes} = TxUtils.get_counter(out_bytes)
