@@ -29,6 +29,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PSBT (de)serialization is now lossless for all BIP-174 v0 fields. `PSBT.encode_b64/1` previously dropped the global `version`, per-input `por_commitment`, and any proprietary records (`Global.serialize_global/1` carried a `TODO: serialize all other fields`), so `decode |> encode_b64` was not the identity for many PSBTs.
 - PSBT `partial_sig` records are repeatable per BIP-174 (keyed by pubkey); the previous single-map representation kept only the last record, silently discarding all but one signature from any multisig PSBT on decode.
 - `Transaction` decoding now represents an input's empty witness stack as `%Witness{txinwitness: []}` (previously the integer `0`), which made re-serialization of any transaction containing one — e.g. a PSBT `non_witness_utxo` in segwit form with a mixed witness/non-witness input set — raise `Protocol.UndefinedError`.
+- `Transaction.Out.output/1` and `Transaction.Witness.witness/1` now reject trailing bytes instead of silently dropping them. These parse a single PSBT record value (`PSBT_IN_WITNESS_UTXO` / `PSBT_IN_FINAL_SCRIPTWITNESS`), so an over-long value (stated length exceeding the actual output/witness) is now rejected rather than decoding and re-encoding to different bytes — restoring the `decode |> encode_b64` round-trip guarantee.
+- `Transaction.decode/1` now parses a 0-input transaction (whose `00 01` prefix collides with the segwit marker+flag) by falling back to legacy parsing when the segwit interpretation does not parse cleanly. PSBTs whose unsigned tx has 0 inputs (e.g. Bitcoin Core's `rpc_psbt.json` `valid[5]`) now decode and round-trip.
 
 ## [0.2.0] - 2026-07-10
 ### Changed

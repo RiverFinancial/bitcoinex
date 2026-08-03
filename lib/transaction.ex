@@ -64,15 +64,33 @@ defmodule Bitcoinex.Transaction do
 
   # returns transaction
   defp parse(<<version::little-size(32), remaining::binary>>) do
-    {is_segwit, remaining} =
-      case remaining do
-        <<1::size(16), segwit_remaining::binary>> ->
-          {:segwit, segwit_remaining}
+    case remaining do
+      # `00 01` is ambiguous: either the segwit marker+flag (BIP-144) or a legacy
+      # transaction with 0 inputs and 1 output. A network segwit tx always has at
+      # least one input, but a PSBT's unsigned tx may legitimately have 0 inputs,
+      # so try the segwit interpretation first and fall back to legacy if it does
+      # not parse cleanly.
+      <<0::size(8), 1::size(8), segwit_remaining::binary>> ->
+        case try_parse_tx(version, segwit_remaining, :segwit) do
+          {:ok, txn} -> {:ok, txn}
+          :error -> parse_tx(version, remaining, :not_segwit)
+        end
 
-        _ ->
-          {:not_segwit, remaining}
-      end
+      _ ->
+        parse_tx(version, remaining, :not_segwit)
+    end
+  end
 
+  # Wraps parse_tx/3 so that a segwit interpretation of an ambiguous prefix which
+  # is really a legacy 0-input tx (and would raise while reading a bogus input
+  # count / stack) degrades to :error and lets parse/1 retry as legacy.
+  defp try_parse_tx(version, remaining, is_segwit) do
+    parse_tx(version, remaining, is_segwit)
+  rescue
+    _error in [MatchError, ArgumentError, FunctionClauseError] -> :error
+  end
+
+  defp parse_tx(version, remaining, is_segwit) do
     # Inputs.
     {in_counter, remaining} = TxUtils.get_counter(remaining)
     {inputs, remaining} = In.parse_inputs(in_counter, remaining)
@@ -221,7 +239,11 @@ defmodule Bitcoinex.Transaction.Witness do
   def witness(witness_bytes) do
     {stack_size, witness_bytes} = TxUtils.get_counter(witness_bytes)
 
-    {witness, _} =
+    # Strict: a single PSBT `PSBT_IN_FINAL_SCRIPTWITNESS` record must be exactly
+    # one serialized witness stack with no trailing bytes. Match the remainder
+    # against <<>> so leftover bytes fail (PSBT's safe_parse maps it to
+    # `{:error, :invalid_psbt}`) instead of being silently dropped.
+    {witness, <<>>} =
       if stack_size == 0 do
         {%Witness{txinwitness: []}, witness_bytes}
       else
@@ -441,7 +463,12 @@ defmodule Bitcoinex.Transaction.Out do
   def output(out_bytes) do
     <<value::little-size(64), out_bytes::binary>> = out_bytes
     {script_len, out_bytes} = TxUtils.get_counter(out_bytes)
-    <<script_pub_key::binary-size(script_len), _::binary>> = out_bytes
+    # Strict: the value must be exactly one serialized output with no trailing
+    # bytes. This is a single PSBT record (`PSBT_IN_WITNESS_UTXO`); leftover
+    # bytes mean the stated length did not match, so let the match fail (PSBT's
+    # safe_parse turns it into `{:error, :invalid_psbt}`) rather than silently
+    # dropping them and breaking round-trip.
+    <<script_pub_key::binary-size(script_len)>> = out_bytes
     %Out{value: value, script_pub_key: Base.encode16(script_pub_key, case: :lower)}
   end
 
