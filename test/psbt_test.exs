@@ -93,11 +93,18 @@ defmodule Bitcoinex.PSBTTest do
 
   defp valid_vector(index), do: Enum.at(@bip174_valid_vectors, index)
 
+  # encode_b64/1 returns {:ok, base64}. Tests that only care about re-decoding
+  # its output unwrap it here instead of threading a result tuple through.
+  defp encoded!(psbt) do
+    {:ok, base64} = PSBT.encode_b64(psbt)
+    base64
+  end
+
   describe "BIP-174 official vectors" do
     test "all valid vectors decode and round-trip losslessly" do
       for base64 <- @bip174_valid_vectors do
         assert {:ok, psbt} = PSBT.decode(base64)
-        assert PSBT.encode_b64(psbt) == base64
+        assert PSBT.encode_b64(psbt) == {:ok, base64}
       end
     end
 
@@ -130,7 +137,7 @@ defmodule Bitcoinex.PSBTTest do
         assert :ok = PSBT.to_file(psbt, filename)
         assert {:ok, from_file} = PSBT.from_file(filename)
         assert from_file == psbt
-        assert PSBT.encode_b64(from_file) == base64
+        assert PSBT.encode_b64(from_file) == {:ok, base64}
       end
 
       File.rm_rf(filename)
@@ -144,7 +151,7 @@ defmodule Bitcoinex.PSBTTest do
     end
 
     test "round-trips losslessly", %{psbt: psbt} do
-      assert PSBT.encode_b64(psbt) == @new_fields_vector
+      assert PSBT.encode_b64(psbt) == {:ok, @new_fields_vector}
     end
 
     test "parses global version, proprietary, and unknown records", %{psbt: psbt} do
@@ -201,7 +208,7 @@ defmodule Bitcoinex.PSBTTest do
           ]
       }
 
-      assert {:error, :invalid_hash_preimage} = PSBT.decode(PSBT.encode_b64(corrupted))
+      assert {:error, :invalid_hash_preimage} = PSBT.decode(encoded!(corrupted))
     end
   end
 
@@ -290,7 +297,7 @@ defmodule Bitcoinex.PSBTTest do
         | inputs: [%{hd(psbt.inputs) | partial_sig: [record]} | tl(psbt.inputs)]
       }
 
-      assert {:ok, decoded} = PSBT.decode(PSBT.encode_b64(psbt))
+      assert {:ok, decoded} = PSBT.decode(encoded!(psbt))
       assert [%{signature: ^noncanonical_der}] = hd(decoded.inputs).partial_sig
     end
 
@@ -304,7 +311,7 @@ defmodule Bitcoinex.PSBTTest do
       {:ok, base} = PSBT.decode(valid_vector(@p2sh_p2wsh_vector_index))
       {:ok, psbt} = PSBT.add_input_field(base, 0, :redeem_script, redeem_hex)
 
-      assert {:ok, decoded} = PSBT.decode(PSBT.encode_b64(psbt))
+      assert {:ok, decoded} = PSBT.decode(encoded!(psbt))
       assert Script.to_hex(hd(decoded.inputs).redeem_script) == redeem_hex
     end
 
@@ -451,7 +458,7 @@ defmodule Bitcoinex.PSBTTest do
                PSBT.add_global_field(skeleton, :unsigned_tx, %{tx | witnesses: empty_stacks})
 
       assert updated.global.unsigned_tx == %{tx | witnesses: nil}
-      assert {:ok, _reparsed} = PSBT.decode(PSBT.encode_b64(updated))
+      assert {:ok, _reparsed} = PSBT.decode(encoded!(updated))
     end
   end
 
@@ -479,7 +486,7 @@ defmodule Bitcoinex.PSBTTest do
       {:ok, psbt} = PSBT.add_global_field(psbt, :version, 0)
       assert psbt.global.version == 0
 
-      {:ok, decoded} = PSBT.decode(PSBT.encode_b64(psbt))
+      {:ok, decoded} = PSBT.decode(encoded!(psbt))
       assert decoded.global.version == 0
     end
 
@@ -519,7 +526,8 @@ defmodule Bitcoinex.PSBTTest do
       assert {:ok, psbt} = PSBT.add_input_field(psbt, 0, :witness_utxo, utxo)
       assert hd(psbt.inputs).witness_utxo.script_pub_key == String.downcase(spk)
       # Regression: uppercase hex used to be accepted and then raise here.
-      assert is_binary(PSBT.encode_b64(psbt))
+      assert {:ok, b64} = PSBT.encode_b64(psbt)
+      assert is_binary(b64)
     end
 
     test "normalizes final_scriptwitness items to lowercase", %{psbt: psbt} do
@@ -551,7 +559,7 @@ defmodule Bitcoinex.PSBTTest do
       {:ok, psbt} =
         PSBT.add_input_field(psbt, 0, :bip32_derivation, %{public_key: public_key, origin: origin})
 
-      {:ok, decoded} = PSBT.decode(PSBT.encode_b64(psbt))
+      {:ok, decoded} = PSBT.decode(encoded!(psbt))
       [%{origin: decoded_origin}] = hd(decoded.inputs).bip32_derivation
 
       assert decoded_origin.fingerprint == fingerprint
@@ -599,7 +607,7 @@ defmodule Bitcoinex.PSBTTest do
         assert length(input.partial_sig) == 2
       end
 
-      assert PSBT.encode_b64(psbt) == @two_partial_sigs_vector
+      assert PSBT.encode_b64(psbt) == {:ok, @two_partial_sigs_vector}
     end
   end
 
@@ -663,7 +671,7 @@ defmodule Bitcoinex.PSBTTest do
       psbt_b64 = psbt_with_records(record(<<0x03>>, <<0x01, 0x00, 0x00, 0x00>>), :input)
       assert {:ok, psbt} = PSBT.decode(psbt_b64)
       assert hd(psbt.inputs).sighash_type == 0x01
-      assert PSBT.encode_b64(psbt) == psbt_b64
+      assert PSBT.encode_b64(psbt) == {:ok, psbt_b64}
     end
 
     test "a sighash_type value that is not 4 bytes is rejected" do
@@ -749,8 +757,37 @@ defmodule Bitcoinex.PSBTTest do
       # unknown key type 0xF0, value length 2 encoded as <<0xFD, 0x02, 0x00>>
       evil = <<0x01, 0xF0, 0xFD, 0x02, 0x00, 0xAB, 0xCD>>
 
+      # The reason is the same as for a non-minimal *key* length: a value-length
+      # caller that dropped the error tuple on the floor used to surface this as
+      # the generic :invalid_psbt instead.
       for location <- [:global, :input, :output] do
-        assert {:error, :invalid_psbt} = PSBT.decode(psbt_with_records(evil, location))
+        assert {:error, :non_canonical_compact_size} =
+                 PSBT.decode(psbt_with_records(evil, location))
+      end
+    end
+
+    test "a non-minimal value length is rejected in every value-carrying field" do
+      # Each known field's value length inflated from <<0x01>> to <<0xFD, 0x01, 0x00>>.
+      # These share one compact-size reader, so all of them must report the same
+      # reason rather than each field's generic parse error.
+      cases = [
+        {:global, <<0x01>> <> :binary.copy(<<0x01>>, 78)},
+        {:input, <<0x00>>},
+        {:input, <<0x01>>},
+        {:input, <<0x07>>},
+        {:input, <<0x08>>},
+        {:input, <<0x09>>},
+        {:input, <<0x0A>> <> :binary.copy(<<0xAB>>, 20)},
+        {:output, <<0x00>>},
+        {:output, <<0x01>>}
+      ]
+
+      for {location, key} <- cases do
+        evil = <<byte_size(key)>> <> key <> <<0xFD, 0x01, 0x00, 0xAA>>
+
+        assert {:error, :non_canonical_compact_size} =
+                 PSBT.decode(psbt_with_records(evil, location)),
+               "expected :non_canonical_compact_size for #{location} key #{inspect(key)}"
       end
     end
 
@@ -906,7 +943,7 @@ defmodule Bitcoinex.PSBTTest do
         psbt_b64 = psbt_with_records(records, :input)
 
         assert {:ok, psbt} = PSBT.decode(psbt_b64)
-        assert PSBT.encode_b64(psbt) == psbt_b64
+        assert PSBT.encode_b64(psbt) == {:ok, psbt_b64}
       end
     end
   end
@@ -937,7 +974,7 @@ defmodule Bitcoinex.PSBTTest do
 
       assert {:ok, psbt} = PSBT.decode(psbt_b64)
       assert Script.serialize_script(hd(psbt.inputs).redeem_script) == non_minimal
-      assert PSBT.encode_b64(psbt) == psbt_b64
+      assert PSBT.encode_b64(psbt) == {:ok, psbt_b64}
     end
   end
 
@@ -1152,7 +1189,7 @@ defmodule Bitcoinex.PSBTTest do
       {:ok, psbt} =
         PSBT.add_input_field(psbt, 0, :proprietary, %{key: <<0xFC, "p">>, value: <<0xBB>>})
 
-      assert {:ok, decoded} = PSBT.decode(PSBT.encode_b64(psbt))
+      assert {:ok, decoded} = PSBT.decode(encoded!(psbt))
       assert decoded == psbt
     end
 
