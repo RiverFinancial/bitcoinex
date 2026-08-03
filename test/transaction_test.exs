@@ -3,6 +3,7 @@ defmodule Bitcoinex.TransactionTest do
   doctest Bitcoinex.Transaction
 
   alias Bitcoinex.Transaction
+  alias Bitcoinex.Transaction.{Out, Witness}
   alias Bitcoinex.Transaction.Utils, as: TxUtils
 
   @txn_serialization_1 %{
@@ -279,6 +280,52 @@ defmodule Bitcoinex.TransactionTest do
       # a little-endian uint64.
       assert <<0xFF, _::binary-size(8)>> =
                TxUtils.serialize_compact_size_unsigned_int(0x1_0000_0000)
+    end
+  end
+
+  describe "0-input transaction (segwit-marker ambiguity)" do
+    # version | 00 (0 inputs) | 01 (1 output) | value | 00 (empty script) | locktime.
+    # The `00 01` prefix collides with the segwit marker+flag; parse/1 must fall
+    # back to legacy so a 0-input tx (used by PSBT unsigned txs) round-trips.
+    @zero_input_tx "02000000" <>
+                     "00" <> "01" <> "e803000000000000" <> "00" <> "00000000"
+
+    test "decodes a 0-input tx as legacy and round-trips it" do
+      assert {:ok, tx} = Transaction.decode(@zero_input_tx)
+      assert tx.inputs == []
+      assert length(tx.outputs) == 1
+      assert tx.witnesses == nil
+      assert Base.encode16(TxUtils.serialize(tx), case: :lower) == @zero_input_tx
+    end
+  end
+
+  # Two pairs of parsers with deliberately different contracts: `output/1` and
+  # `witness/1` read one item off the front of a longer binary (how a whole
+  # transaction is parsed), while `parse_output/1` and `parse_witness/1` require
+  # the binary to hold exactly one item — what a PSBT record value must be.
+  describe "single-item parsing: lenient vs strict" do
+    @valid_output "e80300000000000017a9146e91b72d5593e7d4391e2ff44e91e985c31641f087"
+    # One-item stack: count 01, item len 02, item 0xAABB.
+    @valid_witness "0102aabb"
+
+    test "Out.output/1 ignores trailing bytes, Out.parse_output/1 rejects them" do
+      {:ok, valid} = Base.decode16(@valid_output, case: :lower)
+
+      assert %Out{} = out = Out.output(valid)
+      assert Out.output(valid <> <<0xFF>>) == out
+
+      assert {:ok, ^out} = Out.parse_output(valid)
+      assert {:error, :invalid_output} = Out.parse_output(valid <> <<0xFF>>)
+    end
+
+    test "Witness.witness/1 ignores trailing bytes, Witness.parse_witness/1 rejects them" do
+      {:ok, valid} = Base.decode16(@valid_witness, case: :lower)
+
+      assert %Witness{txinwitness: ["aabb"]} = witness = Witness.witness(valid)
+      assert Witness.witness(valid <> <<0xFF>>) == witness
+
+      assert {:ok, ^witness} = Witness.parse_witness(valid)
+      assert {:error, :invalid_witness} = Witness.parse_witness(valid <> <<0xFF>>)
     end
   end
 end
