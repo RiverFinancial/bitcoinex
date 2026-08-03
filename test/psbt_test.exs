@@ -867,6 +867,22 @@ defmodule Bitcoinex.PSBTTest do
       assert {:error, :xpub_depth_mismatch} =
                PSBT.add_global_field(psbt, :xpub, %{xkey: xpub, origin: origin})
     end
+
+    test "add_global_field(:xpub) rejects a hand-built key whose depth is not 1 byte, without raising" do
+      {:ok, base} = PSBT.decode(valid_vector(@p2sh_p2wsh_vector_index))
+      {:ok, psbt} = PSBT.from_tx(base.global.unsigned_tx)
+      {:ok, master} = ExtendedKey.parse_extended_key(@bip174_master_tprv)
+      {:ok, xpub} = ExtendedKey.to_extended_public_key(master)
+
+      origin = %KeyOrigin{
+        fingerprint: ExtendedKey.get_fingerprint(master),
+        derivation: %DerivationPath{child_nums: []}
+      }
+
+      # depth as a bare integer previously raised FunctionClauseError
+      assert {:error, :xpub_depth_mismatch} =
+               PSBT.add_global_field(psbt, :xpub, %{xkey: %{xpub | depth: 0}, origin: origin})
+    end
   end
 
   describe "unknown record round-trip property" do
@@ -1071,6 +1087,86 @@ defmodule Bitcoinex.PSBTTest do
       }
 
       assert {:error, :invalid_field} = PSBT.add_input_field(psbt, 0, :witness_utxo, utxo)
+    end
+
+    test "rejects a witness_utxo whose value exceeds a uint64", %{psbt: psbt} do
+      utxo = %Bitcoinex.Transaction.Out{
+        value: 0x10000000000000000,
+        script_pub_key: "0014" <> String.duplicate("ab", 20)
+      }
+
+      # the amount serializes as little-64; anything wider would silently
+      # truncate on encode (2^64 re-decoded as 0)
+      assert {:error, :invalid_field} = PSBT.add_input_field(psbt, 0, :witness_utxo, utxo)
+    end
+
+    test "rejects an unknown record whose key uses a known or proprietary type byte", %{
+      psbt: psbt
+    } do
+      # 0x04 is PSBT_IN_REDEEM_SCRIPT: on an input without one, the record
+      # would re-decode into redeem_script (silent corruption); on an input
+      # with one, the re-encoded PSBT fails decode with :duplicate_key
+      assert {:error, :invalid_key_format} =
+               PSBT.add_input_field(psbt, 0, :unknown, %{key: <<0x04>>, value: <<0xAA>>})
+
+      assert {:error, :invalid_key_format} =
+               PSBT.add_global_field(psbt, :unknown, %{key: <<0x00>>, value: <<0xAA>>})
+
+      assert {:error, :invalid_key_format} =
+               PSBT.add_output_field(psbt, 0, :unknown, %{key: <<0x02, 0xAB>>, value: <<0xAA>>})
+
+      # 0xFC keys belong to :proprietary — held in :unknown they would
+      # re-decode into the other field
+      assert {:error, :invalid_key_format} =
+               PSBT.add_input_field(psbt, 0, :unknown, %{key: <<0xFC, "id">>, value: <<0xAA>>})
+    end
+
+    test "rejects an empty unknown key, which would re-serialize as the map separator", %{
+      psbt: psbt
+    } do
+      assert {:error, :invalid_key_format} =
+               PSBT.add_global_field(psbt, :unknown, %{key: <<>>, value: "hello"})
+
+      assert {:error, :invalid_key_format} =
+               PSBT.add_input_field(psbt, 0, :unknown, %{key: <<>>, value: "hello"})
+
+      assert {:error, :invalid_key_format} =
+               PSBT.add_output_field(psbt, 0, :unknown, %{key: <<>>, value: "hello"})
+    end
+
+    test "rejects a proprietary record whose key lacks the 0xFC type byte", %{psbt: psbt} do
+      assert {:error, :invalid_key_format} =
+               PSBT.add_global_field(psbt, :proprietary, %{key: <<0x42, "id">>, value: <<0xAA>>})
+
+      assert {:error, :invalid_key_format} =
+               PSBT.add_input_field(psbt, 0, :proprietary, %{key: "id", value: <<0xAA>>})
+
+      assert {:error, :invalid_key_format} =
+               PSBT.add_output_field(psbt, 0, :proprietary, %{key: <<>>, value: <<0xAA>>})
+    end
+
+    test "accepted unknown and proprietary records survive a decode round-trip", %{psbt: psbt} do
+      {:ok, psbt} =
+        PSBT.add_input_field(psbt, 0, :unknown, %{key: <<0x42, "u">>, value: <<0xAA>>})
+
+      {:ok, psbt} =
+        PSBT.add_input_field(psbt, 0, :proprietary, %{key: <<0xFC, "p">>, value: <<0xBB>>})
+
+      assert {:ok, decoded} = PSBT.decode(PSBT.encode_b64(psbt))
+      assert decoded == psbt
+    end
+
+    test "hand-built PSBTs with nil input/output maps get errors, not raises", %{base: base} do
+      tx = base.global.unsigned_tx
+
+      assert {:error, :index_out_of_range} =
+               PSBT.add_input_field(%PSBT{}, 0, :sighash_type, 0x01)
+
+      assert {:error, :index_out_of_range} =
+               PSBT.add_output_field(%PSBT{}, 0, :redeem_script, "51")
+
+      assert {:error, :tx_io_count_mismatch} =
+               PSBT.add_global_field(%PSBT{}, :unsigned_tx, tx)
     end
 
     test "validates a non_witness_utxo against the input's outpoint" do
