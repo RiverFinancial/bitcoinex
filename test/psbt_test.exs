@@ -586,7 +586,7 @@ defmodule Bitcoinex.PSBTTest do
             assert valid_psbt.expected_global == psbt.global
             assert valid_psbt.expected_in == psbt.inputs
             assert valid_psbt.expected_out == psbt.outputs
-            assert valid_psbt.psbt == PSBT.encode_b64(psbt)
+            assert PSBT.encode_b64(psbt) == {:ok, valid_psbt.psbt}
 
           {:error, _} ->
             assert :error != :error
@@ -608,7 +608,7 @@ defmodule Bitcoinex.PSBTTest do
             assert valid_psbt.expected_global == psbt_out.global
             assert valid_psbt.expected_in == psbt_out.inputs
             assert valid_psbt.expected_out == psbt_out.outputs
-            assert valid_psbt.psbt == PSBT.encode_b64(psbt_out)
+            assert PSBT.encode_b64(psbt_out) == {:ok, valid_psbt.psbt}
 
           {:error, _} ->
             assert false
@@ -693,7 +693,7 @@ defmodule Bitcoinex.PSBTTest do
     test "all valid vectors decode and round-trip losslessly" do
       for base64 <- @bip174_valid_vectors do
         assert {:ok, psbt} = PSBT.decode(base64)
-        assert PSBT.encode_b64(psbt) == base64
+        assert PSBT.encode_b64(psbt) == {:ok, base64}
       end
     end
 
@@ -724,7 +724,7 @@ defmodule Bitcoinex.PSBTTest do
     end
 
     test "round-trips losslessly", %{psbt: psbt} do
-      assert PSBT.encode_b64(psbt) == @new_fields_vector
+      assert PSBT.encode_b64(psbt) == {:ok, @new_fields_vector}
     end
 
     test "parses global version, proprietary, and unknown records", %{psbt: psbt} do
@@ -769,7 +769,7 @@ defmodule Bitcoinex.PSBTTest do
         assert length(input.partial_sig) == 2
       end
 
-      assert PSBT.encode_b64(psbt) == @two_partial_sigs_vector
+      assert PSBT.encode_b64(psbt) == {:ok, @two_partial_sigs_vector}
     end
   end
 
@@ -833,7 +833,7 @@ defmodule Bitcoinex.PSBTTest do
       psbt_b64 = psbt_with_records(record(<<0x03>>, <<0x01, 0x00, 0x00, 0x00>>), :input)
       assert {:ok, psbt} = PSBT.decode(psbt_b64)
       assert hd(psbt.inputs).sighash_type == <<0x01, 0x00, 0x00, 0x00>>
-      assert PSBT.encode_b64(psbt) == psbt_b64
+      assert PSBT.encode_b64(psbt) == {:ok, psbt_b64}
     end
 
     test "a sighash_type value that is not 4 bytes is rejected" do
@@ -917,8 +917,37 @@ defmodule Bitcoinex.PSBTTest do
       # unknown key type 0xF0, value length 2 encoded as <<0xFD, 0x02, 0x00>>
       evil = <<0x01, 0xF0, 0xFD, 0x02, 0x00, 0xAB, 0xCD>>
 
+      # The reason is the same as for a non-minimal *key* length: a value-length
+      # caller that dropped the error tuple on the floor used to surface this as
+      # the generic :invalid_psbt instead.
       for location <- [:global, :input, :output] do
-        assert {:error, :invalid_psbt} = PSBT.decode(psbt_with_records(evil, location))
+        assert {:error, :non_canonical_compact_size} =
+                 PSBT.decode(psbt_with_records(evil, location))
+      end
+    end
+
+    test "a non-minimal value length is rejected in every value-carrying field" do
+      # Each known field's value length inflated from <<0x01>> to <<0xFD, 0x01, 0x00>>.
+      # These share one compact-size reader, so all of them must report the same
+      # reason rather than each field's generic parse error.
+      cases = [
+        {:global, <<0x01>> <> :binary.copy(<<0x01>>, 78)},
+        {:input, <<0x00>>},
+        {:input, <<0x01>>},
+        {:input, <<0x07>>},
+        {:input, <<0x08>>},
+        {:input, <<0x09>>},
+        {:input, <<0x0A>> <> :binary.copy(<<0xAB>>, 20)},
+        {:output, <<0x00>>},
+        {:output, <<0x01>>}
+      ]
+
+      for {location, key} <- cases do
+        evil = <<byte_size(key)>> <> key <> <<0xFD, 0x01, 0x00, 0xAA>>
+
+        assert {:error, :non_canonical_compact_size} =
+                 PSBT.decode(psbt_with_records(evil, location)),
+               "expected :non_canonical_compact_size for #{location} key #{inspect(key)}"
       end
     end
 
@@ -1002,7 +1031,7 @@ defmodule Bitcoinex.PSBTTest do
         psbt_b64 = psbt_with_records(records, :input)
 
         assert {:ok, psbt} = PSBT.decode(psbt_b64)
-        assert PSBT.encode_b64(psbt) == psbt_b64
+        assert PSBT.encode_b64(psbt) == {:ok, psbt_b64}
       end
     end
   end

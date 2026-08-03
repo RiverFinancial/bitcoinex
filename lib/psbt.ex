@@ -104,13 +104,13 @@ defmodule Bitcoinex.PSBT do
   @doc """
     Encodes a PSBT as base64.
 
-    Returns `{:error, :missing_unsigned_tx}` for a PSBT without a global
-    unsigned transaction (see `to_file/2`).
+    Returns `{:ok, base64}`, or `{:error, :missing_unsigned_tx}` for a PSBT
+    without a global unsigned transaction (see `to_file/2`).
   """
-  @spec encode_b64(t()) :: String.t() | {:error, :missing_unsigned_tx}
+  @spec encode_b64(t()) :: {:ok, String.t()} | {:error, :missing_unsigned_tx}
   def encode_b64(packet) do
     case ensure_unsigned_tx(packet) do
-      :ok -> packet |> serialize() |> Base.encode64()
+      :ok -> {:ok, packet |> serialize() |> Base.encode64()}
       error -> error
     end
   end
@@ -164,6 +164,11 @@ defmodule Bitcoinex.PSBT.Utils do
   @doc """
   Reads a single compact-size-prefixed value off the front of a binary.
 
+  Returns `{:ok, value, remaining}`. The success tuple is tagged so that it
+  cannot be confused with the error tuple: an untagged `{value, remaining}`
+  is shape-identical to `{:error, reason}`, so a caller that skipped the
+  error check would bind `value = :error` and carry on.
+
   BIP-174 requires compact size uints to be minimally encoded, so a
   non-minimal length is rejected: it cannot survive a re-serialize
   byte-for-byte, and a non-minimally encoded zero key length would produce
@@ -171,14 +176,14 @@ defmodule Bitcoinex.PSBT.Utils do
   the PSBT on re-encode.
   """
   @spec parse_compact_size_value(binary()) ::
-          {binary(), binary()} | {:error, :non_canonical_compact_size}
+          {:ok, binary(), binary()} | {:error, :non_canonical_compact_size}
   def parse_compact_size_value(key_value) do
     {value_length, remaining} = TxUtils.get_counter(key_value)
     prefix_size = byte_size(key_value) - byte_size(remaining)
 
     if byte_size(TxUtils.serialize_compact_size_unsigned_int(value_length)) == prefix_size do
       <<value::binary-size(value_length), remaining::binary>> = remaining
-      {value, remaining}
+      {:ok, value, remaining}
     else
       {:error, :non_canonical_compact_size}
     end
@@ -215,10 +220,10 @@ defmodule Bitcoinex.PSBT.Utils do
       # Unreachable via canonical encoding (a zero key length is the map
       # separator, matched above), kept as a guard so an empty key can never
       # reach a parse_func or re-serialize as a separator.
-      {<<>>, _remaining} ->
+      {:ok, <<>>, _remaining} ->
         {:error, :invalid_key_format}
 
-      {key, remaining} ->
+      {:ok, key, remaining} ->
         if MapSet.member?(seen_keys, key) do
           {:error, :duplicate_key}
         else
@@ -327,7 +332,7 @@ defmodule Bitcoinex.PSBT.Global do
       {:error, reason} ->
         {:error, reason}
 
-      {txn_bytes, psbt} ->
+      {:ok, txn_bytes, psbt} ->
         case Transaction.decode(Base.encode16(txn_bytes, case: :lower)) do
           {:ok, txn} ->
             cond do
@@ -348,27 +353,28 @@ defmodule Bitcoinex.PSBT.Global do
   end
 
   defp parse(<<@psbt_global_xpub::big-size(8), xpub::binary-size(78)>>, psbt, global) do
-    {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
+    with {:ok, value, psbt} <- PsbtUtils.parse_compact_size_value(psbt) do
+      # BIP-174: the value is a 4-byte fingerprint followed by whole 32-bit
+      # indexes — a trailing partial index is malformed, not ignorable (a
+      # bitstring comprehension would silently drop it and alter the PSBT on
+      # re-serialize).
+      case value do
+        <<master_fingerprint::little-unsigned-32, paths::binary>>
+        when rem(byte_size(paths), 4) == 0 ->
+          derivation = for <<index::little-unsigned-32 <- paths>>, do: index
 
-    # BIP-174: the value is a 4-byte fingerprint followed by whole 32-bit
-    # indexes — a trailing partial index is malformed, not ignorable (a bitstring
-    # comprehension would silently drop it and alter the PSBT on re-serialize).
-    case value do
-      <<master_fingerprint::little-unsigned-32, paths::binary>>
-      when rem(byte_size(paths), 4) == 0 ->
-        derivation = for <<index::little-unsigned-32 <- paths>>, do: index
+          global_xpub =
+            PsbtUtils.append(global.xpub, %{
+              xpub: Base58.encode(xpub),
+              master_pfp: master_fingerprint,
+              derivation: derivation
+            })
 
-        global_xpub =
-          PsbtUtils.append(global.xpub, %{
-            xpub: Base58.encode(xpub),
-            master_pfp: master_fingerprint,
-            derivation: derivation
-          })
+          {%Global{global | xpub: global_xpub}, psbt}
 
-        {%Global{global | xpub: global_xpub}, psbt}
-
-      _ ->
-        {:error, :invalid_derivation}
+        _ ->
+          {:error, :invalid_derivation}
+      end
     end
   end
 
@@ -376,8 +382,11 @@ defmodule Bitcoinex.PSBT.Global do
   # 4 bytes are stored as-is here; interpretation is left to later stages.
   defp parse(<<@psbt_global_version::big-size(8)>>, psbt, global) do
     case PsbtUtils.parse_compact_size_value(psbt) do
-      {<<_::little-unsigned-32>> = value, psbt} ->
+      {:ok, <<_::little-unsigned-32>> = value, psbt} ->
         {%Global{global | version: value}, psbt}
+
+      {:error, reason} ->
+        {:error, reason}
 
       _ ->
         {:error, :invalid_version}
@@ -392,9 +401,10 @@ defmodule Bitcoinex.PSBT.Global do
   end
 
   defp parse(key, psbt, global) do
-    {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    {field, record} = PsbtUtils.classify_unknown_record(key, value)
-    {Map.update(global, field, [record], &PsbtUtils.append(&1, record)), psbt}
+    with {:ok, value, psbt} <- PsbtUtils.parse_compact_size_value(psbt) do
+      {field, record} = PsbtUtils.classify_unknown_record(key, value)
+      {Map.update(global, field, [record], &PsbtUtils.append(&1, record)), psbt}
+    end
   end
 
   @spec serialize_global(t()) :: binary()
@@ -502,21 +512,21 @@ defmodule Bitcoinex.PSBT.In do
   end
 
   defp parse(<<@psbt_in_non_witness_utxo::big-size(8)>>, psbt, input) do
-    {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
+    with {:ok, value, psbt} <- PsbtUtils.parse_compact_size_value(psbt) do
+      # Like the global unsigned tx, the decoded utxo must reproduce the value
+      # bytes exactly: a tx with non-minimal internal varints decodes fine but
+      # re-serializes differently, silently breaking losslessness.
+      case Transaction.decode(Base.encode16(value, case: :lower)) do
+        {:ok, txn} ->
+          if TxUtils.serialize(txn) == value do
+            {%In{input | non_witness_utxo: txn}, psbt}
+          else
+            {:error, :invalid_non_witness_utxo}
+          end
 
-    # Like the global unsigned tx, the decoded utxo must reproduce the value
-    # bytes exactly: a tx with non-minimal internal varints decodes fine but
-    # re-serializes differently, silently breaking losslessness.
-    case Transaction.decode(Base.encode16(value, case: :lower)) do
-      {:ok, txn} ->
-        if TxUtils.serialize(txn) == value do
-          {%In{input | non_witness_utxo: txn}, psbt}
-        else
-          {:error, :invalid_non_witness_utxo}
-        end
-
-      {:error, reason} ->
-        {:error, reason}
+        {:error, reason} ->
+          {:error, reason}
+      end
     end
   end
 
@@ -526,32 +536,32 @@ defmodule Bitcoinex.PSBT.In do
   # the parsed output must reproduce the value bytes exactly, so a non-minimal
   # scriptPubKey length is rejected too.
   defp parse(<<@psbt_in_witness_utxo::big-size(8)>>, psbt, input) do
-    {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
+    with {:ok, value, psbt} <- PsbtUtils.parse_compact_size_value(psbt) do
+      case Out.parse_output(value) do
+        {:ok, out} ->
+          if :erlang.list_to_binary(Out.serialize_outputs([out])) == value do
+            {%In{input | witness_utxo: out}, psbt}
+          else
+            {:error, :invalid_witness_utxo}
+          end
 
-    case Out.parse_output(value) do
-      {:ok, out} ->
-        if :erlang.list_to_binary(Out.serialize_outputs([out])) == value do
-          {%In{input | witness_utxo: out}, psbt}
-        else
+        {:error, _} ->
           {:error, :invalid_witness_utxo}
-        end
-
-      {:error, _} ->
-        {:error, :invalid_witness_utxo}
+      end
     end
   end
 
   # partial_sig is repeatable: one record per signing pubkey (BIP-174 keys them
   # by pubkey), so a multisig input legitimately carries several.
   defp parse(<<@psbt_in_partial_sig::big-size(8), public_key::binary-size(33)>>, psbt, input) do
-    {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
+    with {:ok, value, psbt} <- PsbtUtils.parse_compact_size_value(psbt) do
+      partial_sig = %{
+        public_key: Base.encode16(public_key, case: :lower),
+        signature: Base.encode16(value, case: :lower)
+      }
 
-    partial_sig = %{
-      public_key: Base.encode16(public_key, case: :lower),
-      signature: Base.encode16(value, case: :lower)
-    }
-
-    {%In{input | partial_sig: PsbtUtils.append(input.partial_sig, partial_sig)}, psbt}
+      {%In{input | partial_sig: PsbtUtils.append(input.partial_sig, partial_sig)}, psbt}
+    end
   end
 
   # 65-byte (uncompressed) pubkeys are valid in BIP-174 but unsupported here:
@@ -566,8 +576,11 @@ defmodule Bitcoinex.PSBT.In do
   # 4 bytes are stored as-is here; interpretation is left to later stages.
   defp parse(<<@psbt_in_sighash_type::big-size(8)>>, psbt, input) do
     case PsbtUtils.parse_compact_size_value(psbt) do
-      {<<_::little-unsigned-32>> = value, psbt} ->
+      {:ok, <<_::little-unsigned-32>> = value, psbt} ->
         {%In{input | sighash_type: value}, psbt}
+
+      {:error, reason} ->
+        {:error, reason}
 
       _ ->
         {:error, :invalid_sighash_type}
@@ -575,36 +588,38 @@ defmodule Bitcoinex.PSBT.In do
   end
 
   defp parse(<<@psbt_in_redeem_script::big-size(8)>>, psbt, input) do
-    {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    {%In{input | redeem_script: Base.encode16(value, case: :lower)}, psbt}
+    with {:ok, value, psbt} <- PsbtUtils.parse_compact_size_value(psbt) do
+      {%In{input | redeem_script: Base.encode16(value, case: :lower)}, psbt}
+    end
   end
 
   defp parse(<<@psbt_in_witness_script::big-size(8)>>, psbt, input) do
-    {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    {%In{input | witness_script: Base.encode16(value, case: :lower)}, psbt}
+    with {:ok, value, psbt} <- PsbtUtils.parse_compact_size_value(psbt) do
+      {%In{input | witness_script: Base.encode16(value, case: :lower)}, psbt}
+    end
   end
 
   defp parse(<<@psbt_in_bip32_derivation::big-size(8), public_key::binary-size(33)>>, psbt, input) do
-    {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
+    with {:ok, value, psbt} <- PsbtUtils.parse_compact_size_value(psbt) do
+      # BIP-174: 4-byte fingerprint + whole 32-bit indexes; a trailing partial
+      # index is malformed, not ignorable (see the global xpub clause).
+      case value do
+        <<master_fingerprint::little-unsigned-32, paths::binary>>
+        when rem(byte_size(paths), 4) == 0 ->
+          derivation = for <<index::little-unsigned-32 <- paths>>, do: index
 
-    # BIP-174: 4-byte fingerprint + whole 32-bit indexes; a trailing partial
-    # index is malformed, not ignorable (see the global xpub clause).
-    case value do
-      <<master_fingerprint::little-unsigned-32, paths::binary>>
-      when rem(byte_size(paths), 4) == 0 ->
-        derivation = for <<index::little-unsigned-32 <- paths>>, do: index
+          bip32_derivation =
+            PsbtUtils.append(input.bip32_derivation, %{
+              public_key: Base.encode16(public_key, case: :lower),
+              pfp: master_fingerprint,
+              derivation: derivation
+            })
 
-        bip32_derivation =
-          PsbtUtils.append(input.bip32_derivation, %{
-            public_key: Base.encode16(public_key, case: :lower),
-            pfp: master_fingerprint,
-            derivation: derivation
-          })
+          {%In{input | bip32_derivation: bip32_derivation}, psbt}
 
-        {%In{input | bip32_derivation: bip32_derivation}, psbt}
-
-      _ ->
-        {:error, :invalid_derivation}
+        _ ->
+          {:error, :invalid_derivation}
+      end
     end
   end
 
@@ -617,8 +632,9 @@ defmodule Bitcoinex.PSBT.In do
   end
 
   defp parse(<<@psbt_in_final_scriptsig::big-size(8)>>, psbt, input) do
-    {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    {%In{input | final_scriptsig: Base.encode16(value, case: :lower)}, psbt}
+    with {:ok, value, psbt} <- PsbtUtils.parse_compact_size_value(psbt) do
+      {%In{input | final_scriptsig: Base.encode16(value, case: :lower)}, psbt}
+    end
   end
 
   # BIP-174: the value is the entire witness stack in network serialization —
@@ -626,48 +642,53 @@ defmodule Bitcoinex.PSBT.In do
   # tx-valued fields, the parsed stack must reproduce the value bytes exactly,
   # so a non-minimal stack count or item length is rejected too.
   defp parse(<<@psbt_in_final_scriptwitness::big-size(8)>>, psbt, input) do
-    {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
+    with {:ok, value, psbt} <- PsbtUtils.parse_compact_size_value(psbt) do
+      case Witness.parse_witness(value) do
+        {:ok, witness} ->
+          if Witness.serialize_witness([witness]) == value do
+            {%In{input | final_scriptwitness: witness}, psbt}
+          else
+            {:error, :invalid_final_scriptwitness}
+          end
 
-    case Witness.parse_witness(value) do
-      {:ok, witness} ->
-        if Witness.serialize_witness([witness]) == value do
-          {%In{input | final_scriptwitness: witness}, psbt}
-        else
+        {:error, _} ->
           {:error, :invalid_final_scriptwitness}
-        end
-
-      {:error, _} ->
-        {:error, :invalid_final_scriptwitness}
+      end
     end
   end
 
   defp parse(<<@psbt_in_por_commitment::big-size(8)>>, psbt, input) do
-    {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    {%In{input | por_commitment: value}, psbt}
+    with {:ok, value, psbt} <- PsbtUtils.parse_compact_size_value(psbt) do
+      {%In{input | por_commitment: value}, psbt}
+    end
   end
 
   defp parse(<<@psbt_in_ripemd160::big-size(8), hash::binary-size(20)>>, psbt, input) do
-    {preimage, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    record = %{hash: hash, preimage: preimage}
-    {%In{input | ripemd160: PsbtUtils.append(input.ripemd160, record)}, psbt}
+    with {:ok, preimage, psbt} <- PsbtUtils.parse_compact_size_value(psbt) do
+      record = %{hash: hash, preimage: preimage}
+      {%In{input | ripemd160: PsbtUtils.append(input.ripemd160, record)}, psbt}
+    end
   end
 
   defp parse(<<@psbt_in_sha256::big-size(8), hash::binary-size(32)>>, psbt, input) do
-    {preimage, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    record = %{hash: hash, preimage: preimage}
-    {%In{input | sha256: PsbtUtils.append(input.sha256, record)}, psbt}
+    with {:ok, preimage, psbt} <- PsbtUtils.parse_compact_size_value(psbt) do
+      record = %{hash: hash, preimage: preimage}
+      {%In{input | sha256: PsbtUtils.append(input.sha256, record)}, psbt}
+    end
   end
 
   defp parse(<<@psbt_in_hash160::big-size(8), hash::binary-size(20)>>, psbt, input) do
-    {preimage, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    record = %{hash: hash, preimage: preimage}
-    {%In{input | hash160: PsbtUtils.append(input.hash160, record)}, psbt}
+    with {:ok, preimage, psbt} <- PsbtUtils.parse_compact_size_value(psbt) do
+      record = %{hash: hash, preimage: preimage}
+      {%In{input | hash160: PsbtUtils.append(input.hash160, record)}, psbt}
+    end
   end
 
   defp parse(<<@psbt_in_hash256::big-size(8), hash::binary-size(32)>>, psbt, input) do
-    {preimage, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    record = %{hash: hash, preimage: preimage}
-    {%In{input | hash256: PsbtUtils.append(input.hash256, record)}, psbt}
+    with {:ok, preimage, psbt} <- PsbtUtils.parse_compact_size_value(psbt) do
+      record = %{hash: hash, preimage: preimage}
+      {%In{input | hash256: PsbtUtils.append(input.hash256, record)}, psbt}
+    end
   end
 
   # A key whose leading byte is a known input type but which did not match the
@@ -678,9 +699,10 @@ defmodule Bitcoinex.PSBT.In do
   end
 
   defp parse(key, psbt, input) do
-    {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    {field, record} = PsbtUtils.classify_unknown_record(key, value)
-    {Map.update(input, field, [record], &PsbtUtils.append(&1, record)), psbt}
+    with {:ok, value, psbt} <- PsbtUtils.parse_compact_size_value(psbt) do
+      {field, record} = PsbtUtils.classify_unknown_record(key, value)
+      {Map.update(input, field, [record], &PsbtUtils.append(&1, record)), psbt}
+    end
   end
 
   @spec serialize_inputs(list(t())) :: binary()
@@ -835,13 +857,15 @@ defmodule Bitcoinex.PSBT.Out do
   end
 
   defp parse(<<@psbt_out_redeem_script::big-size(8)>>, psbt, output) do
-    {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    {%Out{output | redeem_script: Base.encode16(value, case: :lower)}, psbt}
+    with {:ok, value, psbt} <- PsbtUtils.parse_compact_size_value(psbt) do
+      {%Out{output | redeem_script: Base.encode16(value, case: :lower)}, psbt}
+    end
   end
 
   defp parse(<<@psbt_out_witness_script::big-size(8)>>, psbt, output) do
-    {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    {%Out{output | witness_script: Base.encode16(value, case: :lower)}, psbt}
+    with {:ok, value, psbt} <- PsbtUtils.parse_compact_size_value(psbt) do
+      {%Out{output | witness_script: Base.encode16(value, case: :lower)}, psbt}
+    end
   end
 
   defp parse(
@@ -849,26 +873,26 @@ defmodule Bitcoinex.PSBT.Out do
          psbt,
          output
        ) do
-    {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
+    with {:ok, value, psbt} <- PsbtUtils.parse_compact_size_value(psbt) do
+      # BIP-174: 4-byte fingerprint + whole 32-bit indexes; a trailing partial
+      # index is malformed, not ignorable (see the global xpub clause).
+      case value do
+        <<master_fingerprint::little-unsigned-32, paths::binary>>
+        when rem(byte_size(paths), 4) == 0 ->
+          derivation = for <<index::little-unsigned-32 <- paths>>, do: index
 
-    # BIP-174: 4-byte fingerprint + whole 32-bit indexes; a trailing partial
-    # index is malformed, not ignorable (see the global xpub clause).
-    case value do
-      <<master_fingerprint::little-unsigned-32, paths::binary>>
-      when rem(byte_size(paths), 4) == 0 ->
-        derivation = for <<index::little-unsigned-32 <- paths>>, do: index
+          bip32_derivation =
+            PsbtUtils.append(output.bip32_derivation, %{
+              public_key: Base.encode16(public_key, case: :lower),
+              pfp: master_fingerprint,
+              derivation: derivation
+            })
 
-        bip32_derivation =
-          PsbtUtils.append(output.bip32_derivation, %{
-            public_key: Base.encode16(public_key, case: :lower),
-            pfp: master_fingerprint,
-            derivation: derivation
-          })
+          {%Out{output | bip32_derivation: bip32_derivation}, psbt}
 
-        {%Out{output | bip32_derivation: bip32_derivation}, psbt}
-
-      _ ->
-        {:error, :invalid_derivation}
+        _ ->
+          {:error, :invalid_derivation}
+      end
     end
   end
 
@@ -888,9 +912,10 @@ defmodule Bitcoinex.PSBT.Out do
   end
 
   defp parse(key, psbt, output) do
-    {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
-    {field, record} = PsbtUtils.classify_unknown_record(key, value)
-    {Map.update(output, field, [record], &PsbtUtils.append(&1, record)), psbt}
+    with {:ok, value, psbt} <- PsbtUtils.parse_compact_size_value(psbt) do
+      {field, record} = PsbtUtils.classify_unknown_record(key, value)
+      {Map.update(output, field, [record], &PsbtUtils.append(&1, record)), psbt}
+    end
   end
 
   @spec serialize_outputs(list(t())) :: binary()
