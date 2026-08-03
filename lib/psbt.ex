@@ -34,6 +34,8 @@ defmodule Bitcoinex.PSBT do
   alias Bitcoinex.PSBT.In
   alias Bitcoinex.PSBT.Out
   alias Bitcoinex.Transaction
+  alias Bitcoinex.Transaction.Utils, as: TxUtils
+  alias Bitcoinex.Transaction.Witness
 
   @type t() :: %__MODULE__{
           global: Global.t(),
@@ -253,6 +255,181 @@ defmodule Bitcoinex.PSBT do
       {:ok, outputs} -> {:ok, %PSBT{psbt | outputs: outputs}}
       {:error, reason} -> {:error, reason}
     end
+  end
+
+  @doc """
+  Combines two PSBTs into one (the BIP-174 Combiner role).
+
+  Both PSBTs must describe the same global unsigned transaction — compared by
+  full serialization, byte for byte — otherwise `{:error, :mismatched_tx}` is
+  returned; a PSBT lacking an unsigned transaction altogether yields
+  `{:error, :missing_unsigned_tx}`, and PSBTs whose input or output map counts
+  do not match yield `{:error, :map_count_mismatch}` rather than silently
+  dropping maps. Each map is merged field by field: singleton fields must agree
+  where both are set, and repeatable fields are unioned by key. A record
+  present in both maps under the same key but with a different value yields
+  `{:error, :conflicting_field}`.
+
+  The union keeps the first PSBT's records in their existing order and appends
+  records new from the second (Bitcoin Core's merge semantics), so `combine/2`
+  is idempotent (`combine(a, a) == {:ok, a}`) and commutative up to record
+  order for non-conflicting inputs.
+  """
+  @spec combine(t(), t()) :: {:ok, t()} | {:error, atom()}
+  def combine(
+        %PSBT{global: %{unsigned_tx: %Transaction{}}} = psbt_a,
+        %PSBT{
+          global: %{unsigned_tx: %Transaction{}} = _global_b
+        } = psbt_b
+      ) do
+    if same_unsigned_tx?(psbt_a.global.unsigned_tx, psbt_b.global.unsigned_tx) do
+      with {:ok, global} <- Global.combine(psbt_a.global, psbt_b.global),
+           {:ok, inputs} <- combine_pairs(psbt_a.inputs, psbt_b.inputs, &In.combine/2),
+           {:ok, outputs} <- combine_pairs(psbt_a.outputs, psbt_b.outputs, &Out.combine/2) do
+        {:ok, %PSBT{global: global, inputs: inputs, outputs: outputs}}
+      end
+    else
+      {:error, :mismatched_tx}
+    end
+  end
+
+  # A hand-built PSBT may lack the mandatory unsigned tx (or the whole global
+  # map); there is nothing to compare, so refuse rather than raise.
+  def combine(%PSBT{}, %PSBT{}), do: {:error, :missing_unsigned_tx}
+
+  # BIP-174 Combiner precondition: the two PSBTs must describe the same unsigned
+  # transaction. Compare the full serialization byte-for-byte (not just the txid)
+  # so a hand-built PSBT carrying stray witnesses or scriptSigs that happen to
+  # collide on txid is still rejected. `TxUtils.serialize/1` emits legacy form
+  # when there are no witnesses, so the genuine "witnesses nil vs []" difference
+  # between a decoded and a from_tx/1-built unsigned tx does not cause a mismatch.
+  defp same_unsigned_tx?(tx_a, tx_b) do
+    TxUtils.serialize(tx_a) == TxUtils.serialize(tx_b)
+  end
+
+  @doc """
+  Finalizes every input that can be finalized (the BIP-174 Input Finalizer
+  role), leaving the rest untouched (best-effort, matching Bitcoin Core). For
+  each finalizable input it builds the `final_scriptsig` and/or
+  `final_scriptwitness` from the collected signatures and scripts and removes
+  the now-redundant fields.
+
+  Supported spend types: p2pkh, p2wpkh, p2sh-p2wpkh, bare/p2sh/p2wsh multisig,
+  and p2sh-p2wsh. Anything else — bare p2pk, p2sh-wrapped p2pkh, arbitrary
+  scripts, taproot — is left unfinalized (not an error), so an untouched input
+  can mean "unsupported spend type" as well as "missing signatures".
+  A non-witness spend type additionally requires a `non_witness_utxo` whose
+  txid matches the input's outpoint; a `witness_utxo` alone cannot be verified
+  and is never trusted to finalize a non-witness input (BIP-174 Signer checks).
+
+  Deliberate divergence from BIP-174: when an input specifies a
+  `sighash_type`, the BIP says the finalizer "must fail to sign" if *any*
+  `partial_sig` carries a different flag; this implementation instead treats
+  such signatures as ineligible and finalizes if enough matching ones remain,
+  so a stray signature contributed for an unrelated key (e.g. picked up in a
+  `combine/2`) does not block an otherwise-complete input. Every signature
+  actually placed in a `final_scriptsig`/`final_scriptwitness` always carries
+  the required flag.
+  """
+  @spec finalize(t()) :: t()
+  def finalize(%PSBT{global: %{unsigned_tx: %Transaction{} = tx}, inputs: inputs} = psbt)
+      when is_list(inputs) do
+    # A well-formed PSBT has exactly one input map per unsigned-tx input. If a
+    # (hand-built) PSBT desyncs them — or its tx carries nil instead of an
+    # input list — `Enum.zip` would finalize only the common prefix and
+    # silently drop the rest, so leave the PSBT untouched instead (best-effort
+    # means returning it untouched, not raising).
+    if is_list(tx.inputs) and length(inputs) == length(tx.inputs) do
+      inputs =
+        inputs
+        |> Enum.zip(tx.inputs)
+        |> Enum.map(fn {input, tx_input} -> In.finalize(input, tx_input) end)
+
+      %PSBT{psbt | inputs: inputs}
+    else
+      psbt
+    end
+  end
+
+  # Nothing to finalize on a hand-built PSBT with no unsigned tx, no global
+  # map, or no input list; best-effort means returning it untouched, not
+  # raising.
+  def finalize(%PSBT{} = psbt), do: psbt
+
+  @doc """
+  Returns true if every input has been finalized. A PSBT with no inputs at all
+  (or a hand-built one with `inputs: nil`) is not considered finalized — there
+  is nothing extractable in it.
+  """
+  @spec finalized?(t()) :: boolean()
+  def finalized?(%PSBT{inputs: inputs}) when is_list(inputs) and inputs != [],
+    do: Enum.all?(inputs, &In.finalized?/1)
+
+  def finalized?(%PSBT{}), do: false
+
+  @doc """
+  Extracts the fully-signed network transaction from a finalized PSBT (the
+  BIP-174 Transaction Extractor role). Returns `{:error, :not_finalized}` unless
+  every input is finalized.
+  """
+  @spec extract_tx(t()) :: {:ok, Transaction.t()} | {:error, :not_finalized}
+  def extract_tx(%PSBT{global: %{unsigned_tx: %Transaction{} = tx}} = psbt) do
+    if finalized?(psbt) and is_list(tx.inputs) and length(psbt.inputs) == length(tx.inputs) do
+      inputs =
+        psbt.inputs
+        |> Enum.zip(tx.inputs)
+        |> Enum.map(fn {input, tx_input} ->
+          %{tx_input | script_sig: extracted_script_sig(input)}
+        end)
+
+      {:ok, %Transaction{tx | inputs: inputs, witnesses: extracted_witnesses(psbt.inputs)}}
+    else
+      {:error, :not_finalized}
+    end
+  end
+
+  def extract_tx(%PSBT{}), do: {:error, :not_finalized}
+
+  defp extracted_script_sig(%{final_scriptsig: nil}), do: ""
+  defp extracted_script_sig(%{final_scriptsig: script}), do: Bitcoinex.Script.to_hex(script)
+
+  # Returns the witness list for the extracted tx, or nil if no input has a
+  # witness (so the tx serializes in legacy format). Non-witness inputs get an
+  # empty witness stack.
+  defp extracted_witnesses(inputs) do
+    if Enum.any?(inputs, fn input -> input.final_scriptwitness != nil end) do
+      Enum.map(inputs, fn input ->
+        input.final_scriptwitness || %Witness{txinwitness: []}
+      end)
+    else
+      nil
+    end
+  end
+
+  # Combines two lists of maps positionally, short-circuiting on the first
+  # conflict. The lists must be the same length: `Enum.zip` would otherwise
+  # silently truncate to the shorter one and drop maps. For validly-decoded
+  # PSBTs equal txids imply equal counts, but a hand-built PSBT could desync
+  # them — or carry nil instead of a list — so guard explicitly rather than
+  # lose data or raise.
+  defp combine_pairs(maps_a, maps_b, _combiner)
+       when not is_list(maps_a) or not is_list(maps_b) do
+    {:error, :map_count_mismatch}
+  end
+
+  defp combine_pairs(maps_a, maps_b, _combiner) when length(maps_a) != length(maps_b) do
+    {:error, :map_count_mismatch}
+  end
+
+  defp combine_pairs(maps_a, maps_b, combiner) do
+    maps_a
+    |> Enum.zip(maps_b)
+    |> Enum.reduce_while({:ok, []}, fn {map_a, map_b}, {:ok, combined} ->
+      case combiner.(map_a, map_b) do
+        {:ok, merged} -> {:cont, {:ok, combined ++ [merged]}}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
   end
 
   # Applies add_field_fun to the item at index, replacing it in the list.
@@ -606,6 +783,54 @@ defmodule Bitcoinex.PSBT.Utils do
   end
 
   @doc """
+  Combines two values for a singleton (non-repeatable) field (BIP-174 Combiner):
+  takes whichever side is set, keeps the value if both agree, and returns
+  `{:error, :conflicting_field}` if both are set and differ.
+  """
+  @spec combine_singleton(term(), term()) :: {:ok, term()} | {:error, :conflicting_field}
+  def combine_singleton(nil, value), do: {:ok, value}
+  def combine_singleton(value, nil), do: {:ok, value}
+  def combine_singleton(value, value), do: {:ok, value}
+  def combine_singleton(_value_a, _value_b), do: {:error, :conflicting_field}
+
+  @doc """
+  Combines two repeatable (list-valued) fields into their union, identifying
+  records by `key_fun`. Two records that share a key but differ in value are a
+  `{:error, :conflicting_field}`.
+
+  The union keeps the first list's records in their existing order and appends
+  only records new from the second list (Bitcoin Core's `Merge` semantics), so
+  `combine(a, a) == a` unconditionally and combining reproduces the official
+  BIP-174 Combiner vector byte-for-byte. Commutativity holds up to record
+  order — the same record *set* results either way — which is all BIP-174
+  asks of key-value maps. An empty union normalizes back to `nil`.
+  """
+  @spec combine_repeatable(list() | nil, list() | nil, (term() -> term())) ::
+          {:ok, list() | nil} | {:error, :conflicting_field}
+  def combine_repeatable(list_a, list_b, key_fun) do
+    merged =
+      Enum.reduce_while(to_list(list_b), {:ok, to_list(list_a)}, fn record, {:ok, accumulator} ->
+        case Enum.find(accumulator, fn existing -> key_fun.(existing) == key_fun.(record) end) do
+          nil ->
+            {:cont, {:ok, accumulator ++ [record]}}
+
+          existing ->
+            if existing == record,
+              do: {:cont, {:ok, accumulator}},
+              else: {:halt, {:error, :conflicting_field}}
+        end
+      end)
+
+    case merged do
+      {:ok, []} -> {:ok, nil}
+      other -> other
+    end
+  end
+
+  defp to_list(nil), do: []
+  defp to_list(list) when is_list(list), do: list
+
+  @doc """
   Validates a caller-supplied `KeyOrigin`: the fingerprint must be exactly 4
   bytes and every derivation index a concrete uint32 (`DerivationPath`
   wildcards like `:any` cannot be serialized into a PSBT). Guards the Updater
@@ -763,6 +988,37 @@ defmodule Bitcoinex.PSBT.Global do
   # A hand-built ExtendedKey whose depth is not a 1-byte binary must not raise
   # out of the Updater.
   defp validate_xpub_depth(%ExtendedKey{}, %KeyOrigin{}), do: {:error, :xpub_depth_mismatch}
+
+  @doc """
+  Combines two Global maps (BIP-174 Combiner). Callers guarantee the two
+  `unsigned_tx` values are equal.
+  """
+  @spec combine(t(), t()) :: {:ok, t()} | {:error, atom()}
+  def combine(%Global{} = global_a, %Global{} = global_b) do
+    with {:ok, xpub} <- PsbtUtils.combine_repeatable(global_a.xpub, global_b.xpub, &xpub_key/1),
+         {:ok, proprietary} <-
+           PsbtUtils.combine_repeatable(global_a.proprietary, global_b.proprietary, &record_key/1),
+         {:ok, unknown} <-
+           PsbtUtils.combine_repeatable(global_a.unknown, global_b.unknown, &record_key/1) do
+      {:ok,
+       %Global{
+         global_a
+         | version: combine_version(global_a.version, global_b.version),
+           xpub: xpub,
+           proprietary: proprietary,
+           unknown: unknown
+       }}
+    end
+  end
+
+  # BIP-174: when two PSBTs for the same tx carry different PSBT versions, the
+  # combiner keeps the higher version rather than treating it as a conflict.
+  defp combine_version(nil, version), do: version
+  defp combine_version(version, nil), do: version
+  defp combine_version(version_a, version_b), do: max(version_a, version_b)
+
+  defp xpub_key(%{xkey: xkey}), do: PsbtUtils.serialize_xpub_keydata(xkey)
+  defp record_key(%{key: key}), do: key
 
   @spec parse_global(binary()) :: {:ok, {t(), binary()}} | {:error, term()}
   def parse_global(psbt) do
@@ -1148,6 +1404,356 @@ defmodule Bitcoinex.PSBT.In do
 
   defp put_hash_preimage(_input, _field, _record, _hash_fun), do: {:error, :invalid_field}
 
+  @doc """
+  Combines two input maps (BIP-174 Combiner).
+  """
+  @spec combine(t(), t()) :: {:ok, t()} | {:error, atom()}
+  def combine(%In{} = input_a, %In{} = input_b) do
+    with {:ok, non_witness_utxo} <-
+           PsbtUtils.combine_singleton(input_a.non_witness_utxo, input_b.non_witness_utxo),
+         {:ok, witness_utxo} <-
+           PsbtUtils.combine_singleton(input_a.witness_utxo, input_b.witness_utxo),
+         {:ok, sighash_type} <-
+           PsbtUtils.combine_singleton(input_a.sighash_type, input_b.sighash_type),
+         {:ok, redeem_script} <-
+           PsbtUtils.combine_singleton(input_a.redeem_script, input_b.redeem_script),
+         {:ok, witness_script} <-
+           PsbtUtils.combine_singleton(input_a.witness_script, input_b.witness_script),
+         {:ok, final_scriptsig} <-
+           PsbtUtils.combine_singleton(input_a.final_scriptsig, input_b.final_scriptsig),
+         {:ok, final_scriptwitness} <-
+           PsbtUtils.combine_singleton(input_a.final_scriptwitness, input_b.final_scriptwitness),
+         {:ok, por_commitment} <-
+           PsbtUtils.combine_singleton(input_a.por_commitment, input_b.por_commitment),
+         {:ok, partial_sig} <-
+           PsbtUtils.combine_repeatable(
+             input_a.partial_sig,
+             input_b.partial_sig,
+             &public_key_key/1
+           ),
+         {:ok, bip32_derivation} <-
+           PsbtUtils.combine_repeatable(
+             input_a.bip32_derivation,
+             input_b.bip32_derivation,
+             &public_key_key/1
+           ),
+         {:ok, ripemd160} <-
+           PsbtUtils.combine_repeatable(input_a.ripemd160, input_b.ripemd160, &hash_key/1),
+         {:ok, sha256} <-
+           PsbtUtils.combine_repeatable(input_a.sha256, input_b.sha256, &hash_key/1),
+         {:ok, hash160} <-
+           PsbtUtils.combine_repeatable(input_a.hash160, input_b.hash160, &hash_key/1),
+         {:ok, hash256} <-
+           PsbtUtils.combine_repeatable(input_a.hash256, input_b.hash256, &hash_key/1),
+         {:ok, proprietary} <-
+           PsbtUtils.combine_repeatable(input_a.proprietary, input_b.proprietary, &record_key/1),
+         {:ok, unknown} <-
+           PsbtUtils.combine_repeatable(input_a.unknown, input_b.unknown, &record_key/1) do
+      # Update syntax (not a fresh struct literal) so a field added to %In{}
+      # later at least survives combining from the first argument instead of
+      # being silently dropped from both sides.
+      {:ok,
+       %In{
+         input_a
+         | non_witness_utxo: non_witness_utxo,
+           witness_utxo: witness_utxo,
+           partial_sig: partial_sig,
+           sighash_type: sighash_type,
+           redeem_script: redeem_script,
+           witness_script: witness_script,
+           bip32_derivation: bip32_derivation,
+           final_scriptsig: final_scriptsig,
+           final_scriptwitness: final_scriptwitness,
+           por_commitment: por_commitment,
+           ripemd160: ripemd160,
+           sha256: sha256,
+           hash160: hash160,
+           hash256: hash256,
+           proprietary: proprietary,
+           unknown: unknown
+       }}
+    end
+  end
+
+  defp public_key_key(%{public_key: public_key}), do: Point.sec(public_key)
+  defp hash_key(%{hash: hash}), do: hash
+  defp record_key(%{key: key}), do: key
+
+  @doc """
+  Returns true if this input has been finalized (has a final scriptSig and/or
+  scriptWitness).
+  """
+  @spec finalized?(t()) :: boolean()
+  def finalized?(%In{final_scriptsig: nil, final_scriptwitness: nil}), do: false
+  def finalized?(%In{}), do: true
+
+  @doc """
+  Attempts to finalize this input (the BIP-174 Input Finalizer role), given the
+  transaction input that references it (used to locate the scriptPubKey and to
+  validate any non-witness UTXO). Returns the finalized input, or the input
+  unchanged if it cannot be finalized (best-effort, matching Bitcoin Core).
+  """
+  @spec finalize(t(), Transaction.In.t()) :: t()
+  def finalize(%In{} = input, tx_input) do
+    with false <- finalized?(input),
+         {:ok, script_pub_key} <- script_pub_key(input, tx_input),
+         {:ok, final_scriptsig, final_scriptwitness} <-
+           build_finalization(eligible_signatures(input), script_pub_key) do
+      finalized_input(input, final_scriptsig, final_scriptwitness)
+    else
+      _ -> input
+    end
+  end
+
+  # BIP-174: a finalizer must not finalize an input with a signature that does
+  # not match the sighash type the input requires. Signatures with a different
+  # flag are simply not eligible for selection — they may belong to keys not in
+  # this input's script at all (e.g. after combining PSBTs from several
+  # signers), so their presence alone must not block finalization.
+  defp eligible_signatures(%In{sighash_type: nil} = input), do: input
+
+  defp eligible_signatures(%In{sighash_type: sighash_type, partial_sig: partial_sigs} = input) do
+    eligible =
+      Enum.filter(partial_sigs || [], fn partial_sig ->
+        partial_sig.sighash_flag == sighash_type
+      end)
+
+    %In{input | partial_sig: eligible}
+  end
+
+  # Resolves the scriptPubKey being spent. The non-witness UTXO is preferred:
+  # it is the full previous transaction, verifiable against the input's
+  # outpoint (txid + index), whereas a witness_utxo is a bare output that
+  # cannot be cross-checked at all.
+  defp script_pub_key(%In{non_witness_utxo: %Transaction{} = tx}, tx_input) do
+    if Transaction.transaction_id(tx) == tx_input.prev_txid do
+      case Enum.at(tx.outputs, tx_input.prev_vout) do
+        nil -> :error
+        output -> Script.parse_script(output.script_pub_key)
+      end
+    else
+      :error
+    end
+  end
+
+  defp script_pub_key(%In{witness_utxo: %Out{} = utxo}, _tx_input) do
+    Script.parse_script(utxo.script_pub_key)
+  end
+
+  defp script_pub_key(_input, _tx_input), do: :error
+
+  # Builds {final_scriptsig, final_scriptwitness} for the input's script type, or
+  # :cannot_finalize if the collected data is insufficient or the type is
+  # unsupported.
+  defp build_finalization(input, script_pub_key) do
+    case Script.get_script_type(script_pub_key) do
+      :p2pkh -> with_non_witness_utxo(input, &finalize_p2pkh(&1, script_pub_key))
+      :p2wpkh -> finalize_p2wpkh(input, script_pub_key)
+      :p2sh -> finalize_p2sh(input, script_pub_key)
+      :p2wsh -> finalize_p2wsh(input, input.witness_script, script_pub_key)
+      :multi -> with_non_witness_utxo(input, &finalize_bare_multisig(&1, script_pub_key))
+      _other -> :cannot_finalize
+    end
+  end
+
+  # BIP-174 Signer check: "A Witness UTXO is provided for a non-witness input"
+  # must fail. A non-witness spend path may only be finalized from a
+  # non_witness_utxo (whose txid the caller verified against the outpoint) —
+  # a lying witness_utxo must not steer a legacy finalization.
+  defp with_non_witness_utxo(%In{non_witness_utxo: %Transaction{}} = input, finalize_fun),
+    do: finalize_fun.(input)
+
+  defp with_non_witness_utxo(%In{}, _finalize_fun), do: :cannot_finalize
+
+  defp finalize_p2pkh(input, script_pub_key) do
+    case single_signature_for(input, script_pub_key, &Script.create_p2pkh/1) do
+      {:ok, signature, public_key} ->
+        {:ok, script_with_pushes([signature, public_key]), nil}
+
+      :cannot_finalize ->
+        :cannot_finalize
+    end
+  end
+
+  defp finalize_p2wpkh(input, script_pub_key) do
+    case single_signature_for(input, script_pub_key, &Script.create_p2wpkh/1) do
+      {:ok, signature, public_key} ->
+        {:ok, nil, witness([signature, public_key])}
+
+      :cannot_finalize ->
+        :cannot_finalize
+    end
+  end
+
+  defp finalize_p2sh(%In{redeem_script: nil}, _script_pub_key), do: :cannot_finalize
+
+  defp finalize_p2sh(%In{redeem_script: redeem_script} = input, script_pub_key) do
+    redeem_bytes = Script.serialize_script(redeem_script)
+
+    cond do
+      # BIP-174 Signer/Finalizer check: the redeemScript must hash (HASH160) to
+      # the p2sh scriptPubKey. Without this, a mismatched redeemScript would be
+      # assembled into a provably-invalid scriptSig.
+      Script.to_p2sh(redeem_script) != {:ok, script_pub_key} ->
+        :cannot_finalize
+
+      Script.is_p2wpkh?(redeem_script) ->
+        case single_signature_for(input, redeem_script, &Script.create_p2wpkh/1) do
+          {:ok, signature, public_key} ->
+            {:ok, script_with_pushes([redeem_bytes]), witness([signature, public_key])}
+
+          :cannot_finalize ->
+            :cannot_finalize
+        end
+
+      Script.is_p2wsh?(redeem_script) ->
+        case finalize_p2wsh(input, input.witness_script, redeem_script) do
+          {:ok, nil, final_scriptwitness} ->
+            {:ok, script_with_pushes([redeem_bytes]), final_scriptwitness}
+
+          :cannot_finalize ->
+            :cannot_finalize
+        end
+
+      Script.is_multi?(redeem_script) ->
+        # A legacy (non-witness) spend path: like p2pkh, it may only be
+        # finalized from a verifiable non_witness_utxo (see
+        # with_non_witness_utxo/2).
+        with_non_witness_utxo(input, fn input ->
+          case multisig_signatures(redeem_script, input.partial_sig) do
+            {:ok, signatures} ->
+              {:ok, script_with_op0_dummy(signatures ++ [redeem_bytes]), nil}
+
+            :cannot_finalize ->
+              :cannot_finalize
+          end
+        end)
+
+      true ->
+        :cannot_finalize
+    end
+  end
+
+  defp finalize_p2wsh(_input, nil, _expected_p2wsh), do: :cannot_finalize
+
+  defp finalize_p2wsh(input, witness_script, expected_p2wsh) do
+    cond do
+      # BIP-174 Signer/Finalizer check: the witnessScript must hash (SHA256) to
+      # the p2wsh witness program — the scriptPubKey for native p2wsh, or the
+      # redeemScript for p2sh-nested p2wsh.
+      Script.to_p2wsh(witness_script) != {:ok, expected_p2wsh} ->
+        :cannot_finalize
+
+      true ->
+        case multisig_signatures(witness_script, input.partial_sig) do
+          {:ok, signatures} ->
+            stack_items = signatures ++ [Script.serialize_script(witness_script)]
+            {:ok, nil, witness([<<>> | stack_items])}
+
+          :cannot_finalize ->
+            :cannot_finalize
+        end
+    end
+  end
+
+  defp finalize_bare_multisig(input, script_pub_key) do
+    case multisig_signatures(script_pub_key, input.partial_sig) do
+      {:ok, signatures} ->
+        {:ok, script_with_op0_dummy(signatures), nil}
+
+      :cannot_finalize ->
+        :cannot_finalize
+    end
+  end
+
+  # Finds the one partial_sig whose pubkey matches `expected_script` for a
+  # single-key script type, returning its raw signature bytes and SEC pubkey.
+  # `builder` rebuilds the expected script from HASH160(pubkey) — the p2pkh/p2wpkh
+  # scriptPubKey, or the redeemScript for nested p2wpkh. This enforces the BIP-174
+  # Signer key-hash check (without it a signature from an unrelated key would
+  # finalize into a provably-invalid input) and, since the input may legitimately
+  # carry signatures for several keys, also selects the correct one rather than
+  # requiring exactly a single partial_sig.
+  defp single_signature_for(%In{partial_sig: partial_sigs}, expected_script, builder) do
+    case Enum.find(partial_sigs || [], fn partial_sig ->
+           public_key = Point.sec(partial_sig.public_key)
+           builder.(Bitcoinex.Utils.hash160(public_key)) == {:ok, expected_script}
+         end) do
+      nil ->
+        :cannot_finalize
+
+      partial_sig ->
+        {:ok, signature_bytes(partial_sig), Point.sec(partial_sig.public_key)}
+    end
+  end
+
+  # Collects the m signatures required by a multisig script, in the order the
+  # pubkeys appear in the script.
+  defp multisig_signatures(multisig_script, partial_sigs) do
+    if Script.is_multi?(multisig_script) do
+      {:ok, required, public_keys} = Script.extract_multi_policy(multisig_script)
+
+      signatures =
+        public_keys
+        |> Enum.map(&find_partial_sig(partial_sigs, &1))
+        |> Enum.reject(&is_nil/1)
+        |> Enum.map(&signature_bytes/1)
+
+      if length(signatures) >= required do
+        {:ok, Enum.take(signatures, required)}
+      else
+        :cannot_finalize
+      end
+    else
+      :cannot_finalize
+    end
+  end
+
+  defp find_partial_sig(partial_sigs, public_key) do
+    Enum.find(partial_sigs || [], fn partial_sig ->
+      Point.sec(partial_sig.public_key) == Point.sec(public_key)
+    end)
+  end
+
+  # partial_sig signatures are stored as their raw DER bytes; the finalized
+  # scriptSig/witness pushes those bytes followed by the 1-byte sighash flag.
+  defp signature_bytes(%{signature: signature, sighash_flag: sighash_flag}) do
+    signature <> <<sighash_flag>>
+  end
+
+  # Builds a witness stack from raw byte items.
+  defp witness(items) do
+    %Witness{txinwitness: Enum.map(items, &Base.encode16(&1, case: :lower))}
+  end
+
+  # Builds a Script pushing the given data items in order (Script items are
+  # built back to front, so items are pushed in reverse).
+  defp script_with_pushes(items) do
+    Enum.reduce(Enum.reverse(items), Script.new(), fn item, acc ->
+      {:ok, acc} = Script.push_data(acc, item)
+      acc
+    end)
+  end
+
+  # Same, preceded by the OP_0 dummy that OP_CHECKMULTISIG's off-by-one pops.
+  defp script_with_op0_dummy(items) do
+    {:ok, script} = Script.push_op(script_with_pushes(items), 0x00)
+    script
+  end
+
+  # Keeps only the fields a finalized input retains (BIP-174): the UTXO records,
+  # the final scriptSig/scriptWitness, and any proprietary/unknown records.
+  defp finalized_input(input, final_scriptsig, final_scriptwitness) do
+    %In{
+      non_witness_utxo: input.non_witness_utxo,
+      witness_utxo: input.witness_utxo,
+      final_scriptsig: final_scriptsig,
+      final_scriptwitness: final_scriptwitness,
+      proprietary: input.proprietary,
+      unknown: input.unknown
+    }
+  end
+
   # Normalizes a Script, hex string, or raw binary into a Script and applies it.
   # NOTE: hex is tried first, so a raw binary whose bytes are all ASCII hex
   # digits is read as hex. Pass a %Script{} (or hex) to avoid the ambiguity.
@@ -1435,7 +2041,9 @@ defmodule Bitcoinex.PSBT.In do
     end
   end
 
-  @spec serialize_inputs(list(t())) :: binary()
+  @spec serialize_inputs(list(t()) | nil) :: binary()
+  def serialize_inputs(nil), do: <<>>
+
   def serialize_inputs(inputs) when is_list(inputs) do
     Enum.map_join(inputs, &serialize_input/1)
   end
@@ -1642,6 +2250,43 @@ defmodule Bitcoinex.PSBT.Out do
 
   def add_field(%Out{}, _field, _value), do: {:error, :invalid_field}
 
+  @doc """
+  Combines two output maps (BIP-174 Combiner).
+  """
+  @spec combine(t(), t()) :: {:ok, t()} | {:error, atom()}
+  def combine(%Out{} = output_a, %Out{} = output_b) do
+    with {:ok, redeem_script} <-
+           PsbtUtils.combine_singleton(output_a.redeem_script, output_b.redeem_script),
+         {:ok, witness_script} <-
+           PsbtUtils.combine_singleton(output_a.witness_script, output_b.witness_script),
+         {:ok, bip32_derivation} <-
+           PsbtUtils.combine_repeatable(
+             output_a.bip32_derivation,
+             output_b.bip32_derivation,
+             &public_key_key/1
+           ),
+         {:ok, proprietary} <-
+           PsbtUtils.combine_repeatable(output_a.proprietary, output_b.proprietary, &record_key/1),
+         {:ok, unknown} <-
+           PsbtUtils.combine_repeatable(output_a.unknown, output_b.unknown, &record_key/1) do
+      # Update syntax (not a fresh struct literal) so a field added to %Out{}
+      # later at least survives combining from the first argument instead of
+      # being silently dropped from both sides.
+      {:ok,
+       %Out{
+         output_a
+         | redeem_script: redeem_script,
+           witness_script: witness_script,
+           bip32_derivation: bip32_derivation,
+           proprietary: proprietary,
+           unknown: unknown
+       }}
+    end
+  end
+
+  defp public_key_key(%{public_key: public_key}), do: Point.sec(public_key)
+  defp record_key(%{key: key}), do: key
+
   defp with_script(%Script{} = script, put_fun), do: {:ok, put_fun.(script)}
 
   defp with_script(script, put_fun) when is_binary(script) do
@@ -1732,7 +2377,9 @@ defmodule Bitcoinex.PSBT.Out do
     end
   end
 
-  @spec serialize_outputs(list(t())) :: binary()
+  @spec serialize_outputs(list(t()) | nil) :: binary()
+  def serialize_outputs(nil), do: <<>>
+
   def serialize_outputs(outputs) when is_list(outputs) do
     Enum.map_join(outputs, &serialize_output/1)
   end

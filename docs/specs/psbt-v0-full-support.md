@@ -105,13 +105,14 @@ Introduce a small shared struct `Bitcoinex.PSBT.KeyOrigin` — `defstruct [:fing
 
 `combine(psbt_a, psbt_b)` per BIP-174 Combiner rules:
 
-1. **Precondition:** both `global.unsigned_tx` must be equal (same txid *and* identical serialization). Else `{:error, :mismatched_tx}`.
-2. Result has the same length input/output lists; combine positionally.
+1. **Precondition:** both `global.unsigned_tx` must be equal (identical serialization, byte for byte). Else `{:error, :mismatched_tx}`; a PSBT with no unsigned tx at all → `{:error, :missing_unsigned_tx}`.
+2. Result has the same length input/output lists; combine positionally. Mismatched map counts (hand-built PSBTs) → `{:error, :map_count_mismatch}`.
 3. For each map (global, each input, each output): **union** of fields.
-   - Singleton fields (`sighash_type`, `redeem_script`, `witness_script`, `witness_utxo`, `non_witness_utxo`, `final_scriptsig`, `final_scriptwitness`, `version`, `por_commitment`): if only one side has it, take it; if both have it and they are equal, keep it; if both have it and they differ → `{:error, :conflicting_field}`.
-   - Repeatable fields (`partial_sig`, `bip32_derivation`, `xpub`, hash preimages, `proprietary`, `unknown`): union keyed by the full key (pubkey / hash / raw key). On a key collision with differing values → `{:error, :conflicting_field}`.
+   - Singleton fields (`sighash_type`, `redeem_script`, `witness_script`, `witness_utxo`, `non_witness_utxo`, `final_scriptsig`, `final_scriptwitness`, `por_commitment`): if only one side has it, take it; if both have it and they are equal, keep it; if both have it and they differ → `{:error, :conflicting_field}`. (Erroring on conflicts is explicitly sanctioned by BIP-174: a Combiner "may refuse to combine PSBTs with conflicting content".)
+   - `version` (amended in review): BIP-174 directs combiners to keep the **highest** version when the two sides differ, so it merges via `max/2` rather than conflict-erroring. Unreachable through the public API today (only v0 is accepted anywhere), but correct if that changes.
+   - Repeatable fields (`partial_sig`, `bip32_derivation`, `xpub`, hash preimages, `proprietary`, `unknown`): union keyed by the full key (pubkey / hash / raw key), keeping the first PSBT's records in order and appending records new from the second (Bitcoin Core's `Merge` semantics). On a key collision with differing values → `{:error, :conflicting_field}`.
 
-**Invariant:** `combine` is commutative and idempotent for non-conflicting inputs — `combine(a,b) == combine(b,a)` and `combine(a,a) == a`.
+**Invariant (amended in review):** `combine` is idempotent — `combine(a,a) == a` for any decodable `a` — reproduces the official BIP-174 Combiner vector byte-for-byte, and is commutative **up to record order** for non-conflicting inputs (the same record set results either way; the first argument's records lead). A canonical-sort design was tried first and rejected: it broke the vector byte-match and unconditional idempotence.
 
 ### 3.8 Finalizer — `finalize/1`
 
