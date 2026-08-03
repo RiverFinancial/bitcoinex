@@ -981,6 +981,37 @@ defmodule Bitcoinex.PSBTTest do
       end
     end
 
+    test "a non-minimal global unsigned-tx value length is rejected" do
+      {:ok, psbt} = PSBT.decode(@new_fields_vector)
+      tx_bytes = Bitcoinex.Transaction.Utils.serialize(psbt.global.unsigned_tx)
+
+      # the mandatory global record, with its value length inflated from one
+      # byte to the non-minimal <<0xFD, len::little-16>>
+      tx_record = <<0x01, 0x00, 0xFD, byte_size(tx_bytes)::little-size(16)>> <> tx_bytes
+      binary = <<0x70736274::big-size(32), 0xFF>> <> tx_record <> <<0x00, 0x00, 0x00>>
+
+      assert {:error, :non_canonical_compact_size} = PSBT.decode(Base.encode64(binary))
+    end
+
+    test "a witness_utxo with a non-minimal scriptPubKey length is rejected" do
+      # 8-byte amount, scriptPubKey length 1 encoded as <<0xFD, 0x01, 0x00>>, OP_TRUE
+      value = <<1000::little-size(64), 0xFD, 0x01, 0x00, 0x51>>
+      psbt_b64 = psbt_with_records(record(<<0x01>>, value), :input)
+      assert {:error, :invalid_witness_utxo} = PSBT.decode(psbt_b64)
+    end
+
+    test "a final_scriptwitness with a non-minimal stack count or item length is rejected" do
+      # stack count 1 encoded as <<0xFD, 0x01, 0x00>>
+      value = <<0xFD, 0x01, 0x00, 0x01, 0x51>>
+      psbt_b64 = psbt_with_records(record(<<0x08>>, value), :input)
+      assert {:error, :invalid_final_scriptwitness} = PSBT.decode(psbt_b64)
+
+      # stack item length 1 encoded as <<0xFD, 0x01, 0x00>>
+      value = <<0x01, 0xFD, 0x01, 0x00, 0x51>>
+      psbt_b64 = psbt_with_records(record(<<0x08>>, value), :input)
+      assert {:error, :invalid_final_scriptwitness} = PSBT.decode(psbt_b64)
+    end
+
     test "a non_witness_utxo that does not re-serialize identically is rejected" do
       {:ok, psbt} = PSBT.decode(@new_fields_vector)
       tx_bytes = Bitcoinex.Transaction.Utils.serialize(psbt.global.unsigned_tx)
@@ -1062,6 +1093,22 @@ defmodule Bitcoinex.PSBTTest do
 
       assert {:error, :xpub_depth_mismatch} =
                PSBT.add_global_field(psbt, :xpub, %{xkey: xpub, origin: origin})
+    end
+
+    test "add_global_field(:xpub) rejects a hand-built key whose depth is not 1 byte, without raising" do
+      {:ok, base} = PSBT.decode(valid_vector(@p2sh_p2wsh_vector_index))
+      {:ok, psbt} = PSBT.from_tx(base.global.unsigned_tx)
+      {:ok, master} = ExtendedKey.parse_extended_key(@bip174_master_tprv)
+      {:ok, xpub} = ExtendedKey.to_extended_public_key(master)
+
+      origin = %KeyOrigin{
+        fingerprint: ExtendedKey.get_fingerprint(master),
+        derivation: %DerivationPath{child_nums: []}
+      }
+
+      # depth as a bare integer previously raised FunctionClauseError
+      assert {:error, :xpub_depth_mismatch} =
+               PSBT.add_global_field(psbt, :xpub, %{xkey: %{xpub | depth: 0}, origin: origin})
     end
   end
 
@@ -1267,6 +1314,86 @@ defmodule Bitcoinex.PSBTTest do
       }
 
       assert {:error, :invalid_field} = PSBT.add_input_field(psbt, 0, :witness_utxo, utxo)
+    end
+
+    test "rejects a witness_utxo whose value exceeds a uint64", %{psbt: psbt} do
+      utxo = %Bitcoinex.Transaction.Out{
+        value: 0x10000000000000000,
+        script_pub_key: "0014" <> String.duplicate("ab", 20)
+      }
+
+      # the amount serializes as little-64; anything wider would silently
+      # truncate on encode (2^64 re-decoded as 0)
+      assert {:error, :invalid_field} = PSBT.add_input_field(psbt, 0, :witness_utxo, utxo)
+    end
+
+    test "rejects an unknown record whose key uses a known or proprietary type byte", %{
+      psbt: psbt
+    } do
+      # 0x04 is PSBT_IN_REDEEM_SCRIPT: on an input without one, the record
+      # would re-decode into redeem_script (silent corruption); on an input
+      # with one, the re-encoded PSBT fails decode with :duplicate_key
+      assert {:error, :invalid_key_format} =
+               PSBT.add_input_field(psbt, 0, :unknown, %{key: <<0x04>>, value: <<0xAA>>})
+
+      assert {:error, :invalid_key_format} =
+               PSBT.add_global_field(psbt, :unknown, %{key: <<0x00>>, value: <<0xAA>>})
+
+      assert {:error, :invalid_key_format} =
+               PSBT.add_output_field(psbt, 0, :unknown, %{key: <<0x02, 0xAB>>, value: <<0xAA>>})
+
+      # 0xFC keys belong to :proprietary — held in :unknown they would
+      # re-decode into the other field
+      assert {:error, :invalid_key_format} =
+               PSBT.add_input_field(psbt, 0, :unknown, %{key: <<0xFC, "id">>, value: <<0xAA>>})
+    end
+
+    test "rejects an empty unknown key, which would re-serialize as the map separator", %{
+      psbt: psbt
+    } do
+      assert {:error, :invalid_key_format} =
+               PSBT.add_global_field(psbt, :unknown, %{key: <<>>, value: "hello"})
+
+      assert {:error, :invalid_key_format} =
+               PSBT.add_input_field(psbt, 0, :unknown, %{key: <<>>, value: "hello"})
+
+      assert {:error, :invalid_key_format} =
+               PSBT.add_output_field(psbt, 0, :unknown, %{key: <<>>, value: "hello"})
+    end
+
+    test "rejects a proprietary record whose key lacks the 0xFC type byte", %{psbt: psbt} do
+      assert {:error, :invalid_key_format} =
+               PSBT.add_global_field(psbt, :proprietary, %{key: <<0x42, "id">>, value: <<0xAA>>})
+
+      assert {:error, :invalid_key_format} =
+               PSBT.add_input_field(psbt, 0, :proprietary, %{key: "id", value: <<0xAA>>})
+
+      assert {:error, :invalid_key_format} =
+               PSBT.add_output_field(psbt, 0, :proprietary, %{key: <<>>, value: <<0xAA>>})
+    end
+
+    test "accepted unknown and proprietary records survive a decode round-trip", %{psbt: psbt} do
+      {:ok, psbt} =
+        PSBT.add_input_field(psbt, 0, :unknown, %{key: <<0x42, "u">>, value: <<0xAA>>})
+
+      {:ok, psbt} =
+        PSBT.add_input_field(psbt, 0, :proprietary, %{key: <<0xFC, "p">>, value: <<0xBB>>})
+
+      assert {:ok, decoded} = PSBT.decode(PSBT.encode_b64(psbt))
+      assert decoded == psbt
+    end
+
+    test "hand-built PSBTs with nil input/output maps get errors, not raises", %{base: base} do
+      tx = base.global.unsigned_tx
+
+      assert {:error, :index_out_of_range} =
+               PSBT.add_input_field(%PSBT{}, 0, :sighash_type, 0x01)
+
+      assert {:error, :index_out_of_range} =
+               PSBT.add_output_field(%PSBT{}, 0, :redeem_script, "51")
+
+      assert {:error, :tx_io_count_mismatch} =
+               PSBT.add_global_field(%PSBT{}, :unsigned_tx, tx)
     end
 
     test "validates a non_witness_utxo against the input's outpoint" do

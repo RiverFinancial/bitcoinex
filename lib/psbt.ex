@@ -172,8 +172,11 @@ defmodule Bitcoinex.PSBT do
   end
 
   # The unsigned tx's input/output counts must match the PSBT's map counts.
+  # A hand-built PSBT may carry inputs/outputs: nil — that is a mismatch, not
+  # a raise (the Updater never raises).
   defp validate_io_counts(%PSBT{inputs: inputs, outputs: outputs}, %Transaction{} = tx) do
-    if length(tx.inputs) == length(inputs) and length(tx.outputs) == length(outputs) do
+    if is_list(inputs) and is_list(outputs) and
+         length(tx.inputs) == length(inputs) and length(tx.outputs) == length(outputs) do
       :ok
     else
       {:error, :tx_io_count_mismatch}
@@ -324,8 +327,10 @@ defmodule Bitcoinex.PSBT do
   end
 
   # Applies add_field_fun to the item at index, replacing it in the list.
+  # A hand-built PSBT may carry inputs/outputs: nil — no index is in range
+  # there, and the Updater never raises.
   defp put_item_field(items, index, add_field_fun) do
-    if index < 0 or index >= length(items) do
+    if not is_list(items) or index < 0 or index >= length(items) do
       {:error, :index_out_of_range}
     else
       case add_field_fun.(Enum.at(items, index)) do
@@ -582,6 +587,28 @@ defmodule Bitcoinex.PSBT.Utils do
   end
 
   @doc """
+  Validates the raw key of an Updater-supplied `:proprietary` or `:unknown`
+  record. A `:proprietary` key must carry the 0xFC type byte. An `:unknown` key
+  must be non-empty (an empty key re-serializes as the 0x00 map separator,
+  corrupting the PSBT) and must not use a type byte the section parses into a
+  dedicated field, nor 0xFC — such a record would re-decode as a different
+  struct (or a `:duplicate_key` error), breaking `decode(encode_b64(psbt))`.
+  """
+  @spec validate_updater_key(:proprietary | :unknown, binary(), Enumerable.t()) ::
+          :ok | {:error, :invalid_key_format}
+  def validate_updater_key(:proprietary, <<0xFC, _rest::binary>>, _known_types), do: :ok
+
+  def validate_updater_key(:unknown, <<type, _rest::binary>>, known_types) do
+    if type == 0xFC or type in known_types do
+      {:error, :invalid_key_format}
+    else
+      :ok
+    end
+  end
+
+  def validate_updater_key(_field, _key, _known_types), do: {:error, :invalid_key_format}
+
+  @doc """
   Parses the 78-byte raw extended key from a PSBT `xpub` key into an ExtendedKey.
   The PSBT encoding omits the Base58 checksum that `ExtendedKey` expects, so it
   is appended before parsing.
@@ -762,6 +789,7 @@ defmodule Bitcoinex.PSBT.Global do
   @psbt_global_unsigned_tx 0x00
   @psbt_global_xpub 0x01
   @psbt_global_version 0xFB
+  @known_global_types [@psbt_global_unsigned_tx, @psbt_global_xpub, @psbt_global_version]
 
   @doc """
   Builds a Global map wrapping an unsigned transaction.
@@ -779,7 +807,11 @@ defmodule Bitcoinex.PSBT.Global do
       key must be an extended *public* key (`{:error, :private_key_not_allowed}`)
     * `:version` — `0` (only PSBT v0 is supported; any other integer is
       `{:error, :unsupported_version}`)
-    * `:proprietary` / `:unknown` — `%{key: binary(), value: binary()}` (repeatable)
+    * `:proprietary` / `:unknown` — `%{key: binary(), value: binary()}` (repeatable);
+      a `:proprietary` key must carry the 0xFC type byte, and an `:unknown` key
+      must be non-empty and must not use a type byte this map already parses
+      into a dedicated field, nor 0xFC (`{:error, :invalid_key_format}`) — such
+      a record could not survive a decode round-trip
 
   Repeatable fields reject a record whose key is already present
   (`{:error, :duplicate_key}`): a PSBT map may not contain duplicate keys, so
@@ -816,14 +848,16 @@ defmodule Bitcoinex.PSBT.Global do
     {:error, :unsupported_version}
   end
 
-  def add_field(%Global{} = global, :proprietary, %{key: _, value: _} = record) do
-    with {:ok, records} <- PsbtUtils.append_unique(global.proprietary, record, & &1.key) do
+  def add_field(%Global{} = global, :proprietary, %{key: key, value: _} = record) do
+    with :ok <- PsbtUtils.validate_updater_key(:proprietary, key, @known_global_types),
+         {:ok, records} <- PsbtUtils.append_unique(global.proprietary, record, & &1.key) do
       {:ok, %Global{global | proprietary: records}}
     end
   end
 
-  def add_field(%Global{} = global, :unknown, %{key: _, value: _} = record) do
-    with {:ok, records} <- PsbtUtils.append_unique(global.unknown, record, & &1.key) do
+  def add_field(%Global{} = global, :unknown, %{key: key, value: _} = record) do
+    with :ok <- PsbtUtils.validate_updater_key(:unknown, key, @known_global_types),
+         {:ok, records} <- PsbtUtils.append_unique(global.unknown, record, & &1.key) do
       {:ok, %Global{global | unknown: records}}
     end
   end
@@ -839,6 +873,10 @@ defmodule Bitcoinex.PSBT.Global do
       {:error, :xpub_depth_mismatch}
     end
   end
+
+  # A hand-built ExtendedKey whose depth is not a 1-byte binary must not raise
+  # out of the Updater.
+  defp validate_xpub_depth(%ExtendedKey{}, %KeyOrigin{}), do: {:error, :xpub_depth_mismatch}
 
   @doc """
   Combines two Global maps (BIP-174 Combiner). Callers guarantee the two
@@ -891,24 +929,27 @@ defmodule Bitcoinex.PSBT.Global do
 
   # unsigned transaction
   defp parse(<<@psbt_global_unsigned_tx::big-size(8)>>, psbt, global) do
-    {txn_length, psbt} = TxUtils.get_counter(psbt)
-    <<txn_bytes::binary-size(txn_length), psbt::binary>> = psbt
-
-    case Transaction.decode(Base.encode16(txn_bytes, case: :lower)) do
-      {:ok, txn} ->
-        cond do
-          not legacy_serialized?(txn, txn_bytes) ->
-            {:error, :unsigned_tx_not_canonically_serialized}
-
-          not all_script_sigs_empty?(txn) ->
-            {:error, :unsigned_tx_has_script_sig}
-
-          true ->
-            {%Global{global | unsigned_tx: txn}, psbt}
-        end
-
+    case PsbtUtils.parse_compact_size_value(psbt) do
       {:error, reason} ->
         {:error, reason}
+
+      {txn_bytes, psbt} ->
+        case Transaction.decode(Base.encode16(txn_bytes, case: :lower)) do
+          {:ok, txn} ->
+            cond do
+              not legacy_serialized?(txn, txn_bytes) ->
+                {:error, :unsigned_tx_not_canonically_serialized}
+
+              not all_script_sigs_empty?(txn) ->
+                {:error, :unsigned_tx_has_script_sig}
+
+              true ->
+                {%Global{global | unsigned_tx: txn}, psbt}
+            end
+
+          {:error, reason} ->
+            {:error, reason}
+        end
     end
   end
 
@@ -1093,19 +1134,25 @@ defmodule Bitcoinex.PSBT.In do
     * `:final_scriptwitness` — a `Transaction.Witness.t()`
     * `:por_commitment` — a binary
     * `:ripemd160` / `:sha256` / `:hash160` / `:hash256` — `%{hash: binary(), preimage: binary()}` (repeatable); the hash must be the digest of the preimage under the named algorithm, else `{:error, :invalid_hash_preimage}`
-    * `:proprietary` / `:unknown` — `%{key: binary(), value: binary()}` (repeatable)
+    * `:proprietary` / `:unknown` — `%{key: binary(), value: binary()}` (repeatable);
+      a `:proprietary` key must carry the 0xFC type byte, and an `:unknown` key
+      must be non-empty and must not use a type byte this map already parses
+      into a dedicated field, nor 0xFC (`{:error, :invalid_key_format}`) — such
+      a record could not survive a decode round-trip
   """
   @spec add_field(t(), atom(), any()) :: {:ok, t()} | {:error, atom()}
   def add_field(%In{} = input, :non_witness_utxo, %Transaction{} = tx) do
     {:ok, %In{input | non_witness_utxo: tx}}
   end
 
+  # The amount serializes as a uint64, so anything above 0xFFFFFFFFFFFFFFFF
+  # would silently truncate on encode.
   def add_field(
         %In{} = input,
         :witness_utxo,
         %Out{script_pub_key: script_pub_key, value: value} = utxo
       )
-      when is_integer(value) and value >= 0 do
+      when is_integer(value) and value >= 0 and value <= 0xFFFFFFFFFFFFFFFF do
     case normalize_hex(script_pub_key) do
       {:ok, hex} -> {:ok, %In{input | witness_utxo: %Out{utxo | script_pub_key: hex}}}
       :error -> {:error, :invalid_field}
@@ -1196,14 +1243,26 @@ defmodule Bitcoinex.PSBT.In do
     put_hash_preimage(input, :hash256, record, &Bitcoinex.Utils.double_sha256/1)
   end
 
-  def add_field(%In{} = input, :proprietary, %{key: _, value: _} = record) do
-    with {:ok, records} <- PsbtUtils.append_unique(input.proprietary, record, & &1.key) do
+  def add_field(%In{} = input, :proprietary, %{key: key, value: _} = record) do
+    with :ok <-
+           PsbtUtils.validate_updater_key(
+             :proprietary,
+             key,
+             @psbt_in_non_witness_utxo..@psbt_in_hash256
+           ),
+         {:ok, records} <- PsbtUtils.append_unique(input.proprietary, record, & &1.key) do
       {:ok, %In{input | proprietary: records}}
     end
   end
 
-  def add_field(%In{} = input, :unknown, %{key: _, value: _} = record) do
-    with {:ok, records} <- PsbtUtils.append_unique(input.unknown, record, & &1.key) do
+  def add_field(%In{} = input, :unknown, %{key: key, value: _} = record) do
+    with :ok <-
+           PsbtUtils.validate_updater_key(
+             :unknown,
+             key,
+             @psbt_in_non_witness_utxo..@psbt_in_hash256
+           ),
+         {:ok, records} <- PsbtUtils.append_unique(input.unknown, record, & &1.key) do
       {:ok, %In{input | unknown: records}}
     end
   end
@@ -1381,13 +1440,22 @@ defmodule Bitcoinex.PSBT.In do
 
   # BIP-174: the value is the entire output in network serialization — bytes
   # beyond the scriptPubKey are malformed, not ignorable (dropping them would
-  # also silently alter the PSBT on re-serialize).
+  # also silently alter the PSBT on re-serialize). Like the tx-valued fields,
+  # the parsed output must reproduce the value bytes exactly, so a non-minimal
+  # scriptPubKey length is rejected too.
   defp parse(<<@psbt_in_witness_utxo::big-size(8)>>, psbt, input) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
 
     case Out.parse_output(value) do
-      {:ok, out} -> {%In{input | witness_utxo: out}, psbt}
-      {:error, _} -> {:error, :invalid_witness_utxo}
+      {:ok, out} ->
+        if :erlang.list_to_binary(Out.serialize_outputs([out])) == value do
+          {%In{input | witness_utxo: out}, psbt}
+        else
+          {:error, :invalid_witness_utxo}
+        end
+
+      {:error, _} ->
+        {:error, :invalid_witness_utxo}
     end
   end
 
@@ -1472,13 +1540,22 @@ defmodule Bitcoinex.PSBT.In do
   end
 
   # BIP-174: the value is the entire witness stack in network serialization —
-  # bytes beyond the last stack item are malformed, not ignorable.
+  # bytes beyond the last stack item are malformed, not ignorable. Like the
+  # tx-valued fields, the parsed stack must reproduce the value bytes exactly,
+  # so a non-minimal stack count or item length is rejected too.
   defp parse(<<@psbt_in_final_scriptwitness::big-size(8)>>, psbt, input) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
 
     case Witness.parse_witness(value) do
-      {:ok, witness} -> {%In{input | final_scriptwitness: witness}, psbt}
-      {:error, _} -> {:error, :invalid_final_scriptwitness}
+      {:ok, witness} ->
+        if Witness.serialize_witness([witness]) == value do
+          {%In{input | final_scriptwitness: witness}, psbt}
+        else
+          {:error, :invalid_final_scriptwitness}
+        end
+
+      {:error, _} ->
+        {:error, :invalid_final_scriptwitness}
     end
   end
 
@@ -1720,7 +1797,11 @@ defmodule Bitcoinex.PSBT.Out do
 
     * `:redeem_script` / `:witness_script` — a `Script.t()` or its hex/binary
     * `:bip32_derivation` — `%{public_key: Point.t(), origin: KeyOrigin.t()}` (repeatable)
-    * `:proprietary` / `:unknown` — `%{key: binary(), value: binary()}` (repeatable)
+    * `:proprietary` / `:unknown` — `%{key: binary(), value: binary()}` (repeatable);
+      a `:proprietary` key must carry the 0xFC type byte, and an `:unknown` key
+      must be non-empty and must not use a type byte this map already parses
+      into a dedicated field, nor 0xFC (`{:error, :invalid_key_format}`) — such
+      a record could not survive a decode round-trip
   """
   @spec add_field(t(), atom(), any()) :: {:ok, t()} | {:error, atom()}
   def add_field(%Out{} = output, :redeem_script, script) do
@@ -1743,14 +1824,26 @@ defmodule Bitcoinex.PSBT.Out do
     end
   end
 
-  def add_field(%Out{} = output, :proprietary, %{key: _, value: _} = record) do
-    with {:ok, records} <- PsbtUtils.append_unique(output.proprietary, record, & &1.key) do
+  def add_field(%Out{} = output, :proprietary, %{key: key, value: _} = record) do
+    with :ok <-
+           PsbtUtils.validate_updater_key(
+             :proprietary,
+             key,
+             @psbt_out_redeem_script..@psbt_out_bip32_derivation
+           ),
+         {:ok, records} <- PsbtUtils.append_unique(output.proprietary, record, & &1.key) do
       {:ok, %Out{output | proprietary: records}}
     end
   end
 
-  def add_field(%Out{} = output, :unknown, %{key: _, value: _} = record) do
-    with {:ok, records} <- PsbtUtils.append_unique(output.unknown, record, & &1.key) do
+  def add_field(%Out{} = output, :unknown, %{key: key, value: _} = record) do
+    with :ok <-
+           PsbtUtils.validate_updater_key(
+             :unknown,
+             key,
+             @psbt_out_redeem_script..@psbt_out_bip32_derivation
+           ),
+         {:ok, records} <- PsbtUtils.append_unique(output.unknown, record, & &1.key) do
       {:ok, %Out{output | unknown: records}}
     end
   end
