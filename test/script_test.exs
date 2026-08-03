@@ -943,6 +943,38 @@ defmodule Bitcoinex.ScriptTest do
   end
 
   describe "test serialize scripts" do
+    test "non-minimal pushes keep their declared PUSHDATA width on round-trip" do
+      # Each pushes a payload narrower than the PUSHDATA opcode's natural
+      # range. Consensus-valid; the length prefix width must be preserved
+      # (previously `4c 14 <20>` re-serialized as `4c <20>`, dropping a byte).
+      vectors = [
+        # OP_PUSHDATA1 of 20 bytes (minimal would be pushbytes 0x14)
+        "4c14" <> String.duplicate("ab", 20),
+        # OP_PUSHDATA2 of 105 bytes (minimal would be OP_PUSHDATA1)
+        "4d6900" <> String.duplicate("ab", 105),
+        # OP_PUSHDATA4 of 105 bytes
+        "4e69000000" <> String.duplicate("ab", 105),
+        # inside a larger script
+        "a94c14" <> String.duplicate("ab", 20) <> "87"
+      ]
+
+      for s_hex <- vectors do
+        {:ok, s} = Script.parse_script(s_hex)
+        assert Script.to_hex(s) == s_hex
+      end
+    end
+
+    test "minimal pushes still serialize minimally" do
+      for s_hex <- [
+            "14" <> String.duplicate("ab", 20),
+            "0401020304",
+            "4c4c" <> String.duplicate("cd", 0x4C)
+          ] do
+        {:ok, s} = Script.parse_script(s_hex)
+        assert Script.to_hex(s) == s_hex
+      end
+    end
+
     test "test serialize pushdata1" do
       data_hex =
         "c5802547372094c58025802547372094c5802547802c9ca07652be7e8025472547372094c5802547802c9ca07652be7e802547372094c5802547802c9ca07652be7e47802c9ca07652be7e6419bc9aa1"

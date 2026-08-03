@@ -64,15 +64,33 @@ defmodule Bitcoinex.Transaction do
 
   # returns transaction
   defp parse(<<version::little-size(32), remaining::binary>>) do
-    {is_segwit, remaining} =
-      case remaining do
-        <<1::size(16), segwit_remaining::binary>> ->
-          {:segwit, segwit_remaining}
+    case remaining do
+      # `00 01` is ambiguous: either the segwit marker+flag (BIP-144) or a legacy
+      # transaction with 0 inputs and 1 output. A network segwit tx always has at
+      # least one input, but a PSBT's unsigned tx may legitimately have 0 inputs,
+      # so try the segwit interpretation first and fall back to legacy if it does
+      # not parse cleanly.
+      <<0::size(8), 1::size(8), segwit_remaining::binary>> ->
+        case try_parse_tx(version, segwit_remaining, :segwit) do
+          {:ok, txn} -> {:ok, txn}
+          :error -> parse_tx(version, remaining, :not_segwit)
+        end
 
-        _ ->
-          {:not_segwit, remaining}
-      end
+      _ ->
+        parse_tx(version, remaining, :not_segwit)
+    end
+  end
 
+  # Wraps parse_tx/3 so that a segwit interpretation of an ambiguous prefix which
+  # is really a legacy 0-input tx (and would raise while reading a bogus input
+  # count / stack) degrades to :error and lets parse/1 retry as legacy.
+  defp try_parse_tx(version, remaining, is_segwit) do
+    parse_tx(version, remaining, is_segwit)
+  rescue
+    _error in [MatchError, ArgumentError, FunctionClauseError] -> :error
+  end
+
+  defp parse_tx(version, remaining, is_segwit) do
     # Inputs.
     {in_counter, remaining} = TxUtils.get_counter(remaining)
     {inputs, remaining} = In.parse_inputs(in_counter, remaining)
@@ -172,11 +190,20 @@ defmodule Bitcoinex.Transaction.Utils do
   end
 
   @doc """
-    Returns the serialized variable length integer.
+    Returns the serialized Bitcoin CompactSize (variable-length) unsigned integer.
+
+    CompactSize is defined over the full unsigned 64-bit range: values up to
+    `0xFC` are a single byte, then `0xFD`/`0xFE`/`0xFF` prefix a little-endian
+    2-/4-/8-byte value. The 8-byte form is a real part of the encoding (it is the
+    inverse of `get_counter/1`), so this function must handle values up to
+    `0xFFFFFFFFFFFFFFFF` even though the counts bitcoinex serializes in practice
+    (input/output/witness counts, script and value lengths) never approach it.
   """
-  def serialize_compact_size_unsigned_int(compact_size) do
+  def serialize_compact_size_unsigned_int(compact_size)
+      when is_integer(compact_size) and compact_size >= 0 and
+             compact_size <= 0xFFFFFFFFFFFFFFFF do
     cond do
-      compact_size >= 0 and compact_size <= 0xFC ->
+      compact_size <= 0xFC ->
         <<compact_size::little-size(8)>>
 
       compact_size <= 0xFFFF ->
@@ -185,7 +212,7 @@ defmodule Bitcoinex.Transaction.Utils do
       compact_size <= 0xFFFFFFFF ->
         <<0xFE>> <> <<compact_size::little-size(32)>>
 
-      compact_size <= 0xFF ->
+      compact_size <= 0xFFFFFFFFFFFFFFFF ->
         <<0xFF>> <> <<compact_size::little-size(64)>>
     end
   end
@@ -212,6 +239,9 @@ defmodule Bitcoinex.Transaction.Witness do
   def witness(witness_bytes) do
     {stack_size, witness_bytes} = TxUtils.get_counter(witness_bytes)
 
+    # Lenient: reads one witness stack off the front and ignores whatever
+    # follows, as it has always done. Callers that must reject trailing bytes
+    # (PSBT record values) use `parse_witness/1` instead.
     {witness, _} =
       if stack_size == 0 do
         {%Witness{txinwitness: []}, witness_bytes}
@@ -221,6 +251,27 @@ defmodule Bitcoinex.Transaction.Witness do
       end
 
     witness
+  end
+
+  @doc """
+  Parses a binary that must contain exactly one serialized witness stack:
+  trailing bytes after the last stack item make it invalid.
+  """
+  @spec parse_witness(binary()) :: {:ok, t()} | {:error, :invalid_witness}
+  def parse_witness(witness_bytes) do
+    {stack_size, witness_bytes} = TxUtils.get_counter(witness_bytes)
+
+    if stack_size == 0 do
+      case witness_bytes do
+        <<>> -> {:ok, %Witness{txinwitness: []}}
+        _ -> {:error, :invalid_witness}
+      end
+    else
+      case parse_stack(witness_bytes, [], stack_size) do
+        {stack_items, <<>>} -> {:ok, %Witness{txinwitness: stack_items}}
+        _ -> {:error, :invalid_witness}
+      end
+    end
   end
 
   @spec serialize_witness(list(Witness.t())) :: binary
@@ -265,7 +316,7 @@ defmodule Bitcoinex.Transaction.Witness do
 
     {witness, remaining} =
       if stack_size == 0 do
-        {%Witness{txinwitness: 0}, remaining}
+        {%Witness{txinwitness: []}, remaining}
       else
         {stack_items, remaining} = parse_stack(remaining, [], stack_size)
         {%Witness{txinwitness: stack_items}, remaining}
@@ -408,12 +459,34 @@ defmodule Bitcoinex.Transaction.Out do
     serialize_output(outputs, [serialized_outputs, serialized_output])
   end
 
+  # Lenient: reads one output off the front and ignores whatever follows, as it
+  # has always done. Callers that must reject trailing bytes (PSBT record
+  # values) use `parse_output/1` instead.
   def output(out_bytes) do
     <<value::little-size(64), out_bytes::binary>> = out_bytes
     {script_len, out_bytes} = TxUtils.get_counter(out_bytes)
     <<script_pub_key::binary-size(script_len), _::binary>> = out_bytes
     %Out{value: value, script_pub_key: Base.encode16(script_pub_key, case: :lower)}
   end
+
+  @doc """
+  Parses a binary that must contain exactly one serialized transaction output:
+  trailing bytes after the scriptPubKey make it invalid.
+  """
+  @spec parse_output(binary()) :: {:ok, t()} | {:error, :invalid_output}
+  def parse_output(<<value::little-size(64), out_bytes::binary>>) do
+    {script_len, out_bytes} = TxUtils.get_counter(out_bytes)
+
+    case out_bytes do
+      <<script_pub_key::binary-size(script_len)>> ->
+        {:ok, %Out{value: value, script_pub_key: Base.encode16(script_pub_key, case: :lower)}}
+
+      _ ->
+        {:error, :invalid_output}
+    end
+  end
+
+  def parse_output(_), do: {:error, :invalid_output}
 
   def parse_outputs(counter, outputs) do
     parse(outputs, [], counter)

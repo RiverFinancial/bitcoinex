@@ -3,6 +3,8 @@ defmodule Bitcoinex.TransactionTest do
   doctest Bitcoinex.Transaction
 
   alias Bitcoinex.Transaction
+  alias Bitcoinex.Transaction.{Out, Witness}
+  alias Bitcoinex.Transaction.Utils, as: TxUtils
 
   @txn_serialization_1 %{
     tx_hex:
@@ -88,7 +90,7 @@ defmodule Bitcoinex.TransactionTest do
       assert 4_294_967_295 == in_2.sequence_no
 
       witness_in_0 = Enum.at(txn.witnesses, 0)
-      assert 0 == witness_in_0.txinwitness
+      assert [] == witness_in_0.txinwitness
 
       witness_in_1 = Enum.at(txn.witnesses, 1)
 
@@ -136,7 +138,7 @@ defmodule Bitcoinex.TransactionTest do
       assert 4_294_967_295 == in_1.sequence_no
 
       witness_in_0 = Enum.at(txn.witnesses, 0)
-      assert 0 == witness_in_0.txinwitness
+      assert [] == witness_in_0.txinwitness
 
       witness_in_1 = Enum.at(txn.witnesses, 1)
 
@@ -231,6 +233,99 @@ defmodule Bitcoinex.TransactionTest do
       out_1 = Enum.at(txn.outputs, 1)
       assert 87_000_000 == out_1.value
       assert "76a9147480a33f950689af511e6e84c138dbbd3c3ee41588ac" == out_1.script_pub_key
+    end
+  end
+
+  describe "serialize/1" do
+    test "round-trips a segwit transaction containing an empty witness stack" do
+      # Input 0 of this tx is a legacy spend, so its witness stack is empty
+      # (stack size 0x00 on the wire). Serialization previously raised
+      # Protocol.UndefinedError because the empty stack was decoded as the
+      # integer 0 rather than [].
+      tx_hex = @txn_segwit_serialization_1.tx_hex
+      {:ok, txn} = Transaction.decode(tx_hex)
+      assert [] == Enum.at(txn.witnesses, 0).txinwitness
+      assert Base.encode16(TxUtils.serialize(txn), case: :lower) == tx_hex
+    end
+  end
+
+  describe "serialize_compact_size_unsigned_int/1" do
+    # One entry per size class boundary of the Bitcoin compact-size encoding.
+    @compact_size_cases [
+      {0, <<0x00>>},
+      {0xFC, <<0xFC>>},
+      {0xFD, <<0xFD, 0xFD, 0x00>>},
+      {0xFFFF, <<0xFD, 0xFF, 0xFF>>},
+      {0x1_0000, <<0xFE, 0x00, 0x00, 0x01, 0x00>>},
+      {0xFFFF_FFFF, <<0xFE, 0xFF, 0xFF, 0xFF, 0xFF>>},
+      {0x1_0000_0000, <<0xFF, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00>>},
+      {0xFFFF_FFFF_FFFF_FFFF, <<0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF>>}
+    ]
+
+    test "encodes each size class with the correct little-endian bytes" do
+      for {value, expected_bytes} <- @compact_size_cases do
+        assert TxUtils.serialize_compact_size_unsigned_int(value) == expected_bytes
+      end
+    end
+
+    test "round-trips through get_counter/1 for every size class" do
+      for {value, _bytes} <- @compact_size_cases do
+        encoded = TxUtils.serialize_compact_size_unsigned_int(value)
+        assert {^value, <<>>} = TxUtils.get_counter(encoded)
+      end
+    end
+
+    test "encodes values above 0xFFFFFFFF with the 8-byte (0xFF) CompactSize form" do
+      # Values in (0xFFFFFFFF, 0xFFFFFFFFFFFFFFFF] serialize as 0xFF followed by
+      # a little-endian uint64.
+      assert <<0xFF, _::binary-size(8)>> =
+               TxUtils.serialize_compact_size_unsigned_int(0x1_0000_0000)
+    end
+  end
+
+  describe "0-input transaction (segwit-marker ambiguity)" do
+    # version | 00 (0 inputs) | 01 (1 output) | value | 00 (empty script) | locktime.
+    # The `00 01` prefix collides with the segwit marker+flag; parse/1 must fall
+    # back to legacy so a 0-input tx (used by PSBT unsigned txs) round-trips.
+    @zero_input_tx "02000000" <>
+                     "00" <> "01" <> "e803000000000000" <> "00" <> "00000000"
+
+    test "decodes a 0-input tx as legacy and round-trips it" do
+      assert {:ok, tx} = Transaction.decode(@zero_input_tx)
+      assert tx.inputs == []
+      assert length(tx.outputs) == 1
+      assert tx.witnesses == nil
+      assert Base.encode16(TxUtils.serialize(tx), case: :lower) == @zero_input_tx
+    end
+  end
+
+  # Two pairs of parsers with deliberately different contracts: `output/1` and
+  # `witness/1` read one item off the front of a longer binary (how a whole
+  # transaction is parsed), while `parse_output/1` and `parse_witness/1` require
+  # the binary to hold exactly one item — what a PSBT record value must be.
+  describe "single-item parsing: lenient vs strict" do
+    @valid_output "e80300000000000017a9146e91b72d5593e7d4391e2ff44e91e985c31641f087"
+    # One-item stack: count 01, item len 02, item 0xAABB.
+    @valid_witness "0102aabb"
+
+    test "Out.output/1 ignores trailing bytes, Out.parse_output/1 rejects them" do
+      {:ok, valid} = Base.decode16(@valid_output, case: :lower)
+
+      assert %Out{} = out = Out.output(valid)
+      assert Out.output(valid <> <<0xFF>>) == out
+
+      assert {:ok, ^out} = Out.parse_output(valid)
+      assert {:error, :invalid_output} = Out.parse_output(valid <> <<0xFF>>)
+    end
+
+    test "Witness.witness/1 ignores trailing bytes, Witness.parse_witness/1 rejects them" do
+      {:ok, valid} = Base.decode16(@valid_witness, case: :lower)
+
+      assert %Witness{txinwitness: ["aabb"]} = witness = Witness.witness(valid)
+      assert Witness.witness(valid <> <<0xFF>>) == witness
+
+      assert {:ok, ^witness} = Witness.parse_witness(valid)
+      assert {:error, :invalid_witness} = Witness.parse_witness(valid <> <<0xFF>>)
     end
   end
 end

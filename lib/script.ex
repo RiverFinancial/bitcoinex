@@ -161,12 +161,39 @@ defmodule Bitcoinex.Script do
   # SERIALIZE & PARSE
   defp serializer(%__MODULE__{items: []}, acc), do: acc
 
+  # A PUSHDATA opcode fixes the width of the length prefix that follows it
+  # (1, 2, or 4 bytes little-endian), independently of the payload size, so a
+  # PUSHDATA payload must be emitted at its opcode's declared width. Deriving
+  # the width from the payload size instead would drop length bytes from any
+  # script using a wider-than-minimal push (e.g. `4c 14 <20 bytes>` came back
+  # as `4c <20 bytes>`), silently corrupting it on re-serialize.
+  defp serializer(%__MODULE__{items: [0x4C, payload | script]}, acc)
+       when is_binary(payload) and byte_size(payload) <= 0xFF do
+    len = Utils.int_to_little(byte_size(payload), 1)
+    serializer(%__MODULE__{items: script}, acc <> <<0x4C>> <> len <> payload)
+  end
+
+  defp serializer(%__MODULE__{items: [0x4D, payload | script]}, acc)
+       when is_binary(payload) and byte_size(payload) <= 0xFFFF do
+    len = Utils.int_to_little(byte_size(payload), 2)
+    serializer(%__MODULE__{items: script}, acc <> <<0x4D>> <> len <> payload)
+  end
+
+  defp serializer(%__MODULE__{items: [0x4E, payload | script]}, acc)
+       when is_binary(payload) and byte_size(payload) <= 0xFFFFFFFF do
+    len = Utils.int_to_little(byte_size(payload), 4)
+    serializer(%__MODULE__{items: script}, acc <> <<0x4E>> <> len <> payload)
+  end
+
   defp serializer(%__MODULE__{items: [item | script]}, acc) when is_integer(item) do
     # prevents UTF-8 ints from becoming strings
     serializer(%__MODULE__{items: script}, acc <> Utils.int_to_little(item, 1))
   end
 
-  # For data pushes
+  # A bare data push: its PUSHBYTES length opcode (< 0x4C) was the preceding
+  # integer item, already emitted above, so only the payload itself remains.
+  # The len >= 0x4C branches are kept for hand-built item lists that carry a
+  # large payload without its PUSHDATA opcode.
   defp serializer(%__MODULE__{items: [item | script]}, acc) when is_binary(item) do
     len = byte_size(item)
 
