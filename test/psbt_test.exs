@@ -1588,6 +1588,18 @@ defmodule Bitcoinex.PSBTTest do
       assert finalized == empty
     end
 
+    test "leaves a hand-built PSBT whose unsigned tx has nil inputs untouched, without raising" do
+      {:ok, psbt} = PSBT.decode(@finalize_input)
+      tx = psbt.global.unsigned_tx
+      broken = %PSBT{psbt | global: %{psbt.global | unsigned_tx: %{tx | inputs: nil}}}
+
+      # best-effort means returning it untouched, not raising ArgumentError
+      assert PSBT.finalize(broken) == broken
+
+      finalized_broken = %PSBT{PSBT.finalize(psbt) | global: broken.global}
+      assert {:error, :not_finalized} = PSBT.extract_tx(finalized_broken)
+    end
+
     test "finalizes a p2wpkh input to a witness (sig, pubkey) with no scriptSig" do
       psbt = single_sig_p2wpkh_psbt()
       finalized = PSBT.finalize(psbt)

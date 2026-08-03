@@ -321,14 +321,25 @@ defmodule Bitcoinex.PSBT do
   A non-witness spend type additionally requires a `non_witness_utxo` whose
   txid matches the input's outpoint; a `witness_utxo` alone cannot be verified
   and is never trusted to finalize a non-witness input (BIP-174 Signer checks).
+
+  Deliberate divergence from BIP-174: when an input specifies a
+  `sighash_type`, the BIP says the finalizer "must fail to sign" if *any*
+  `partial_sig` carries a different flag; this implementation instead treats
+  such signatures as ineligible and finalizes if enough matching ones remain,
+  so a stray signature contributed for an unrelated key (e.g. picked up in a
+  `combine/2`) does not block an otherwise-complete input. Every signature
+  actually placed in a `final_scriptsig`/`final_scriptwitness` always carries
+  the required flag.
   """
   @spec finalize(t()) :: t()
   def finalize(%PSBT{global: %{unsigned_tx: %Transaction{} = tx}, inputs: inputs} = psbt)
       when is_list(inputs) do
     # A well-formed PSBT has exactly one input map per unsigned-tx input. If a
-    # (hand-built) PSBT desyncs them, `Enum.zip` would finalize only the common
-    # prefix and silently drop the rest, so leave the PSBT untouched instead.
-    if length(inputs) == length(tx.inputs) do
+    # (hand-built) PSBT desyncs them — or its tx carries nil instead of an
+    # input list — `Enum.zip` would finalize only the common prefix and
+    # silently drop the rest, so leave the PSBT untouched instead (best-effort
+    # means returning it untouched, not raising).
+    if is_list(tx.inputs) and length(inputs) == length(tx.inputs) do
       inputs =
         inputs
         |> Enum.zip(tx.inputs)
@@ -363,7 +374,7 @@ defmodule Bitcoinex.PSBT do
   """
   @spec extract_tx(t()) :: {:ok, Transaction.t()} | {:error, :not_finalized}
   def extract_tx(%PSBT{global: %{unsigned_tx: %Transaction{} = tx}} = psbt) do
-    if finalized?(psbt) and length(psbt.inputs) == length(tx.inputs) do
+    if finalized?(psbt) and is_list(tx.inputs) and length(psbt.inputs) == length(tx.inputs) do
       inputs =
         psbt.inputs
         |> Enum.zip(tx.inputs)
