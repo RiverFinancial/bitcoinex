@@ -159,7 +159,7 @@ defmodule Bitcoinex.PSBTTest do
     test "decode and round-trip losslessly (they are structurally valid)" do
       for {name, base64} <- @bip174_fails_signer_vectors do
         assert {:ok, psbt} = PSBT.decode(base64), "expected decode to succeed: #{name}"
-        assert PSBT.encode_b64(psbt) == base64, "expected lossless round-trip: #{name}"
+        assert PSBT.encode_b64(psbt) == {:ok, base64}, "expected lossless round-trip: #{name}"
       end
     end
 
@@ -193,7 +193,7 @@ defmodule Bitcoinex.PSBTTest do
     test "valid vectors decode and round-trip losslessly", %{fixture: fixture} do
       for base64 <- fixture["valid_roundtrip"] do
         assert {:ok, psbt} = PSBT.decode(base64)
-        assert PSBT.encode_b64(psbt) == base64
+        assert PSBT.encode_b64(psbt) == {:ok, base64}
       end
     end
 
@@ -1606,7 +1606,7 @@ defmodule Bitcoinex.PSBTTest do
       finalized = PSBT.finalize(psbt)
 
       assert PSBT.finalized?(finalized)
-      assert PSBT.encode_b64(finalized) == @finalize_expected
+      assert PSBT.encode_b64(finalized) == {:ok, @finalize_expected}
     end
 
     test "already-finalized inputs and re-finalization are idempotent" do
@@ -2148,7 +2148,8 @@ defmodule Bitcoinex.PSBTTest do
       {:ok, base} = PSBT.decode(valid_vector(@p2sh_p2wsh_vector_index))
       # A hand-built %PSBT{} may carry nil (rather than []) map lists.
       psbt = %PSBT{base | inputs: nil, outputs: nil}
-      assert is_binary(PSBT.encode_b64(psbt))
+      assert {:ok, b64} = PSBT.encode_b64(psbt)
+      assert is_binary(b64)
     end
   end
 

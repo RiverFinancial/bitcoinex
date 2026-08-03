@@ -239,11 +239,10 @@ defmodule Bitcoinex.Transaction.Witness do
   def witness(witness_bytes) do
     {stack_size, witness_bytes} = TxUtils.get_counter(witness_bytes)
 
-    # Strict: a single PSBT `PSBT_IN_FINAL_SCRIPTWITNESS` record must be exactly
-    # one serialized witness stack with no trailing bytes. Match the remainder
-    # against <<>> so leftover bytes fail (PSBT's safe_parse maps it to
-    # `{:error, :invalid_psbt}`) instead of being silently dropped.
-    {witness, <<>>} =
+    # Lenient: reads one witness stack off the front and ignores whatever
+    # follows, as it has always done. Callers that must reject trailing bytes
+    # (PSBT record values) use `parse_witness/1` instead.
+    {witness, _} =
       if stack_size == 0 do
         {%Witness{txinwitness: []}, witness_bytes}
       else
@@ -460,15 +459,13 @@ defmodule Bitcoinex.Transaction.Out do
     serialize_output(outputs, [serialized_outputs, serialized_output])
   end
 
+  # Lenient: reads one output off the front and ignores whatever follows, as it
+  # has always done. Callers that must reject trailing bytes (PSBT record
+  # values) use `parse_output/1` instead.
   def output(out_bytes) do
     <<value::little-size(64), out_bytes::binary>> = out_bytes
     {script_len, out_bytes} = TxUtils.get_counter(out_bytes)
-    # Strict: the value must be exactly one serialized output with no trailing
-    # bytes. This is a single PSBT record (`PSBT_IN_WITNESS_UTXO`); leftover
-    # bytes mean the stated length did not match, so let the match fail (PSBT's
-    # safe_parse turns it into `{:error, :invalid_psbt}`) rather than silently
-    # dropping them and breaking round-trip.
-    <<script_pub_key::binary-size(script_len)>> = out_bytes
+    <<script_pub_key::binary-size(script_len), _::binary>> = out_bytes
     %Out{value: value, script_pub_key: Base.encode16(script_pub_key, case: :lower)}
   end
 

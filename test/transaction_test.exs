@@ -3,6 +3,7 @@ defmodule Bitcoinex.TransactionTest do
   doctest Bitcoinex.Transaction
 
   alias Bitcoinex.Transaction
+  alias Bitcoinex.Transaction.{Out, Witness}
   alias Bitcoinex.Transaction.Utils, as: TxUtils
 
   @txn_serialization_1 %{
@@ -298,27 +299,33 @@ defmodule Bitcoinex.TransactionTest do
     end
   end
 
-  describe "single-record parsing rejects trailing bytes" do
-    # PSBT passes a whole record value to these; leftover bytes mean the stated
-    # length did not match, so they must not be silently dropped (BIP-174).
-    test "Out.output/1 rejects trailing bytes after the output" do
-      {:ok, valid} =
-        Base.decode16("e80300000000000017a9146e91b72d5593e7d4391e2ff44e91e985c31641f087",
-          case: :lower
-        )
+  # Two pairs of parsers with deliberately different contracts: `output/1` and
+  # `witness/1` read one item off the front of a longer binary (how a whole
+  # transaction is parsed), while `parse_output/1` and `parse_witness/1` require
+  # the binary to hold exactly one item — what a PSBT record value must be.
+  describe "single-item parsing: lenient vs strict" do
+    @valid_output "e80300000000000017a9146e91b72d5593e7d4391e2ff44e91e985c31641f087"
+    # One-item stack: count 01, item len 02, item 0xAABB.
+    @valid_witness "0102aabb"
 
-      assert %Bitcoinex.Transaction.Out{} = Bitcoinex.Transaction.Out.output(valid)
-      assert_raise MatchError, fn -> Bitcoinex.Transaction.Out.output(valid <> <<0xFF>>) end
+    test "Out.output/1 ignores trailing bytes, Out.parse_output/1 rejects them" do
+      {:ok, valid} = Base.decode16(@valid_output, case: :lower)
+
+      assert %Out{} = out = Out.output(valid)
+      assert Out.output(valid <> <<0xFF>>) == out
+
+      assert {:ok, ^out} = Out.parse_output(valid)
+      assert {:error, :invalid_output} = Out.parse_output(valid <> <<0xFF>>)
     end
 
-    test "Witness.witness/1 rejects trailing bytes after the stack" do
-      # One-item stack: count 01, item len 02, item 0xAABB.
-      {:ok, valid} = Base.decode16("0102aabb", case: :lower)
+    test "Witness.witness/1 ignores trailing bytes, Witness.parse_witness/1 rejects them" do
+      {:ok, valid} = Base.decode16(@valid_witness, case: :lower)
 
-      assert %Bitcoinex.Transaction.Witness{txinwitness: ["aabb"]} =
-               Bitcoinex.Transaction.Witness.witness(valid)
+      assert %Witness{txinwitness: ["aabb"]} = witness = Witness.witness(valid)
+      assert Witness.witness(valid <> <<0xFF>>) == witness
 
-      assert_raise MatchError, fn -> Bitcoinex.Transaction.Witness.witness(valid <> <<0xFF>>) end
+      assert {:ok, ^witness} = Witness.parse_witness(valid)
+      assert {:error, :invalid_witness} = Witness.parse_witness(valid <> <<0xFF>>)
     end
   end
 end

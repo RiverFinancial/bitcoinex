@@ -69,7 +69,7 @@ valid_buckets =
 
     case PSBT.decode(b64) do
       {:ok, psbt} ->
-        if PSBT.encode_b64(psbt) == b64,
+        if PSBT.encode_b64(psbt) == {:ok, b64},
           do: %{acc | roundtrip: [b64 | acc.roundtrip]},
           else: %{acc | decode_only: [{i, b64} | acc.decode_only]}
 
