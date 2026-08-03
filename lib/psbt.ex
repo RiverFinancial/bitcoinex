@@ -323,24 +323,27 @@ defmodule Bitcoinex.PSBT.Global do
 
   # unsigned transaction
   defp parse(<<@psbt_global_unsigned_tx::big-size(8)>>, psbt, global) do
-    {txn_length, psbt} = TxUtils.get_counter(psbt)
-    <<txn_bytes::binary-size(txn_length), psbt::binary>> = psbt
-
-    case Transaction.decode(Base.encode16(txn_bytes, case: :lower)) do
-      {:ok, txn} ->
-        cond do
-          not legacy_serialized?(txn, txn_bytes) ->
-            {:error, :unsigned_tx_not_canonically_serialized}
-
-          not all_script_sigs_empty?(txn) ->
-            {:error, :unsigned_tx_has_script_sig}
-
-          true ->
-            {%Global{global | unsigned_tx: txn}, psbt}
-        end
-
+    case PsbtUtils.parse_compact_size_value(psbt) do
       {:error, reason} ->
         {:error, reason}
+
+      {txn_bytes, psbt} ->
+        case Transaction.decode(Base.encode16(txn_bytes, case: :lower)) do
+          {:ok, txn} ->
+            cond do
+              not legacy_serialized?(txn, txn_bytes) ->
+                {:error, :unsigned_tx_not_canonically_serialized}
+
+              not all_script_sigs_empty?(txn) ->
+                {:error, :unsigned_tx_has_script_sig}
+
+              true ->
+                {%Global{global | unsigned_tx: txn}, psbt}
+            end
+
+          {:error, reason} ->
+            {:error, reason}
+        end
     end
   end
 
@@ -519,13 +522,22 @@ defmodule Bitcoinex.PSBT.In do
 
   # BIP-174: the value is the entire output in network serialization — bytes
   # beyond the scriptPubKey are malformed, not ignorable (dropping them would
-  # also silently alter the PSBT on re-serialize).
+  # also silently alter the PSBT on re-serialize). Like the tx-valued fields,
+  # the parsed output must reproduce the value bytes exactly, so a non-minimal
+  # scriptPubKey length is rejected too.
   defp parse(<<@psbt_in_witness_utxo::big-size(8)>>, psbt, input) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
 
     case Out.parse_output(value) do
-      {:ok, out} -> {%In{input | witness_utxo: out}, psbt}
-      {:error, _} -> {:error, :invalid_witness_utxo}
+      {:ok, out} ->
+        if :erlang.list_to_binary(Out.serialize_outputs([out])) == value do
+          {%In{input | witness_utxo: out}, psbt}
+        else
+          {:error, :invalid_witness_utxo}
+        end
+
+      {:error, _} ->
+        {:error, :invalid_witness_utxo}
     end
   end
 
@@ -610,13 +622,22 @@ defmodule Bitcoinex.PSBT.In do
   end
 
   # BIP-174: the value is the entire witness stack in network serialization —
-  # bytes beyond the last stack item are malformed, not ignorable.
+  # bytes beyond the last stack item are malformed, not ignorable. Like the
+  # tx-valued fields, the parsed stack must reproduce the value bytes exactly,
+  # so a non-minimal stack count or item length is rejected too.
   defp parse(<<@psbt_in_final_scriptwitness::big-size(8)>>, psbt, input) do
     {value, psbt} = PsbtUtils.parse_compact_size_value(psbt)
 
     case Witness.parse_witness(value) do
-      {:ok, witness} -> {%In{input | final_scriptwitness: witness}, psbt}
-      {:error, _} -> {:error, :invalid_final_scriptwitness}
+      {:ok, witness} ->
+        if Witness.serialize_witness([witness]) == value do
+          {%In{input | final_scriptwitness: witness}, psbt}
+        else
+          {:error, :invalid_final_scriptwitness}
+        end
+
+      {:error, _} ->
+        {:error, :invalid_final_scriptwitness}
     end
   end
 

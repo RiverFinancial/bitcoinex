@@ -922,6 +922,37 @@ defmodule Bitcoinex.PSBTTest do
       end
     end
 
+    test "a non-minimal global unsigned-tx value length is rejected" do
+      {:ok, psbt} = PSBT.decode(@new_fields_vector)
+      tx_bytes = Bitcoinex.Transaction.Utils.serialize(psbt.global.unsigned_tx)
+
+      # the mandatory global record, with its value length inflated from one
+      # byte to the non-minimal <<0xFD, len::little-16>>
+      tx_record = <<0x01, 0x00, 0xFD, byte_size(tx_bytes)::little-size(16)>> <> tx_bytes
+      binary = <<0x70736274::big-size(32), 0xFF>> <> tx_record <> <<0x00, 0x00, 0x00>>
+
+      assert {:error, :non_canonical_compact_size} = PSBT.decode(Base.encode64(binary))
+    end
+
+    test "a witness_utxo with a non-minimal scriptPubKey length is rejected" do
+      # 8-byte amount, scriptPubKey length 1 encoded as <<0xFD, 0x01, 0x00>>, OP_TRUE
+      value = <<1000::little-size(64), 0xFD, 0x01, 0x00, 0x51>>
+      psbt_b64 = psbt_with_records(record(<<0x01>>, value), :input)
+      assert {:error, :invalid_witness_utxo} = PSBT.decode(psbt_b64)
+    end
+
+    test "a final_scriptwitness with a non-minimal stack count or item length is rejected" do
+      # stack count 1 encoded as <<0xFD, 0x01, 0x00>>
+      value = <<0xFD, 0x01, 0x00, 0x01, 0x51>>
+      psbt_b64 = psbt_with_records(record(<<0x08>>, value), :input)
+      assert {:error, :invalid_final_scriptwitness} = PSBT.decode(psbt_b64)
+
+      # stack item length 1 encoded as <<0xFD, 0x01, 0x00>>
+      value = <<0x01, 0xFD, 0x01, 0x00, 0x51>>
+      psbt_b64 = psbt_with_records(record(<<0x08>>, value), :input)
+      assert {:error, :invalid_final_scriptwitness} = PSBT.decode(psbt_b64)
+    end
+
     test "a non_witness_utxo that does not re-serialize identically is rejected" do
       {:ok, psbt} = PSBT.decode(@new_fields_vector)
       tx_bytes = Bitcoinex.Transaction.Utils.serialize(psbt.global.unsigned_tx)
