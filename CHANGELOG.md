@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.3.0] - 2026-08-04
 ### Added
 - `PSBT.finalize/1` and `PSBT.finalized?/1` (Input Finalizer): assembles `final_scriptsig`/`final_scriptwitness` from the collected signatures and scripts for p2pkh, p2wpkh, (nested) p2sh-p2wpkh, bare/p2sh/p2wsh multisig, and p2sh-p2wsh inputs, ordering multisig signatures by the script's pubkey order. Best-effort per input (matching Bitcoin Core): inputs it cannot finalize are left untouched — including any whose `redeem_script`/`witness_script` does not hash to the scriptPubKey/witness program or whose single-key signature's pubkey does not hash to the p2pkh/p2wpkh hash (the BIP-174 Signer script/key-hash checks), and any non-witness spend type (p2pkh, bare/p2sh legacy multisig) without a `non_witness_utxo` matching the input's outpoint — a `witness_utxo` alone cannot be verified and never steers a non-witness finalization. When an input specifies a `sighash_type`, only signatures carrying that flag are eligible for selection; signatures with other flags (e.g. contributed for unrelated keys by another signer) do not block finalization. `finalized?/1` is false for a PSBT with no inputs.
 - `PSBT.extract_tx/1` (Transaction Extractor): produces the fully-signed network `Transaction` from a finalized PSBT, or `{:error, :not_finalized}`.
@@ -95,6 +97,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Transaction module.
 
 
+[0.3.0]: https://diff.hex.pm/diff/bitcoinex/0.2.0..0.3.0
 [0.2.0]: https://diff.hex.pm/diff/bitcoinex/0.1.8..0.2.0
 [0.1.4]: https://diff.hex.pm/diff/bitcoinex/0.1.3..0.1.4
 [0.1.3]: https://diff.hex.pm/diff/bitcoinex/0.1.2..0.1.3
