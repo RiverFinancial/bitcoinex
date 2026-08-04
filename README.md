@@ -10,13 +10,13 @@ Documentation is available on [hexdocs.pm](https://hexdocs.pm/bitcoinex/api-refe
 * Serialization and validation for Bech32 and Base58.
 * Support for standard on-chain scripts (P2PKH..P2WPKH) and Bolt#11 Lightning Invoices.
 * Transaction serialization.
-* Basic PSBT (BIP174) parsing.
+* PSBT (BIP174) v0 support: lossless (de)serialization plus the Creator, Updater, Combiner, Input Finalizer, and Transaction Extractor roles.
 
 ## Usage
 
 With [Hex](https://hex.pm/packages/bitcoinex):
 
-    {:bitcoinex, "~> 0.1.7"}
+    {:bitcoinex, "~> 0.3.0"}
 
 Local:
 
