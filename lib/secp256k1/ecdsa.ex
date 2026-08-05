@@ -104,13 +104,10 @@ defmodule Bitcoinex.Secp256k1.Ecdsa do
   @signed_message_magic "Bitcoin Signed Message:\n"
 
   @doc """
-  message_digest returns the 32-byte digest used by the standard Bitcoin
-  signed-message scheme (Bitcoin Core `signmessage`, Electrum, etc.).
-  The preimage is:
+  message_digest returns the double-SHA256 of the standard Bitcoin
+  signed-message preimage, as used by Bitcoin Core `signmessage` and Electrum:
 
       compact_size(24) || "Bitcoin Signed Message:\\n" || compact_size(byte_size(msg)) || msg
-
-  and the digest is the double-SHA256 of that preimage.
   """
   @spec message_digest(binary) :: binary
   def message_digest(msg) when is_binary(msg) do
@@ -124,11 +121,8 @@ defmodule Bitcoinex.Secp256k1.Ecdsa do
     do: Bitcoinex.Transaction.Utils.serialize_compact_size_unsigned_int(len)
 
   @doc """
-  sign_message returns an ECDSA signature over the standard Bitcoin
-  signed-message digest of msg (see message_digest/1), where privkey is a
-  PrivateKey object and msg is a binary message. The nonce is derived using
-  RFC6979, so the resulting signature is compatible with (and verifiable by)
-  Bitcoin Core, Electrum, and other wallets.
+  sign_message returns an ECDSA signature over message_digest/1 of msg, with
+  the nonce derived using RFC6979.
   """
   @spec sign_message(PrivateKey.t(), binary) :: Signature.t()
   def sign_message(privkey, msg) do
@@ -141,15 +135,16 @@ defmodule Bitcoinex.Secp256k1.Ecdsa do
   end
 
   @doc """
-  verify_message verifies that signature is a valid Bitcoin signed-message
-  signature by pubkey over msg (see message_digest/1). Verification is
-  performed via public key recovery, so it accepts signatures produced by
-  sign_message/2 as well as by other wallets (Bitcoin Core, Electrum, etc.).
+  verify_message verifies signature over message_digest/1 of msg by recovering
+  the public key and comparing it to pubkey.
   """
   @spec verify_message(Point.t(), binary, Signature.t()) :: boolean
   def verify_message(%Point{} = pubkey, msg, %Signature{} = signature) do
     digest = message_digest(msg)
-    compact_sig = Signature.serialize_signature(signature)
+    # r and s must each occupy exactly 32 bytes for recovery to parse them
+    compact_sig =
+      Bitcoinex.Utils.int_to_big(signature.r, 32) <> Bitcoinex.Utils.int_to_big(signature.s, 32)
+
     pubkey_hex = Point.serialize_public_key(pubkey)
 
     Enum.any?(0..3, fn recovery_id ->

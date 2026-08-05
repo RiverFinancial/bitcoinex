@@ -248,12 +248,9 @@ defmodule Bitcoinex.Secp256k1.EcdsaTest do
     end
   end
 
-  # digests independently derived from the standard preimage
-  # compact_size(24) || "Bitcoin Signed Message:\n" || compact_size(byte_size(msg)) || msg
-  # and cross-checked with Python hashlib.
+  # derived from the standard preimage and cross-checked against Python hashlib
   @message_digest_test_cases [
     %{
-      # empty message: msg length compact_size is a single 0x00 byte
       msg: "",
       digest: "80e795d4a4caadd7047af389d9f7f220562feb6196032e2131e10563352c4bcc"
     },
@@ -262,7 +259,7 @@ defmodule Bitcoinex.Secp256k1.EcdsaTest do
       digest: "cf0447ec85f0ce7150a257db32ebfcb7523dae17c36dbd1be598779fec0484f4"
     },
     %{
-      # 300 bytes: msg length compact_size takes the 0xFD two-byte form (fd2c01)
+      # 300 bytes exercises the 0xFD two-byte compact_size form
       msg: String.duplicate("a", 300),
       digest: "3ec158a43b80359df647352dac1d37dbf26a94e5f06e5790760290c75cd11dc0"
     }
@@ -311,12 +308,8 @@ defmodule Bitcoinex.Secp256k1.EcdsaTest do
     end
 
     test "reproduces a Bitcoin Core signmessage signature byte for byte" do
-      # Vector from Bitcoin Core test/functional/rpc_signmessage.py:
-      #   priv_key = cUeKHd5orzT3mz8P9pxyREHfsWtVfgsfDjiZZBcjUBAaGk1BTj7N (testnet WIF)
-      #   address  = mpLQjfK79b7CCV4VMJWEWAj5Mpx8Up5zxB
-      #   message  = "This is just a test message"
-      #   expected_signature =
-      #     "INbVnW4e6PeRmsv2Qgu8NuopvrVjkcxob+sX8OcZG0SALhWybUjzMLPdAsXI46YZGb0KQTRii+wWIQzRpG/U+S0="
+      # Bitcoin Core test/functional/rpc_signmessage.py, WIF
+      # cUeKHd5orzT3mz8P9pxyREHfsWtVfgsfDjiZZBcjUBAaGk1BTj7N / mpLQjfK79b7CCV4VMJWEWAj5Mpx8Up5zxB
       privkey = %PrivateKey{
         d: 0xD2B8A0116D641FE7D3036F8464628FB595B480414C13A301B3D4038C811C28B0
       }
@@ -328,7 +321,7 @@ defmodule Bitcoinex.Secp256k1.EcdsaTest do
           "INbVnW4e6PeRmsv2Qgu8NuopvrVjkcxob+sX8OcZG0SALhWybUjzMLPdAsXI46YZGb0KQTRii+wWIQzRpG/U+S0="
         )
 
-      # header byte 0x20 = 27 + recovery_id 1 + 4 (compressed pubkey)
+      # header 0x20 = 27 + recovery_id 1 + 4 (compressed)
       <<0x20, r::binary-size(32), s::binary-size(32)>> = expected_sig
 
       sig = Ecdsa.sign_message(privkey, msg)
@@ -337,9 +330,6 @@ defmodule Bitcoinex.Secp256k1.EcdsaTest do
     end
 
     test "recovers Bitcoin Core's pubkey from its signature" do
-      # Same Bitcoin Core vector as above, verified via pubkey recovery: the
-      # WIF private key derives pubkey 03c150..., which hash160s to address
-      # mpLQjfK79b7CCV4VMJWEWAj5Mpx8Up5zxB.
       msg = "This is just a test message"
 
       expected_sig =
@@ -348,7 +338,6 @@ defmodule Bitcoinex.Secp256k1.EcdsaTest do
         )
 
       <<header, compact_sig::binary-size(64)>> = expected_sig
-      # recovery_id = header - 27 - 4 (compressed)
       recovery_id = header - 31
 
       assert {:ok, "03c150061989643d77162902b725409087959f15914649d4f06b6cc3f8c87bb238"} ==
@@ -395,16 +384,27 @@ defmodule Bitcoinex.Secp256k1.EcdsaTest do
       msg = "hello"
       sig = Ecdsa.sign_message(privkey, msg)
 
-      # wrong message
       refute Ecdsa.verify_message(pubkey, "hello!", sig)
 
-      # wrong key
       other_pubkey = PrivateKey.to_point(%PrivateKey{d: 999_999_999_999})
       refute Ecdsa.verify_message(other_pubkey, msg, sig)
 
-      # tampered signature
-      tampered_sig = %Signature{r: sig.r, s: sig.s + 1}
-      refute Ecdsa.verify_message(pubkey, msg, tampered_sig)
+      refute Ecdsa.verify_message(pubkey, msg, %Signature{r: sig.r, s: sig.s + 1})
+    end
+
+    test "verifies a signature whose r or s has a leading zero byte" do
+      # s here is 31 bytes when minimally encoded, so the compact signature
+      # handed to recovery must be zero-padded to 32 bytes per scalar
+      {:ok, privkey} =
+        PrivateKey.new(0xB7E151628AED2A6ABF7158809CF4F3C762E7160F38B4DA56A784D9045190CFEF)
+
+      pubkey = PrivateKey.to_point(privkey)
+      sig = Ecdsa.sign_message(privkey, "m32")
+
+      assert byte_size(:binary.encode_unsigned(sig.r)) < 32 or
+               byte_size(:binary.encode_unsigned(sig.s)) < 32
+
+      assert Ecdsa.verify_message(pubkey, "m32", sig)
     end
   end
 end
