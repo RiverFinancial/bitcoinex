@@ -530,9 +530,8 @@ defmodule Bitcoinex.Script do
 
   @doc """
     create_multi creates a raw multisig script using m and the list of public keys.
-    Both m and the number of public keys must be at most 16, since both counts are
-    encoded as OP_1..OP_16. Larger key counts would require pushing the counts as
-    data, which is not currently supported.
+    m and the number of public keys must each be at most 16: both are encoded as
+    OP_1..OP_16. Larger counts would have to be pushed as data, which is unsupported.
   """
   @spec create_multi(non_neg_integer(), list(Point.t())) :: {:ok, t()} | {:error, String.t()}
   def create_multi(m, pubkeys)

@@ -588,14 +588,12 @@ defmodule Bitcoinex.ScriptTest do
       pubkeys = make_points(16)
       {:ok, multi} = Script.create_multi(2, pubkeys)
       assert Script.is_multi?(multi)
-      # second-to-last item of the script is the key count opcode, OP_16 = 0x60
+      # second-to-last item is the key count opcode; OP_16 = 0x60
       assert multi.items |> Enum.reverse() |> Enum.at(1) == 0x60
     end
 
     test "create_multi rejects more than 16 keys" do
-      # n > 16 cannot be encoded as an OP_N opcode (OP_16 = 0x60 is the max),
-      # so these must be rejected instead of emitting a non-push opcode
-      # (17 -> 0x61 = OP_NOP, 21 -> 0x65 = OP_VERIF) as the key count.
+      # 0x50 + n exceeds OP_16 for n > 16: 17 -> 0x61 (OP_NOP), 21 -> 0x65 (OP_VERIF)
       for n <- [17, 18, 20, 21] do
         pubkeys = make_points(n)
         assert {:error, _msg} = Script.create_multi(2, pubkeys)
@@ -614,9 +612,7 @@ defmodule Bitcoinex.ScriptTest do
     end
 
     test "is_multi? rejects a 17-key script whose key count byte is OP_NOP" do
-      # hand-built (not via create_multi) to model a malformed script already
-      # in the wild: OP_2 <17 keys> 0x61 OP_CHECKMULTISIG, where 0x61 (OP_NOP)
-      # occupies the key count position but is not a number-push opcode.
+      # hand-built rather than via create_multi, to model a script already in the wild
       key_items =
         Enum.flat_map(make_points(17), fn pk ->
           sec = Point.sec(pk)
@@ -637,7 +633,6 @@ defmodule Bitcoinex.ScriptTest do
       assert Script.get_script_type(multi) == :multi
       assert {:ok, 2, extracted} = Script.extract_multi_policy(multi)
       assert extracted == pubkeys
-      # m > n is still rejected
       assert {:error, _msg} = Script.create_multi(4, pubkeys)
     end
 
