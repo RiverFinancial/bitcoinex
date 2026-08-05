@@ -88,14 +88,12 @@ defmodule Bitcoinex.Secp256k1 do
     defp parse_sig_key(_data), do: {:error, "invalid signature key marker"}
 
     defp new_signature(r, s) do
-      if in_curve_order_range?(r) and in_curve_order_range?(s) do
+      if Params.in_curve_order_range?(r) and Params.in_curve_order_range?(s) do
         {:ok, %Signature{r: r, s: s}}
       else
         {:error, "invalid signature"}
       end
     end
-
-    defp in_curve_order_range?(k), do: k >= 1 and k <= Params.curve().n - 1
 
     @spec serialize_signature(t()) :: binary
     def serialize_signature(%__MODULE__{r: r, s: s}) do

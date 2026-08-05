@@ -125,7 +125,7 @@ defmodule Bitcoinex.Secp256k1.Ecdsa do
   def verify_signature(pubkey, sighash, %Signature{r: r, s: s}) do
     # also checked at parse time; repeated here so verification does not depend
     # on how the Signature was constructed
-    if in_curve_order_range?(r) and in_curve_order_range?(s) do
+    if Params.in_curve_order_range?(r) and Params.in_curve_order_range?(s) do
       s_inv = Math.inv(s, @n)
       u = Math.modulo(sighash * s_inv, @n)
       v = Math.modulo(r * s_inv, @n)
@@ -135,8 +135,6 @@ defmodule Bitcoinex.Secp256k1.Ecdsa do
       false
     end
   end
-
-  defp in_curve_order_range?(k), do: is_integer(k) and k >= 1 and k <= @n - 1
 
   @doc """
     ecdsa_recover_compact does ECDSA public key recovery.
