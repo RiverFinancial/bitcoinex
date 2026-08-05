@@ -109,10 +109,7 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
     DateTime.from_unix!(invoice.timestamp + expiry)
   end
 
-  # The data part must be long enough to contain at least a timestamp and a
-  # signature. Without this check, a shorter data part yields an empty or
-  # truncated signature, which previously either raised or hung forever in
-  # signature parsing.
+  # a shorter data part would leave an empty or truncated signature
   defp validate_data_length(data)
        when length(data) >= @timestamp_base32_length + @signature_base32_length,
        do: :ok

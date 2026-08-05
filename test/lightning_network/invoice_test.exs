@@ -722,9 +722,7 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
     end
 
     test "fail to decode an invoice whose data part is too short to hold a signature" do
-      # These used to hang forever (empty signature looping in
-      # parse_signature) or raise a MatchError, so run each decode in a
-      # task with a timeout to keep a regression from hanging the suite.
+      # timeout guarded: a regression here hangs forever rather than failing
       for invoice <- ["lnbc1qh65qct", "lnbc1w4pnfm"] do
         task = Task.async(fn -> Invoice.decode(invoice) end)
 

@@ -167,9 +167,7 @@ defmodule Bitcoinex.Secp256k1.Secp256k1Test do
     end
 
     test "return error on empty, odd-length hex, and undersized inputs without hanging" do
-      # parse_signature used to recurse forever on inputs like "" whose hex
-      # decoding is a no-op, so run each call in a task with a timeout to
-      # keep a regression from hanging the suite.
+      # timeout guarded: a regression here hangs forever rather than failing
       inputs = [<<>>, "", "abc", <<1, 2, 3>>, String.duplicate("zx", 64)]
 
       for input <- inputs do
@@ -179,8 +177,7 @@ defmodule Bitcoinex.Secp256k1.Secp256k1Test do
   end
 
   describe "serialize_signature/1" do
-    # BIP340 test vector 4: r has ten leading zero bytes, which a minimal
-    # encoding would drop, producing an invalid 53-byte signature.
+    # BIP340 test vector 4: r has ten leading zero bytes
     @bip340_vector_4_sig "00000000000000000000003b78ce563f89a0ed9414f5aa28ad0d96d6795f9c6376afb1548af603b3eb45c9f8207dee1060cb71c04e80f593060b07d28308d7f4"
 
     test "serialize BIP340 test vector 4 signature to exactly 64 bytes" do
@@ -196,8 +193,7 @@ defmodule Bitcoinex.Secp256k1.Secp256k1Test do
     property "serialization is always 64 bytes and round-trips" do
       n = Params.curve().n
 
-      # include small values (below 2^248) whose minimal encodings are
-      # shorter than 32 bytes, alongside full-range r/s
+      # includes values below 2^248, whose minimal encodings are under 32 bytes
       scalar_gen =
         StreamData.one_of([
           StreamData.integer(1..0xFFFFFF),
