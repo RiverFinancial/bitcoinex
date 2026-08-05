@@ -650,6 +650,57 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
     end
   end
 
+  describe "max depth derivation" do
+    # rewrite a real key's depth byte and reparse, so the key is otherwise valid
+    defp at_depth(xkey_str, depth) do
+      {:ok, xkey} = ExtendedKey.parse_extended_key(xkey_str)
+
+      {:ok, xkey} =
+        %{xkey | depth: <<depth>>}
+        |> ExtendedKey.serialize_extended_key()
+        |> ExtendedKey.parse_extended_key()
+
+      xkey
+    end
+
+    test "deriving a child of a depth-255 key returns an error" do
+      t = @bip32_test_case_1
+
+      xprv = at_depth(t.xprv_m, 255)
+      xpub = at_depth(t.xpub_m, 255)
+
+      assert {:error, "cannot derive child: parent is at max depth (255)"} =
+               ExtendedKey.derive_private_child(xprv, 0)
+
+      assert {:error, "cannot derive child: parent is at max depth (255)"} =
+               ExtendedKey.derive_public_child(xprv, 0)
+
+      assert {:error, "cannot derive child: parent is at max depth (255)"} =
+               ExtendedKey.derive_public_child(xpub, 0)
+
+      assert {:error, "cannot derive child: parent is at max depth (255)"} =
+               ExtendedKey.derive_child_key(xprv, @min_hardened_child_num)
+
+      deriv = %ExtendedKey.DerivationPath{child_nums: [0]}
+
+      assert {:error, "cannot derive child: parent is at max depth (255)"} =
+               ExtendedKey.derive_extended_key(xprv, deriv)
+    end
+
+    test "deriving a child of a depth-254 key succeeds with depth 255" do
+      t = @bip32_test_case_1
+
+      xprv = at_depth(t.xprv_m, 254)
+      xpub = at_depth(t.xpub_m, 254)
+
+      assert {:ok, child_prv} = ExtendedKey.derive_private_child(xprv, 0)
+      assert child_prv.depth == <<255>>
+
+      assert {:ok, child_pub} = ExtendedKey.derive_public_child(xpub, 0)
+      assert child_pub.depth == <<255>>
+    end
+  end
+
   # Derivation Path Testing
 
   describe "derive_extended_key/2 using BIP 32 test cases" do

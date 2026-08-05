@@ -173,6 +173,9 @@ defmodule Bitcoinex.ExtendedKey do
 
   @all_prefixes @prv_prefixes ++ @pub_prefixes
 
+  # BIP32 depth is a single byte; a depth-255 key cannot have children
+  @max_depth <<255>>
+
   defp pfx_atom_to_bin(pfx) do
     case pfx do
       :xpub -> @xpub_pfx
@@ -437,6 +440,9 @@ defmodule Bitcoinex.ExtendedKey do
   @spec derive_public_child(t(), non_neg_integer) :: {:ok, t()} | {:error, String.t()}
   def derive_public_child(xkey, idx) do
     cond do
+      xkey.depth == @max_depth ->
+        {:error, "cannot derive child: parent is at max depth (255)"}
+
       xkey.prefix in @prv_prefixes ->
         {:ok, child_xprv} = derive_private_child(xkey, idx)
         to_extended_public_key(child_xprv)
@@ -497,6 +503,9 @@ defmodule Bitcoinex.ExtendedKey do
 
   def derive_private_child(%{prefix: prefix}, _) when prefix not in @prv_prefixes,
     do: {:error, "public key cannot derive private child"}
+
+  def derive_private_child(%{depth: @max_depth}, _),
+    do: {:error, "cannot derive child: parent is at max depth (255)"}
 
   def derive_private_child(xkey, idx) do
     child_depth = incr(xkey.depth)
