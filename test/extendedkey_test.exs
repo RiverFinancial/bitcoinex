@@ -123,8 +123,7 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
   }
 
   @bip32_test_case_4 %{
-    # Test for retention of leading zeros in child private keys.
-    # The m/0' child key is 00d948e9...: ser256 must pad it to 32 bytes.
+    # retention of leading zeros: the m/0' child key 00d948e9... needs ser256 padding
     seed: "3ddd5602285899a946114506157c7997e5444528f3003f6134712147db19b678",
     xpub_m:
       "xpub661MyMwAqRbcGczjuMoRm6dXaLDEhW1u34gKenbeYqAix21mdUKJyuyu5F1rzYGVxyL6tmgBUAEPrEz92mBXjByMRiJdba9wpnN37RLLAXa",
@@ -619,7 +618,7 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
       assert xprv_m_0h == s_xprv_m_0h
     end
 
-    # Test 4 (leading zeros in child private key)
+    # Test 4
 
     test "BIP32 tests 4: derive master prv key from seed" do
       t = @bip32_test_case_4
@@ -647,7 +646,6 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
 
       {:ok, xprv} = ExtendedKey.parse_extended_key(t.xprv_m)
 
-      # m/0' child private key has a leading zero byte and must be padded
       {:ok, xprv_m_0h} = ExtendedKey.derive_private_child(xprv, @min_hardened_child_num)
       assert ExtendedKey.display_extended_key(xprv_m_0h) == t.xprv_m_0h
 
@@ -685,14 +683,12 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
 
   describe "child private key padding regression" do
     test "non-hardened child key with leading zero byte is padded to 32 bytes" do
-      # this seed's m/0 child key has a leading zero byte, so it is 31 bytes
-      # when minimally encoded and previously failed to serialize
+      # this seed's m/0 child key has a leading zero byte
       seed = :crypto.hash(:sha256, <<137::32>>)
       {:ok, master} = ExtendedKey.seed_to_master_private_key(seed)
 
       {:ok, child} = ExtendedKey.derive_private_child(master, 0)
 
-      # key field is <<0>> prefix plus 32-byte ser256(k) with a zero MSB
       assert byte_size(child.key) == 33
       assert <<0, 0, _rest::binary-size(31)>> = child.key
 
