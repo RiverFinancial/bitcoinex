@@ -37,23 +37,7 @@ defmodule Bitcoinex.Secp256k1 do
       r = :binary.decode_unsigned(r)
       s = :binary.decode_unsigned(s)
 
-      # Verify that r,s are integers in [1, n-1] where n is the integer order of G.
-      cond do
-        r < 1 ->
-          {:error, "invalid signature"}
-
-        r > Params.curve().n - 1 ->
-          {:error, "invalid signature"}
-
-        s < 1 ->
-          {:error, "invalid signature"}
-
-        s > Params.curve().n - 1 ->
-          {:error, "invalid signature"}
-
-        true ->
-          {:ok, %Signature{r: r, s: s}}
-      end
+      new_signature(r, s)
     end
 
     # attempt to parse 64-byte string
@@ -80,7 +64,7 @@ defmodule Bitcoinex.Secp256k1 do
         with {:ok, r, rest} <- parse_sig_key(body),
              {:ok, s, rest} <- parse_sig_key(rest) do
           if rest == <<>> do
-            {:ok, %Signature{r: r, s: s}}
+            new_signature(r, s)
           else
             {:error, "invalid signature: signature is too long"}
           end
@@ -102,6 +86,20 @@ defmodule Bitcoinex.Secp256k1 do
     end
 
     defp parse_sig_key(_data), do: {:error, "invalid signature key marker"}
+
+    # Verify that r,s are integers in [1, n-1] where n is the integer order of G
+    # before building a Signature. Values outside that range are not just
+    # non-canonical, they are forgeable: r = s = 0 makes verification compare
+    # the point at infinity's x-coordinate (0) against r (0).
+    defp new_signature(r, s) do
+      if in_curve_order_range?(r) and in_curve_order_range?(s) do
+        {:ok, %Signature{r: r, s: s}}
+      else
+        {:error, "invalid signature"}
+      end
+    end
+
+    defp in_curve_order_range?(k), do: k >= 1 and k <= Params.curve().n - 1
 
     @spec serialize_signature(t()) :: binary
     def serialize_signature(%__MODULE__{r: r, s: s}) do

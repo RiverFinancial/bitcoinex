@@ -123,12 +123,22 @@ defmodule Bitcoinex.Secp256k1.Ecdsa do
   """
   @spec verify_signature(Point.t(), integer, Signature.t()) :: boolean
   def verify_signature(pubkey, sighash, %Signature{r: r, s: s}) do
-    s_inv = Math.inv(s, @n)
-    u = Math.modulo(sighash * s_inv, @n)
-    v = Math.modulo(r * s_inv, @n)
-    total = Math.add(Math.multiply(@generator_point, u), Math.multiply(pubkey, v))
-    total.x == r
+    # r,s must be integers in [1, n-1]. This is enforced here as well as at
+    # parse time so that verification is safe even when handed a Signature
+    # struct built by other means: with r = s = 0, Math.inv(0, n) returns 0,
+    # making total the point at infinity, whose x is 0 and would match r.
+    if in_curve_order_range?(r) and in_curve_order_range?(s) do
+      s_inv = Math.inv(s, @n)
+      u = Math.modulo(sighash * s_inv, @n)
+      v = Math.modulo(r * s_inv, @n)
+      total = Math.add(Math.multiply(@generator_point, u), Math.multiply(pubkey, v))
+      not Point.is_inf(total) and total.x == r
+    else
+      false
+    end
   end
+
+  defp in_curve_order_range?(k), do: is_integer(k) and k >= 1 and k <= @n - 1
 
   @doc """
     ecdsa_recover_compact does ECDSA public key recovery.

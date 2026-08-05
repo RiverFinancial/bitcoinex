@@ -3,7 +3,9 @@ defmodule Bitcoinex.Secp256k1.EcdsaTest do
 
   doctest Bitcoinex.Secp256k1.Ecdsa
 
-  alias Bitcoinex.Secp256k1.{Ecdsa, Point, PrivateKey, Signature}
+  alias Bitcoinex.Secp256k1.{Ecdsa, Params, Point, PrivateKey, Signature}
+
+  @curve_order Params.curve().n
 
   @valid_signatures_for_public_key_recovery [
     %{
@@ -244,6 +246,70 @@ defmodule Bitcoinex.Secp256k1.EcdsaTest do
         sig = Ecdsa.sign(t.privkey, z)
         assert sig == t.signature
         assert Ecdsa.verify_signature(t.pubkey, z, sig)
+      end
+    end
+  end
+
+  describe "verify_signature/3 rejections" do
+    setup do
+      t = hd(@valid_signature_pubkey_sighash_sets)
+      sighash = :binary.decode_unsigned(Bitcoinex.Utils.double_sha256(t.msg))
+      {:ok, pubkey: t.pubkey, sighash: sighash, sig: t.signature}
+    end
+
+    test "the reference vector verifies, so the refutations below are meaningful", %{
+      pubkey: pubkey,
+      sighash: sighash,
+      sig: sig
+    } do
+      assert Ecdsa.verify_signature(pubkey, sighash, sig)
+    end
+
+    test "reject a valid signature against the wrong message hash", %{
+      pubkey: pubkey,
+      sig: sig
+    } do
+      other_sighash = :binary.decode_unsigned(Bitcoinex.Utils.double_sha256("goodbye world"))
+      refute Ecdsa.verify_signature(pubkey, other_sighash, sig)
+    end
+
+    test "reject a valid signature against a different public key", %{
+      sighash: sighash,
+      sig: sig
+    } do
+      other_pubkey = PrivateKey.to_point(%PrivateKey{d: 987_654_321_098_765_432_109_876})
+      refute Ecdsa.verify_signature(other_pubkey, sighash, sig)
+    end
+
+    test "reject a signature with r tampered", %{pubkey: pubkey, sighash: sighash, sig: sig} do
+      refute Ecdsa.verify_signature(pubkey, sighash, %Signature{sig | r: sig.r + 1})
+    end
+
+    test "reject a signature with s tampered", %{pubkey: pubkey, sighash: sighash, sig: sig} do
+      refute Ecdsa.verify_signature(pubkey, sighash, %Signature{sig | s: sig.s + 1})
+    end
+
+    test "reject r = s = 0 built directly, bypassing the parser", %{
+      pubkey: pubkey,
+      sighash: sighash
+    } do
+      # This is the forgery: inv(0) = 0 zeroes both scalars, so the sum is the
+      # point at infinity (x = 0), which used to compare equal to r = 0 and made
+      # this signature verify against any pubkey and any sighash.
+      refute Ecdsa.verify_signature(pubkey, sighash, %Signature{r: 0, s: 0})
+      refute Ecdsa.verify_signature(pubkey, 0xDEADBEEF, %Signature{r: 0, s: 0})
+
+      other_pubkey = PrivateKey.to_point(%PrivateKey{d: 987_654_321_098_765_432_109_876})
+      refute Ecdsa.verify_signature(other_pubkey, sighash, %Signature{r: 0, s: 0})
+    end
+
+    test "reject r or s equal to 0, n, or n+1", %{pubkey: pubkey, sighash: sighash, sig: sig} do
+      for bad <- [0, @curve_order, @curve_order + 1] do
+        refute Ecdsa.verify_signature(pubkey, sighash, %Signature{sig | r: bad}),
+               "expected r = #{bad} to be rejected"
+
+        refute Ecdsa.verify_signature(pubkey, sighash, %Signature{sig | s: bad}),
+               "expected s = #{bad} to be rejected"
       end
     end
   end
