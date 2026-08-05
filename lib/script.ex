@@ -424,7 +424,8 @@ defmodule Bitcoinex.Script do
 
   def is_multi?(_), do: false
 
-  defp test_multi([op_n, 0xAE], n, m) when op_n == 0x50 + n and m <= op_n, do: true
+  defp test_multi([op_n, 0xAE], n, m) when op_n == 0x50 + n and m <= op_n and op_n <= 0x60,
+    do: true
 
   defp test_multi([op_push | [pk | rest]], n, m) when op_push in @pubkey_lengths do
     case Point.parse_public_key(pk) do
@@ -529,9 +530,13 @@ defmodule Bitcoinex.Script do
 
   @doc """
     create_multi creates a raw multisig script using m and the list of public keys.
+    Both m and the number of public keys must be at most 16, since both counts are
+    encoded as OP_1..OP_16. Larger key counts would require pushing the counts as
+    data, which is not currently supported.
   """
   @spec create_multi(non_neg_integer(), list(Point.t())) :: {:ok, t()} | {:error, String.t()}
-  def create_multi(m, pubkeys) when is_valid_multi(m, pubkeys) do
+  def create_multi(m, pubkeys)
+      when is_valid_multi(m, pubkeys) and m <= 16 and length(pubkeys) <= 16 do
     try do
       # checkmultisig
       {:ok, s} = push_op(new(), 0xAE)
@@ -542,6 +547,9 @@ defmodule Bitcoinex.Script do
       _ -> {:error, "invalid public key."}
     end
   end
+
+  def create_multi(m, pubkeys) when is_valid_multi(m, pubkeys),
+    do: {:error, "invalid multisig: m and number of public keys must each be at most 16"}
 
   def create_multi(_, _), do: {:error, "invalid multisig: must be of form: (int, list(%Point)"}
 
