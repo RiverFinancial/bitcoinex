@@ -101,20 +101,63 @@ defmodule Bitcoinex.Secp256k1.Ecdsa do
     end
   end
 
+  @signed_message_magic "Bitcoin Signed Message:\n"
+
   @doc """
-  sign_message returns an ECDSA signature using the privkey and "Bitcoin Signed Message: <msg>"
-  where privkey is a PrivateKey object and msg is a binary message to be hashed.
-  The message is hashed using hash256 (double SHA256) and the nonce is derived
-  using RFC6979.
+  message_digest returns the 32-byte digest used by the standard Bitcoin
+  signed-message scheme (Bitcoin Core `signmessage`, Electrum, etc.).
+  The preimage is:
+
+      compact_size(24) || "Bitcoin Signed Message:\\n" || compact_size(byte_size(msg)) || msg
+
+  and the digest is the double-SHA256 of that preimage.
+  """
+  @spec message_digest(binary) :: binary
+  def message_digest(msg) when is_binary(msg) do
+    Bitcoinex.Utils.double_sha256(
+      compact_size(byte_size(@signed_message_magic)) <>
+        @signed_message_magic <> compact_size(byte_size(msg)) <> msg
+    )
+  end
+
+  defp compact_size(len),
+    do: Bitcoinex.Transaction.Utils.serialize_compact_size_unsigned_int(len)
+
+  @doc """
+  sign_message returns an ECDSA signature over the standard Bitcoin
+  signed-message digest of msg (see message_digest/1), where privkey is a
+  PrivateKey object and msg is a binary message. The nonce is derived using
+  RFC6979, so the resulting signature is compatible with (and verifiable by)
+  Bitcoin Core, Electrum, and other wallets.
   """
   @spec sign_message(PrivateKey.t(), binary) :: Signature.t()
   def sign_message(privkey, msg) do
     z =
-      ("Bitcoin Signed Message:\n" <> msg)
-      |> Bitcoinex.Utils.double_sha256()
+      msg
+      |> message_digest()
       |> :binary.decode_unsigned()
 
     sign(privkey, z)
+  end
+
+  @doc """
+  verify_message verifies that signature is a valid Bitcoin signed-message
+  signature by pubkey over msg (see message_digest/1). Verification is
+  performed via public key recovery, so it accepts signatures produced by
+  sign_message/2 as well as by other wallets (Bitcoin Core, Electrum, etc.).
+  """
+  @spec verify_message(Point.t(), binary, Signature.t()) :: boolean
+  def verify_message(%Point{} = pubkey, msg, %Signature{} = signature) do
+    digest = message_digest(msg)
+    compact_sig = Signature.serialize_signature(signature)
+    pubkey_hex = Point.serialize_public_key(pubkey)
+
+    Enum.any?(0..3, fn recovery_id ->
+      case ecdsa_recover_compact(digest, compact_sig, recovery_id) do
+        {:ok, recovered_pubkey} -> recovered_pubkey == pubkey_hex
+        {:error, _} -> false
+      end
+    end)
   end
 
   @doc """

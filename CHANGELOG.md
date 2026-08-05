@@ -5,12 +5,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Added
+- `Secp256k1.Ecdsa.message_digest/1` returns the 32-byte digest of the standard Bitcoin signed-message preimage (`compact_size(24) || "Bitcoin Signed Message:\n" || compact_size(byte_size(msg)) || msg`, double-SHA256).
+- `Secp256k1.Ecdsa.verify_message/3` verifies a signed message against a public key via public key recovery, accepting signatures produced by `sign_message/2` as well as by other wallets (Bitcoin Core, Electrum, etc.).
+
 ### Changed
 - Removed the `decimal` dependency: bitcoinex now has no runtime dependencies. `LightningNetwork.Invoice` was its only user, for BOLT#11 amount parsing, which now converts the human-readable-part amount to millisatoshi with exact integer arithmetic. Decoded amounts are unchanged, but the rejection of sub-millisatoshi amounts now follows BOLT#11 literally — "if the `multiplier` is `p` and the last decimal of `amount` is not 0: MUST fail the payment" is a check on the amount's last decimal digit, not on whether a computed value survives rounding.
 - Bumped the test-only `excoveralls` dependency to `~> 0.18` (0.15.1 → 0.18.5), which drops the `hackney` HTTP client — `hackney` 1.18.1 carries 6 advisories including EEF-CVE-2026-47071 (HIGH). It was never runtime-reachable (test-only, and CI runs no coverage upload). Pruned the lock entries left unused by the bump (`hackney`, `certifi`, `idna`, `metrics`, `mimerl`, `parse_trans`, `ssl_verify_fun`, `unicode_util_compat`) along with pre-existing stale ones (`combine`, `dialyxir`, `erlex`, `gettext`).
 
 ### Fixed
 - `LightningNetwork.Invoice.decode/1` returned a double-wrapped `{:error, {:error, :invalid_network}}` for an invoice whose human-readable part names no supported network, contradicting the module's `@type error :: atom`. **Breaking:** it now returns `{:error, :invalid_network}`, so callers matching the nested tuple must match the flat one.
+- **Breaking:** `Secp256k1.Ecdsa.sign_message/2` now signs the standard Bitcoin signed-message digest. It previously hashed `"Bitcoin Signed Message:\n" <> msg` without either CompactSize length prefix, so its signatures could not be verified by Bitcoin Core, Electrum, or any other wallet (and theirs could not be verified against its digest). Signatures produced by the old implementation will not verify against the new digest.
 
 ### Removed
 - The dead `.travis.yml`, which pinned Elixir 1.8 / OTP 21.3 and has been superseded by the GitHub Actions workflow.
