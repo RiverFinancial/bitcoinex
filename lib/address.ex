@@ -19,19 +19,28 @@ defmodule Bitcoinex.Address do
 
   @doc """
   Accepts a public key hash, network, and address_type and returns its address.
+
+  The hash must be exactly 20 bytes (the output of hash160), otherwise the
+  resulting address would be unspendable and any funds sent to it burned.
   """
-  @spec encode(binary, Bitcoinex.Network.network_name(), address_type) :: String.t()
-  def encode(pubkey_hash, network_name, :p2pkh) do
+  @spec encode(binary, Bitcoinex.Network.network_name(), address_type) ::
+          String.t() | {:error, String.t()}
+  def encode(pubkey_hash, network_name, :p2pkh) when byte_size(pubkey_hash) == 20 do
     network = Network.get_network(network_name)
     decimal_prefix = network.p2pkh_version_decimal_prefix
 
     Base58.encode(<<decimal_prefix>> <> pubkey_hash)
   end
 
-  def encode(script_hash, network_name, :p2sh) do
+  def encode(script_hash, network_name, :p2sh) when byte_size(script_hash) == 20 do
     network = Network.get_network(network_name)
     decimal_prefix = network.p2sh_version_decimal_prefix
     Base58.encode(<<decimal_prefix>> <> script_hash)
+  end
+
+  def encode(hash, _network_name, address_type)
+      when is_binary(hash) and address_type in [:p2pkh, :p2sh] do
+    {:error, "hash must be exactly 20 bytes"}
   end
 
   @doc """
@@ -111,8 +120,9 @@ defmodule Bitcoinex.Address do
   end
 
   defp is_valid_base58_check_address?(address, valid_prefix) do
+    # a valid address decodes to exactly 21 bytes: 1 version byte + 20-byte hash160
     case Base58.decode(address) do
-      {:ok, <<^valid_prefix::8, _::binary>>} ->
+      {:ok, <<^valid_prefix::8, _hash::binary-size(20)>>} ->
         true
 
       _ ->

@@ -71,6 +71,63 @@ defmodule Bitcoinex.Secp256k1.PointTest do
       assert Point.parse_public_key(sec) == {:ok, pk}
       assert Point.serialize_public_key(pk) == sec
     end
+
+    test "return error for an uncompressed key that is not on the curve" do
+      # (1, 1) does not satisfy y^2 = x^3 + 7, so accepting it would expose
+      # EC arithmetic to invalid-curve attacks
+      off_curve = <<0x04>> <> <<1::256>> <> <<1::256>>
+      assert {:error, _} = Point.parse_public_key(off_curve)
+    end
+
+    test "return error for an uncompressed key with out-of-range coordinates" do
+      p = Bitcoinex.Secp256k1.Params.curve().p
+      # coordinates must be valid field elements, i.e. < p
+      x_ge_p = <<0x04>> <> Bitcoinex.Utils.int_to_big(p + 1, 32) <> <<1::256>>
+      assert {:error, _} = Point.parse_public_key(x_ge_p)
+
+      {:ok, pk} =
+        Point.parse_public_key(
+          Base.decode16!(
+            "048fdc3d8944cc8d8fe6c666c41a8ed42e60aa399861a756707e127a80b383d178edfbf94dda0487f7910d130f2a37a0647be9335eab5b8d3aa5242445e1604024",
+            case: :lower
+          )
+        )
+
+      y_ge_p =
+        <<0x04>> <> Bitcoinex.Utils.int_to_big(pk.x, 32) <> Bitcoinex.Utils.int_to_big(p, 32)
+
+      assert {:error, _} = Point.parse_public_key(y_ge_p)
+    end
+
+    test "return error for a compressed key with x >= p" do
+      p = Bitcoinex.Secp256k1.Params.curve().p
+      # get_y used to silently reduce x mod p, so 02||(p+1) was accepted as
+      # if it were x = 1; lift_x already rejects x >= p
+      for prefix <- [<<0x02>>, <<0x03>>] do
+        assert {:error, _} =
+                 Point.parse_public_key(prefix <> Bitcoinex.Utils.int_to_big(p + 1, 32))
+      end
+    end
+
+    test "sec round-trips through parse_public_key for compressed and uncompressed keys" do
+      uncompressed =
+        Base.decode16!(
+          "048fdc3d8944cc8d8fe6c666c41a8ed42e60aa399861a756707e127a80b383d178edfbf94dda0487f7910d130f2a37a0647be9335eab5b8d3aa5242445e1604024",
+          case: :lower
+        )
+
+      {:ok, pk} = Point.parse_public_key(uncompressed)
+
+      # uncompressed serialization round-trips
+      rebuilt =
+        <<0x04>> <> Bitcoinex.Utils.int_to_big(pk.x, 32) <> Bitcoinex.Utils.int_to_big(pk.y, 32)
+
+      assert rebuilt == uncompressed
+      assert Point.parse_public_key(rebuilt) == {:ok, pk}
+
+      # compressed serialization round-trips
+      assert pk |> Point.sec() |> Point.parse_public_key() == {:ok, pk}
+    end
   end
 
   describe "sec/1" do

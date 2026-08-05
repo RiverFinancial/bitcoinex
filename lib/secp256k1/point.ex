@@ -39,29 +39,46 @@ defmodule Bitcoinex.Secp256k1.Point do
   parse_public_key parses a public key
   """
   @spec parse_public_key(binary) :: {:ok, t()} | {:error, String.t()}
-  def parse_public_key(<<0x04, x::binary-size(32), y::binary-size(32)>>) do
-    {:ok, %__MODULE__{x: :binary.decode_unsigned(x), y: :binary.decode_unsigned(y)}}
+  def parse_public_key(<<0x04, x_bytes::binary-size(32), y_bytes::binary-size(32)>>) do
+    x = :binary.decode_unsigned(x_bytes)
+    y = :binary.decode_unsigned(y_bytes)
+
+    # x and y must be valid field elements and the point must satisfy the
+    # curve equation, otherwise off-curve points would be accepted and flow
+    # into EC arithmetic (invalid-curve attacks) or produce unspendable keys.
+    if x < @p and y < @p and on_curve?(x, y) do
+      {:ok, %__MODULE__{x: x, y: y}}
+    else
+      {:error, "invalid public key"}
+    end
   end
 
   # Above matches with uncompressed keys. Below matches with compressed keys
   def parse_public_key(<<prefix::binary-size(1), x_bytes::binary-size(32)>>) do
     x = :binary.decode_unsigned(x_bytes)
 
-    case :binary.decode_unsigned(prefix) do
-      2 ->
-        case Bitcoinex.Secp256k1.get_y(x, false) do
-          {:ok, y} -> {:ok, %__MODULE__{x: x, y: y}}
-          _ -> {:error, "invalid public key"}
-        end
+    # x must be a valid field element; otherwise get_y would silently
+    # reduce it mod p and accept a different point (lift_x already rejects
+    # x >= p, so both entry points now agree).
+    if x >= @p do
+      {:error, "invalid public key"}
+    else
+      case :binary.decode_unsigned(prefix) do
+        2 ->
+          case Bitcoinex.Secp256k1.get_y(x, false) do
+            {:ok, y} -> {:ok, %__MODULE__{x: x, y: y}}
+            _ -> {:error, "invalid public key"}
+          end
 
-      3 ->
-        case Bitcoinex.Secp256k1.get_y(x, true) do
-          {:ok, y} -> {:ok, %__MODULE__{x: x, y: y}}
-          _ -> {:error, "invalid public key"}
-        end
+        3 ->
+          case Bitcoinex.Secp256k1.get_y(x, true) do
+            {:ok, y} -> {:ok, %__MODULE__{x: x, y: y}}
+            _ -> {:error, "invalid public key"}
+          end
 
-      _ ->
-        {:error, "invalid public key"}
+        _ ->
+          {:error, "invalid public key"}
+      end
     end
   end
 
@@ -71,6 +88,11 @@ defmodule Bitcoinex.Secp256k1.Point do
     |> String.downcase()
     |> Base.decode16!(case: :lower)
     |> parse_public_key()
+  end
+
+  # checks that the point satisfies the curve equation y^2 = x^3 + 7 (mod p)
+  defp on_curve?(x, y) do
+    rem(y * y, @p) == rem(x * x * x + 7, @p)
   end
 
   @doc """

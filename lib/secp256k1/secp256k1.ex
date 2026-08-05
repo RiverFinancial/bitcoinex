@@ -56,8 +56,12 @@ defmodule Bitcoinex.Secp256k1 do
       end
     end
 
-    # attempt to parse 64-byte string
-    def parse_signature(compact_sig) when is_binary(compact_sig) do
+    # attempt to parse a hex-encoded compact signature. A 64-byte compact
+    # signature is 128 hex characters; anything else (including "", which
+    # hex-decodes to itself and previously recursed forever) falls through
+    # to the invalid-size clause below.
+    def parse_signature(compact_sig)
+        when is_binary(compact_sig) and byte_size(compact_sig) == 128 do
       case Utils.hex_to_bin(compact_sig) do
         {:error, msg} ->
           {:error, msg}
@@ -105,7 +109,9 @@ defmodule Bitcoinex.Secp256k1 do
 
     @spec serialize_signature(t()) :: binary
     def serialize_signature(%__MODULE__{r: r, s: s}) do
-      :binary.encode_unsigned(r) <> :binary.encode_unsigned(s)
+      # r and s must each be exactly 32 bytes; minimal encodings would
+      # produce short, invalid signatures whenever r or s has leading zeros.
+      Utils.int_to_big(r, 32) <> Utils.int_to_big(s, 32)
     end
 
     @doc """

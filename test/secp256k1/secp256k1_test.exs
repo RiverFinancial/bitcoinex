@@ -1,9 +1,10 @@
 defmodule Bitcoinex.Secp256k1.Secp256k1Test do
   use ExUnit.Case
+  use ExUnitProperties
   doctest Bitcoinex.Secp256k1
 
   alias Bitcoinex.Secp256k1
-  alias Bitcoinex.Secp256k1.{Signature}
+  alias Bitcoinex.Secp256k1.{Params, Signature}
 
   @valid_der_signatures [
     %{
@@ -163,6 +164,69 @@ defmodule Bitcoinex.Secp256k1.Secp256k1Test do
 
         assert sig1 == sig2
       end
+    end
+
+    test "return error on empty, odd-length hex, and undersized inputs without hanging" do
+      # parse_signature used to recurse forever on inputs like "" whose hex
+      # decoding is a no-op, so run each call in a task with a timeout to
+      # keep a regression from hanging the suite.
+      inputs = [<<>>, "", "abc", <<1, 2, 3>>, String.duplicate("zx", 64)]
+
+      for input <- inputs do
+        assert {:error, _} = call_with_timeout(fn -> Signature.parse_signature(input) end)
+      end
+    end
+  end
+
+  describe "serialize_signature/1" do
+    # BIP340 test vector 4: r has ten leading zero bytes, which a minimal
+    # encoding would drop, producing an invalid 53-byte signature.
+    @bip340_vector_4_sig "00000000000000000000003b78ce563f89a0ed9414f5aa28ad0d96d6795f9c6376afb1548af603b3eb45c9f8207dee1060cb71c04e80f593060b07d28308d7f4"
+
+    test "serialize BIP340 test vector 4 signature to exactly 64 bytes" do
+      sig_bytes = Base.decode16!(@bip340_vector_4_sig, case: :lower)
+
+      {:ok, sig} = Signature.parse_signature(sig_bytes)
+      serialized = Signature.serialize_signature(sig)
+
+      assert byte_size(serialized) == 64
+      assert serialized == sig_bytes
+    end
+
+    property "serialization is always 64 bytes and round-trips" do
+      n = Params.curve().n
+
+      # include small values (below 2^248) whose minimal encodings are
+      # shorter than 32 bytes, alongside full-range r/s
+      scalar_gen =
+        StreamData.one_of([
+          StreamData.integer(1..0xFFFFFF),
+          StreamData.map(StreamData.integer(), fn i -> rem(abs(i), n - 1) + 1 end),
+          StreamData.map(StreamData.binary(length: 32), fn b ->
+            rem(:binary.decode_unsigned(b), n - 1) + 1
+          end)
+        ])
+
+      check all(r <- scalar_gen, s <- scalar_gen) do
+        sig = %Signature{r: r, s: s}
+        serialized = Signature.serialize_signature(sig)
+
+        assert byte_size(serialized) == 64
+        assert Signature.parse_signature(serialized) == {:ok, sig}
+      end
+    end
+  end
+
+  defp call_with_timeout(fun) do
+    task = Task.async(fun)
+
+    case Task.yield(task, 5_000) do
+      {:ok, result} ->
+        result
+
+      nil ->
+        Task.shutdown(task, :brutal_kill)
+        flunk("call did not terminate within 5 seconds")
     end
   end
 end
