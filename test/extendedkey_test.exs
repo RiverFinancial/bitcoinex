@@ -695,6 +695,35 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
       assert ExtendedKey.display_extended_key(child) ==
                "xprv9ujV8ERc8kArqnVgVXdQYhJb4JEpF8WZQivduiViL7NBYvx1vDFhxiEpFVe6o4yTsdiWi8MtE3exPcjEvYy64rtnfNnHfB3MDB71DKFxVvs"
     end
+
+    test "xprv with an explicitly zero-leading private key roundtrips and derives children" do
+      # private key 0x00...01: the maximal leading-zeros case, valid since 1 < n
+      key = Bitcoinex.Utils.pad(<<1>>, 32, :leading)
+      chaincode = :crypto.hash(:sha256, "leading-zero key chaincode")
+      xprv_pfx = <<0x04, 0x88, 0xAD, 0xE4>>
+      depth_fingerprint_childnum = <<0, 0, 0, 0, 0, 0, 0, 0, 0>>
+
+      {:ok, master} =
+        (xprv_pfx <> depth_fingerprint_childnum <> chaincode <> <<0>> <> key)
+        |> Bitcoinex.Base58.append_checksum()
+        |> ExtendedKey.parse_extended_key()
+
+      assert master.key == <<0>> <> key
+
+      assert {:ok, ^master} =
+               master
+               |> ExtendedKey.display_extended_key()
+               |> ExtendedKey.parse_extended_key()
+
+      {:ok, child} = ExtendedKey.derive_private_child(master, 0)
+      {:ok, child_h} = ExtendedKey.derive_private_child(master, @min_hardened_child_num)
+      assert byte_size(child.key) == 33
+      assert byte_size(child_h.key) == 33
+
+      # CKDpub(N(m), 0) must equal N(CKDpriv(m, 0))
+      {:ok, xpub} = ExtendedKey.to_extended_public_key(master)
+      assert ExtendedKey.derive_public_child(xpub, 0) == ExtendedKey.to_extended_public_key(child)
+    end
   end
 
   describe "derive_public_child/2 error handling" do
