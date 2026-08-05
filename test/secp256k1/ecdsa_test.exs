@@ -247,4 +247,164 @@ defmodule Bitcoinex.Secp256k1.EcdsaTest do
       end
     end
   end
+
+  # derived from the standard preimage and cross-checked against Python hashlib
+  @message_digest_test_cases [
+    %{
+      msg: "",
+      digest: "80e795d4a4caadd7047af389d9f7f220562feb6196032e2131e10563352c4bcc"
+    },
+    %{
+      msg: "hello",
+      digest: "cf0447ec85f0ce7150a257db32ebfcb7523dae17c36dbd1be598779fec0484f4"
+    },
+    %{
+      # 300 bytes exercises the 0xFD two-byte compact_size form
+      msg: String.duplicate("a", 300),
+      digest: "3ec158a43b80359df647352dac1d37dbf26a94e5f06e5790760290c75cd11dc0"
+    }
+  ]
+
+  describe "message_digest/1" do
+    test "matches the standard Bitcoin signed-message digest" do
+      for t <- @message_digest_test_cases do
+        assert Base.encode16(Ecdsa.message_digest(t.msg), case: :lower) == t.digest
+      end
+    end
+
+    test "is not the legacy unprefixed double_sha256 digest" do
+      for t <- @message_digest_test_cases do
+        old_digest = Bitcoinex.Utils.double_sha256("Bitcoin Signed Message:\n" <> t.msg)
+        refute Ecdsa.message_digest(t.msg) == old_digest
+      end
+    end
+  end
+
+  describe "sign_message/2" do
+    setup do
+      privkey = %PrivateKey{d: 123_414_253_234_542_345_423_623}
+      pubkey = PrivateKey.to_point(privkey)
+      {:ok, privkey: privkey, pubkey: pubkey}
+    end
+
+    test "sign then recover pubkey from message digest", %{privkey: privkey, pubkey: pubkey} do
+      pubkey_hex = Point.serialize_public_key(pubkey)
+
+      for msg <- ["", "hello", "hello world", String.duplicate("a", 300)] do
+        sig = Ecdsa.sign_message(privkey, msg)
+        digest = Ecdsa.message_digest(msg)
+        compact_sig = Signature.serialize_signature(sig)
+
+        recovered =
+          Enum.find_value(0..3, fn recovery_id ->
+            case Ecdsa.ecdsa_recover_compact(digest, compact_sig, recovery_id) do
+              {:ok, ^pubkey_hex} -> pubkey_hex
+              _ -> nil
+            end
+          end)
+
+        assert recovered == pubkey_hex
+      end
+    end
+
+    test "reproduces a Bitcoin Core signmessage signature byte for byte" do
+      # Bitcoin Core test/functional/rpc_signmessage.py, WIF
+      # cUeKHd5orzT3mz8P9pxyREHfsWtVfgsfDjiZZBcjUBAaGk1BTj7N / mpLQjfK79b7CCV4VMJWEWAj5Mpx8Up5zxB
+      privkey = %PrivateKey{
+        d: 0xD2B8A0116D641FE7D3036F8464628FB595B480414C13A301B3D4038C811C28B0
+      }
+
+      msg = "This is just a test message"
+
+      expected_sig =
+        Base.decode64!(
+          "INbVnW4e6PeRmsv2Qgu8NuopvrVjkcxob+sX8OcZG0SALhWybUjzMLPdAsXI46YZGb0KQTRii+wWIQzRpG/U+S0="
+        )
+
+      # header 0x20 = 27 + recovery_id 1 + 4 (compressed)
+      <<0x20, r::binary-size(32), s::binary-size(32)>> = expected_sig
+
+      sig = Ecdsa.sign_message(privkey, msg)
+      assert sig.r == :binary.decode_unsigned(r)
+      assert sig.s == :binary.decode_unsigned(s)
+    end
+
+    test "recovers Bitcoin Core's pubkey from its signature" do
+      msg = "This is just a test message"
+
+      expected_sig =
+        Base.decode64!(
+          "INbVnW4e6PeRmsv2Qgu8NuopvrVjkcxob+sX8OcZG0SALhWybUjzMLPdAsXI46YZGb0KQTRii+wWIQzRpG/U+S0="
+        )
+
+      <<header, compact_sig::binary-size(64)>> = expected_sig
+      recovery_id = header - 31
+
+      assert {:ok, "03c150061989643d77162902b725409087959f15914649d4f06b6cc3f8c87bb238"} ==
+               Ecdsa.ecdsa_recover_compact(Ecdsa.message_digest(msg), compact_sig, recovery_id)
+    end
+  end
+
+  describe "verify_message/3" do
+    setup do
+      privkey = %PrivateKey{d: 123_414_253_234_542_345_423_623}
+      pubkey = PrivateKey.to_point(privkey)
+      {:ok, privkey: privkey, pubkey: pubkey}
+    end
+
+    test "verifies signatures produced by sign_message/2", %{privkey: privkey, pubkey: pubkey} do
+      for msg <- ["", "hello", String.duplicate("a", 300)] do
+        sig = Ecdsa.sign_message(privkey, msg)
+        assert Ecdsa.verify_message(pubkey, msg, sig)
+      end
+    end
+
+    test "verifies a Bitcoin Core signature against its pubkey" do
+      msg = "This is just a test message"
+
+      <<_header, r::binary-size(32), s::binary-size(32)>> =
+        Base.decode64!(
+          "INbVnW4e6PeRmsv2Qgu8NuopvrVjkcxob+sX8OcZG0SALhWybUjzMLPdAsXI46YZGb0KQTRii+wWIQzRpG/U+S0="
+        )
+
+      sig = %Signature{r: :binary.decode_unsigned(r), s: :binary.decode_unsigned(s)}
+
+      {:ok, pubkey} =
+        Point.parse_public_key(
+          "03c150061989643d77162902b725409087959f15914649d4f06b6cc3f8c87bb238"
+        )
+
+      assert Ecdsa.verify_message(pubkey, msg, sig)
+    end
+
+    test "rejects wrong message, wrong key, and tampered signature", %{
+      privkey: privkey,
+      pubkey: pubkey
+    } do
+      msg = "hello"
+      sig = Ecdsa.sign_message(privkey, msg)
+
+      refute Ecdsa.verify_message(pubkey, "hello!", sig)
+
+      other_pubkey = PrivateKey.to_point(%PrivateKey{d: 999_999_999_999})
+      refute Ecdsa.verify_message(other_pubkey, msg, sig)
+
+      refute Ecdsa.verify_message(pubkey, msg, %Signature{r: sig.r, s: sig.s + 1})
+    end
+
+    test "verifies a signature whose r or s has a leading zero byte" do
+      # s here is 31 bytes when minimally encoded, so the compact signature
+      # handed to recovery must be zero-padded to 32 bytes per scalar
+      {:ok, privkey} =
+        PrivateKey.new(0xB7E151628AED2A6ABF7158809CF4F3C762E7160F38B4DA56A784D9045190CFEF)
+
+      pubkey = PrivateKey.to_point(privkey)
+      sig = Ecdsa.sign_message(privkey, "m32")
+
+      assert byte_size(:binary.encode_unsigned(sig.r)) < 32 or
+               byte_size(:binary.encode_unsigned(sig.s)) < 32
+
+      assert Ecdsa.verify_message(pubkey, "m32", sig)
+    end
+  end
 end

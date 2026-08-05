@@ -101,20 +101,58 @@ defmodule Bitcoinex.Secp256k1.Ecdsa do
     end
   end
 
+  @signed_message_magic "Bitcoin Signed Message:\n"
+
   @doc """
-  sign_message returns an ECDSA signature using the privkey and "Bitcoin Signed Message: <msg>"
-  where privkey is a PrivateKey object and msg is a binary message to be hashed.
-  The message is hashed using hash256 (double SHA256) and the nonce is derived
-  using RFC6979.
+  message_digest returns the double-SHA256 of the standard Bitcoin
+  signed-message preimage, as used by Bitcoin Core `signmessage` and Electrum:
+
+      compact_size(24) || "Bitcoin Signed Message:\\n" || compact_size(byte_size(msg)) || msg
+  """
+  @spec message_digest(binary) :: binary
+  def message_digest(msg) when is_binary(msg) do
+    Bitcoinex.Utils.double_sha256(
+      compact_size(byte_size(@signed_message_magic)) <>
+        @signed_message_magic <> compact_size(byte_size(msg)) <> msg
+    )
+  end
+
+  defp compact_size(len),
+    do: Bitcoinex.Transaction.Utils.serialize_compact_size_unsigned_int(len)
+
+  @doc """
+  sign_message returns an ECDSA signature over message_digest/1 of msg, with
+  the nonce derived using RFC6979.
   """
   @spec sign_message(PrivateKey.t(), binary) :: Signature.t()
   def sign_message(privkey, msg) do
     z =
-      ("Bitcoin Signed Message:\n" <> msg)
-      |> Bitcoinex.Utils.double_sha256()
+      msg
+      |> message_digest()
       |> :binary.decode_unsigned()
 
     sign(privkey, z)
+  end
+
+  @doc """
+  verify_message verifies signature over message_digest/1 of msg by recovering
+  the public key and comparing it to pubkey.
+  """
+  @spec verify_message(Point.t(), binary, Signature.t()) :: boolean
+  def verify_message(%Point{} = pubkey, msg, %Signature{} = signature) do
+    digest = message_digest(msg)
+    # r and s must each occupy exactly 32 bytes for recovery to parse them
+    compact_sig =
+      Bitcoinex.Utils.int_to_big(signature.r, 32) <> Bitcoinex.Utils.int_to_big(signature.s, 32)
+
+    pubkey_hex = Point.serialize_public_key(pubkey)
+
+    Enum.any?(0..3, fn recovery_id ->
+      case ecdsa_recover_compact(digest, compact_sig, recovery_id) do
+        {:ok, recovered_pubkey} -> recovered_pubkey == pubkey_hex
+        {:error, _} -> false
+      end
+    end)
   end
 
   @doc """
