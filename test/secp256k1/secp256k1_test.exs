@@ -5,7 +5,6 @@ defmodule Bitcoinex.Secp256k1.Secp256k1Test do
   alias Bitcoinex.Secp256k1
   alias Bitcoinex.Secp256k1.{Params, Signature}
 
-  # The integer order n of the generator point G, as a 32-byte big-endian hex string.
   @curve_order_hex "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141"
 
   @valid_der_signatures [
@@ -106,14 +105,9 @@ defmodule Bitcoinex.Secp256k1.Secp256k1Test do
     }
   ]
 
-  # Structurally well-formed DER whose r or s falls outside the valid range
-  # [1, n-1]. Only the range check rejects these.
+  # well-formed DER whose r or s is outside [1, n-1]
   @out_of_range_der_signatures [
     %{
-      # r = 0, s = 0. This 8-byte signature used to parse successfully and then
-      # verify against EVERY public key and EVERY sighash: inv(0) = 0 makes both
-      # scalars 0, so the resulting point is the point at infinity, represented
-      # as x = 0, which then compared equal to r = 0.
       name: "r = 0, s = 0",
       der_signature: Base.decode16!("3006020100020100", case: :upper)
     },
@@ -160,7 +154,6 @@ defmodule Bitcoinex.Secp256k1.Secp256k1Test do
     end
 
     test "reject r or s outside [1, n-1]" do
-      # guard against the test vectors drifting from the real curve order
       assert :binary.decode_unsigned(Base.decode16!(@curve_order_hex, case: :upper)) ==
                Params.curve().n
 

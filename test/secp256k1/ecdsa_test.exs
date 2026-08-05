@@ -257,7 +257,7 @@ defmodule Bitcoinex.Secp256k1.EcdsaTest do
       {:ok, pubkey: t.pubkey, sighash: sighash, sig: t.signature}
     end
 
-    test "the reference vector verifies, so the refutations below are meaningful", %{
+    test "the reference vector verifies", %{
       pubkey: pubkey,
       sighash: sighash,
       sig: sig
@@ -293,9 +293,6 @@ defmodule Bitcoinex.Secp256k1.EcdsaTest do
       pubkey: pubkey,
       sighash: sighash
     } do
-      # This is the forgery: inv(0) = 0 zeroes both scalars, so the sum is the
-      # point at infinity (x = 0), which used to compare equal to r = 0 and made
-      # this signature verify against any pubkey and any sighash.
       refute Ecdsa.verify_signature(pubkey, sighash, %Signature{r: 0, s: 0})
       refute Ecdsa.verify_signature(pubkey, 0xDEADBEEF, %Signature{r: 0, s: 0})
 

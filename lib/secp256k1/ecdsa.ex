@@ -123,10 +123,8 @@ defmodule Bitcoinex.Secp256k1.Ecdsa do
   """
   @spec verify_signature(Point.t(), integer, Signature.t()) :: boolean
   def verify_signature(pubkey, sighash, %Signature{r: r, s: s}) do
-    # r,s must be integers in [1, n-1]. This is enforced here as well as at
-    # parse time so that verification is safe even when handed a Signature
-    # struct built by other means: with r = s = 0, Math.inv(0, n) returns 0,
-    # making total the point at infinity, whose x is 0 and would match r.
+    # also checked at parse time; repeated here so verification does not depend
+    # on how the Signature was constructed
     if in_curve_order_range?(r) and in_curve_order_range?(s) do
       s_inv = Math.inv(s, @n)
       u = Math.modulo(sighash * s_inv, @n)
