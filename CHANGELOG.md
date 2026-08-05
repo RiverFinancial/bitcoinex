@@ -5,6 +5,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Added
+- `Secp256k1.Ecdsa.message_digest/1` returns the 32-byte digest of the standard Bitcoin signed-message preimage (`compact_size(24) || "Bitcoin Signed Message:\n" || compact_size(byte_size(msg)) || msg`, double-SHA256).
+- `Secp256k1.Ecdsa.verify_message/3` verifies a signed message against a public key via public key recovery, accepting signatures produced by `sign_message/2` as well as by other wallets (Bitcoin Core, Electrum, etc.).
+### Fixed
+- **Breaking:** `Secp256k1.Ecdsa.sign_message/2` now signs the standard Bitcoin signed-message digest. It previously hashed `"Bitcoin Signed Message:\n" <> msg` without either CompactSize length prefix, so its signatures could not be verified by Bitcoin Core, Electrum, or any other wallet (and theirs could not be verified against its digest). Signatures produced by the old implementation will not verify against the new digest.
 
 ## [0.3.0] - 2026-08-04
 ### Added
