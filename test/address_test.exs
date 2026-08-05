@@ -251,8 +251,6 @@ defmodule Bitcoinex.AddressTest do
     end
 
     test "return error when encoding a hash that is not 20 bytes" do
-      # a 32-byte SHA-256 or a 33-byte pubkey in place of a hash160 would
-      # otherwise mint a valid-looking address that burns any funds sent to it
       sha256 = :crypto.hash(:sha256, "x")
 
       pubkey =
@@ -281,7 +279,7 @@ defmodule Bitcoinex.AddressTest do
 
   describe "is_valid?/2 payload length" do
     test "return false for a base58check address whose payload is not 20 bytes" do
-      # valid checksum and version byte, but only 3 payload bytes
+      # valid checksum and version byte, 3 payload bytes
       short_address = Bitcoinex.Base58.encode(<<0, 1, 2, 3>>)
 
       refute Address.is_valid?(short_address, :mainnet)

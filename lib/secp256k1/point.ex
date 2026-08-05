@@ -43,9 +43,7 @@ defmodule Bitcoinex.Secp256k1.Point do
     x = :binary.decode_unsigned(x_bytes)
     y = :binary.decode_unsigned(y_bytes)
 
-    # x and y must be valid field elements and the point must satisfy the
-    # curve equation, otherwise off-curve points would be accepted and flow
-    # into EC arithmetic (invalid-curve attacks) or produce unspendable keys.
+    # off-curve points must be rejected before they reach EC arithmetic
     if x < @p and y < @p and on_curve?(x, y) do
       {:ok, %__MODULE__{x: x, y: y}}
     else
@@ -57,9 +55,7 @@ defmodule Bitcoinex.Secp256k1.Point do
   def parse_public_key(<<prefix::binary-size(1), x_bytes::binary-size(32)>>) do
     x = :binary.decode_unsigned(x_bytes)
 
-    # x must be a valid field element; otherwise get_y would silently
-    # reduce it mod p and accept a different point (lift_x already rejects
-    # x >= p, so both entry points now agree).
+    # get_y would otherwise silently reduce x mod p and accept a different point
     if x >= @p do
       {:error, "invalid public key"}
     else
@@ -90,7 +86,6 @@ defmodule Bitcoinex.Secp256k1.Point do
     |> parse_public_key()
   end
 
-  # checks that the point satisfies the curve equation y^2 = x^3 + 7 (mod p)
   defp on_curve?(x, y) do
     rem(y * y, @p) == rem(x * x * x + 7, @p)
   end
