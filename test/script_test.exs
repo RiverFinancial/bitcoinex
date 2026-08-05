@@ -7,6 +7,7 @@ defmodule Bitcoinex.ScriptTest do
 
   defp make_points(count) do
     for i <- 1..count do
+      # arbitrary numbers, since all scalars in [1,n-1] are valid private keys
       {:ok, sk} = PrivateKey.new(i * 1_000_003 + 7)
       PrivateKey.to_point(sk)
     end
