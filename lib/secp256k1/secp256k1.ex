@@ -16,6 +16,8 @@ defmodule Bitcoinex.Secp256k1 do
     """
     alias Bitcoinex.Utils
 
+    @compact_signature_scalar_limit :erlang.bsl(1, 256)
+
     @type t :: %__MODULE__{
             r: pos_integer(),
             s: pos_integer()
@@ -105,11 +107,16 @@ defmodule Bitcoinex.Secp256k1 do
 
     defp parse_sig_key(_data), do: {:error, "invalid signature key marker"}
 
-    @spec serialize_signature(t()) :: binary
-    def serialize_signature(%__MODULE__{r: r, s: s}) do
+    @spec serialize_signature(t()) :: binary | {:error, String.t()}
+    def serialize_signature(%__MODULE__{r: r, s: s})
+        when is_integer(r) and is_integer(s) and r >= 0 and s >= 0 and
+               r < @compact_signature_scalar_limit and s < @compact_signature_scalar_limit do
       # each scalar must occupy exactly 32 bytes
       Utils.int_to_big(r, 32) <> Utils.int_to_big(s, 32)
     end
+
+    def serialize_signature(%__MODULE__{}),
+      do: {:error, "signature scalars must be non-negative 32-byte integers"}
 
     @doc """
     der_serialize_signature returns the DER serialization of an ecdsa signature

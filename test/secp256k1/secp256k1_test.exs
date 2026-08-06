@@ -190,6 +190,13 @@ defmodule Bitcoinex.Secp256k1.Secp256k1Test do
       assert serialized == sig_bytes
     end
 
+    test "return an error for a scalar wider than 32 bytes" do
+      oversized_scalar = :binary.decode_unsigned(<<1, 0::size(256)>>)
+
+      assert {:error, _} =
+               Signature.serialize_signature(%Signature{r: oversized_scalar, s: 1})
+    end
+
     property "serialization is always 64 bytes and round-trips" do
       n = Params.curve().n
 
