@@ -1,65 +1,9 @@
-defmodule Bitcoinex.Secp256k1.Rfc6979Reference do
-  @moduledoc false
-  # An independent implementation of RFC 6979 section 3.2, transcribed directly
-  # from the RFC and specialized to secp256k1 + SHA-256 (so qlen == hlen == 256
-  # and bits2int is the identity on a 32-byte hash). It shares no code with
-  # Bitcoinex.Secp256k1.Ecdsa, so it can be used to cross-check
-  # deterministic_k/2 rather than merely restating it.
-  #
-  # The one deliberate omission is the "r != 0" half of step h.3: the RFC allows
-  # rejecting a candidate that produces r == 0, which Ecdsa.deterministic_k/2
-  # does. No known input reaches it, and finding one would mean finding a
-  # multiple of n on the x-axis of the curve.
-
-  @n Bitcoinex.Secp256k1.Params.curve().n
-
-  @spec deterministic_k(pos_integer(), non_neg_integer()) :: pos_integer()
-  def deterministic_k(d, h1) do
-    # 2.3.4 bits2octets: z1 = bits2int(h1), z2 = z1 - q if z1 >= q else z1
-    z2 = if h1 >= @n, do: h1 - @n, else: h1
-    m = int2octets(d) <> int2octets(z2)
-    # 3.2(b) V = 0x01 repeated hlen/8 times
-    v = :binary.copy(<<0x01>>, 32)
-    # 3.2(c) K = 0x00 repeated hlen/8 times
-    k = :binary.copy(<<0x00>>, 32)
-    # 3.2(d) K = HMAC_K(V || 0x00 || int2octets(x) || bits2octets(h1))
-    k = hmac(k, v <> <<0x00>> <> m)
-    # 3.2(e) V = HMAC_K(V)
-    v = hmac(k, v)
-    # 3.2(f) K = HMAC_K(V || 0x01 || int2octets(x) || bits2octets(h1))
-    k = hmac(k, v <> <<0x01>> <> m)
-    # 3.2(g) V = HMAC_K(V)
-    v = hmac(k, v)
-    # 3.2(h)
-    generate(k, v)
-  end
-
-  # 3.2(h): T = HMAC_K(V) (a single iteration, since hlen == qlen); accept
-  # bits2int(T) if it lands in [1, q-1], otherwise reseed and retry.
-  defp generate(k, v) do
-    t = hmac(k, v)
-    candidate = :binary.decode_unsigned(t)
-
-    if candidate >= 1 and candidate < @n do
-      candidate
-    else
-      k = hmac(k, t <> <<0x00>>)
-      generate(k, hmac(k, t))
-    end
-  end
-
-  # 2.3.3 int2octets, with rlen == 256 bits
-  defp int2octets(i), do: <<i::unsigned-big-integer-size(256)>>
-
-  defp hmac(k, data), do: :crypto.mac(:hmac, :sha256, k, data)
-end
-
 defmodule Bitcoinex.Secp256k1.EcdsaTest do
   use ExUnit.Case
 
   doctest Bitcoinex.Secp256k1.Ecdsa
 
-  alias Bitcoinex.Secp256k1.{Ecdsa, Params, Point, PrivateKey, Rfc6979Reference, Signature}
+  alias Bitcoinex.Secp256k1.{Ecdsa, Params, Point, PrivateKey, Signature}
 
   @n Params.curve().n
 
@@ -202,6 +146,132 @@ defmodule Bitcoinex.Secp256k1.EcdsaTest do
     }
   ]
 
+  # No published RFC6979 vector exercises z >= n, because no message hashes to
+  # a value that large in practice. These were generated with python-ecdsa
+  # 0.19.2, an independent implementation, which reproduces all of
+  # @rfc6979_test_cases above exactly:
+  #
+  #     from ecdsa import rfc6979
+  #     import hashlib
+  #     n = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
+  #     rfc6979.generate_k(n, d, hashlib.sha256, z.to_bytes(32, "big"))
+  #
+  # Note that (d: 1, z: n) and (d: 1, z: 0) below share a k: that is the
+  # bits2octets reduction, confirmed by an implementation that is not ours.
+  @rfc6979_reduction_test_cases [
+    %{
+      # z == n, the input a strict > comparison gets wrong
+      d: 0x0000000000000000000000000000000000000000000000000000000000000001,
+      z: 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141,
+      k: 0x010497D369B3D525CA15EC29C104A694210BB59FF6CABFC10AFE6DF0283896DF
+    },
+    %{
+      # z == 0, the value z == n reduces to
+      d: 0x0000000000000000000000000000000000000000000000000000000000000001,
+      z: 0x0000000000000000000000000000000000000000000000000000000000000000,
+      k: 0x010497D369B3D525CA15EC29C104A694210BB59FF6CABFC10AFE6DF0283896DF
+    },
+    %{
+      # z == n + 1
+      d: 0x0000000000000000000000000000000000000000000000000000000000000001,
+      z: 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364142,
+      k: 0x9A409DAB05968059DA3EFB323DC67C96F234571B965FD39810CA0643FBB795AC
+    },
+    %{
+      # z == n
+      d: 0xF8B8AF8CE3C7CCA5E300D33939540C10D45CE001B8F252BFBC57BA0342904181,
+      z: 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141,
+      k: 0xFE5C2172613635E945784D70D7CBFDEF33719A5B661711DB2D684A7799DE32DF
+    },
+    %{
+      # z == 2^256 - 1, the largest a 32-byte hash can be
+      d: 0xF8B8AF8CE3C7CCA5E300D33939540C10D45CE001B8F252BFBC57BA0342904181,
+      z: 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF,
+      k: 0xAF12E23175D8C6A77C6FA469C454870A6E7229D07F8E6E206189DB60985C948E
+    },
+    %{
+      # z == n + 12345
+      d: 0xE91671C46231F833A6406CCBEA0E3E392C76C167BAC1CB013F6F1013980455C2,
+      z: 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD036717A,
+      k: 0xD8F60463AC4719152E20A3C3031E2DD42E9D6BE6B0BA0B1C117DC6F701B4C75A
+    },
+    %{
+      # z == n
+      d: 0xB7E151628AED2A6ABF7158809CF4F3C762E7160F38B4DA56A784D9045190CFEF,
+      z: 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141,
+      k: 0x604ADEA240A4FE28A8A8D87DE7C70FEA679A252C796EC76196AA53C1BB4D79E6
+    },
+    %{
+      # z == n + 1, with d == n - 1
+      d: 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364140,
+      z: 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364142,
+      k: 0x8B019446AA53C1E9EC19B87CC6229A79954DEB5AC752E13D874EA6911DA70CE5
+    }
+  ]
+
+  # Deterministic signatures from libsecp256k1 (via coincurve 21.0.0), the
+  # implementation Bitcoin Core signs with. Unlike the k-only vectors above,
+  # these pin the whole signing path end to end: RFC6979 nonce derivation, the
+  # r/s computation, low-s normalization, and DER encoding.
+  #
+  #     from coincurve import PrivateKey
+  #     PrivateKey(d.to_bytes(32, "big")).sign(z.to_bytes(32, "big"), hasher=None).hex()
+  #
+  # The z == n and z == 2^256 - 1 cases are worth noting: libsecp256k1 reduces
+  # the message the same way RFC6979 bits2octets does, so its signature at
+  # z == n is byte-for-byte the one it produces at z == 0.
+  @libsecp256k1_signature_test_cases [
+    %{
+      # sha256("Satoshi Nakamoto")
+      d: 0x0000000000000000000000000000000000000000000000000000000000000001,
+      z: 0xA0DC65FFCA799873CBEA0AC274015B9526505DAAAED385155425F7337704883E,
+      der:
+        "3045022100934b1ea10a4b3c1757e2b0c017d0b6143ce3c9a7e6a4a49860d7a6ab210ee3d802202442ce9d2b916064108014783e923ec36b49743e2ffa1c4496f01a512aafd9e5"
+    },
+    %{
+      # sha256("Alan Turing")
+      d: 0xF8B8AF8CE3C7CCA5E300D33939540C10D45CE001B8F252BFBC57BA0342904181,
+      z: 0x4BA38D48A60F1B29E9EB726EAFF08B2E83D8D81E031666FEE50E85900D7DC1EF,
+      der:
+        "304402207063ae83e7f62bbb171798131b4a0564b956930092b33b07b395615d9ec7e15c022058dfcc1e00a35e1572f366ffe34ba0fc47db1e7189759b9fb233c5b05ab388ea"
+    },
+    %{
+      # double_sha256("hello world")
+      d: 0xB7E151628AED2A6ABF7158809CF4F3C762E7160F38B4DA56A784D9045190CFEF,
+      z: 0xBC62D4B80D9E36DA29C16C5D4D9F11731F36052C72401A76C23C0FB5A9B74423,
+      der:
+        "3044022008b772f5016f3d4d7ee74e8abd864e74a2ce1737695b77c82b5ef41967820f0d02206133f649c1719feb414f2d7389649ca303be5fc18cfb20de36cdeb5bb17c30a1"
+    },
+    %{
+      # z == 0
+      d: 0xE91671C46231F833A6406CCBEA0E3E392C76C167BAC1CB013F6F1013980455C2,
+      z: 0x0000000000000000000000000000000000000000000000000000000000000000,
+      der:
+        "3045022100a16a97c44ac41c22edc3773fbac1298e2e87d0bff3c1d14cdc27adc9ab5ee57e02202badd4686a4d8f9bf506c5505a2a6afb1feb801f0f970e114eccaccb23764dce"
+    },
+    %{
+      # sha256("bitcoinex"), d == n - 1
+      d: 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364140,
+      z: 0x32A95CD4352F083547FAFC9659E3E570D471DF8EB4C98BBFD3F176684BD42C02,
+      der:
+        "304402204f1bddc63916162929b7060bf0bc368fba7524e33c00828a49dd26ef7f15985f0220172060464c2796e715ebd23c6b06a360231630efcd55ec46b2242f5ec1608b02"
+    },
+    %{
+      # z == n, which libsecp256k1 reduces to 0 exactly as bits2octets does
+      d: 0x0000000000000000000000000000000000000000000000000000000000000001,
+      z: 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141,
+      der:
+        "3045022100a0b37f8fba683cc68f6574cd43b39f0343a50008bf6ccea9d13231d9e7e2e1e4022011edc8d307254296264aebfc3dc76cd8b668373a072fd64665b50000e9fcce52"
+    },
+    %{
+      # z == 2^256 - 1, above n
+      d: 0x0000000000000000000000000000000000000000000000000000000000000001,
+      z: 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF,
+      der:
+        "304402207cb38cc5712e9e11a767615f6080dbc111c9cdd613eb98999fd92a86bafd454002207923ca1f4d03471d2866f776ef8a6d3cac099b427331aeb245aa9dafeddcf115"
+    }
+  ]
+
   # Boundary values of z, in particular the ones around the bits2octets
   # reduction at z == n. A 32-byte hash can take any of these values.
   @z_boundaries [
@@ -214,19 +284,15 @@ defmodule Bitcoinex.Secp256k1.EcdsaTest do
     Bitwise.bsl(1, 256) - 1
   ]
 
-  defp random_secret do
-    d =
-      32
-      |> :crypto.strong_rand_bytes()
-      |> :binary.decode_unsigned()
-
-    if d >= 1 and d < @n, do: d, else: random_secret()
-  end
-
   defp random_z do
     32
     |> :crypto.strong_rand_bytes()
     |> :binary.decode_unsigned()
+  end
+
+  defp random_secret do
+    d = random_z()
+    if d >= 1 and d < @n, do: d, else: random_secret()
   end
 
   describe "test deterministic k calculation" do
@@ -238,32 +304,10 @@ defmodule Bitcoinex.Secp256k1.EcdsaTest do
       end
     end
 
-    test "matches an independent from-spec RFC6979 implementation at boundary values of z" do
-      for t <- @rfc6979_test_cases, z <- @z_boundaries do
-        assert Ecdsa.deterministic_k(%PrivateKey{d: t.d}, z) == %PrivateKey{
-                 d: Rfc6979Reference.deterministic_k(t.d, z)
-               },
-               "deterministic_k diverged from the RFC at d=#{t.d}, z=#{z}"
-      end
-    end
-
-    test "matches an independent from-spec RFC6979 implementation on random inputs" do
-      for _ <- 1..200 do
-        d = random_secret()
-
-        # half the cases draw z uniformly from [0, 2^256), which lands above n
-        # only with negligible probability; the other half force z >= n so the
-        # bits2octets reduction is actually exercised.
-        z =
-          case rem(random_z(), 2) do
-            0 -> random_z()
-            1 -> @n + rem(random_z(), Bitwise.bsl(1, 256) - @n)
-          end
-
-        assert Ecdsa.deterministic_k(%PrivateKey{d: d}, z) == %PrivateKey{
-                 d: Rfc6979Reference.deterministic_k(d, z)
-               },
-               "deterministic_k diverged from the RFC at d=#{d}, z=#{z}"
+    test "matches python-ecdsa at and above the bits2octets reduction boundary" do
+      for t <- @rfc6979_reduction_test_cases do
+        assert Ecdsa.deterministic_k(%PrivateKey{d: t.d}, t.z) == %PrivateKey{d: t.k},
+               "deterministic_k diverged from python-ecdsa at d=0x#{Integer.to_string(t.d, 16)}, z=0x#{Integer.to_string(t.z, 16)}"
       end
     end
 
@@ -304,9 +348,24 @@ defmodule Bitcoinex.Secp256k1.EcdsaTest do
     end
   end
 
+  describe "interoperability with libsecp256k1" do
+    test "sign/2 reproduces libsecp256k1's deterministic signatures byte for byte" do
+      for t <- @libsecp256k1_signature_test_cases do
+        der =
+          %PrivateKey{d: t.d}
+          |> Ecdsa.sign(t.z)
+          |> Signature.der_serialize_signature()
+          |> Base.encode16(case: :lower)
+
+        assert der == t.der,
+               "diverged from libsecp256k1 at d=0x#{Integer.to_string(t.d, 16)}, z=0x#{Integer.to_string(t.z, 16)}"
+      end
+    end
+  end
+
   describe "interoperability with OpenSSL (:crypto)" do
     test "signatures produced by sign/2 verify under :crypto" do
-      for _ <- 1..50 do
+      for _ <- 1..1000 do
         privkey = %PrivateKey{d: random_secret()}
         pubkey = PrivateKey.to_point(privkey)
 
@@ -328,7 +387,7 @@ defmodule Bitcoinex.Secp256k1.EcdsaTest do
     end
 
     test "signatures produced by :crypto verify under verify_signature/3" do
-      for _ <- 1..50 do
+      for _ <- 1..1000 do
         d = random_secret()
         privkey = %PrivateKey{d: d}
         pubkey = PrivateKey.to_point(privkey)

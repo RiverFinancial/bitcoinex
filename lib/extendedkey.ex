@@ -266,6 +266,9 @@ defmodule Bitcoinex.ExtendedKey do
       prefix not in @all_prefixes ->
         {:error, "invalid prefix"}
 
+      prefix in @prv_prefixes and not check_private_key(key) ->
+        {:error, "invalid private key"}
+
       # BIP 32 instructs to check that public key is valid upon import
       prefix not in @prv_prefixes and not check_point(key) ->
         {:error, "invalid public key"}
@@ -305,9 +308,21 @@ defmodule Bitcoinex.ExtendedKey do
 
   # verify if point is valid on secp256k1
   defp check_point(key) do
-    {:ok, pubkey} = Point.parse_public_key(key)
-    Bitcoinex.Secp256k1.verify_point(pubkey)
+    case Point.parse_public_key(key) do
+      {:ok, pubkey} -> Bitcoinex.Secp256k1.verify_point(pubkey)
+      {:error, _} -> false
+    end
   end
+
+  defp check_private_key(<<0, key::binary-size(32)>>) do
+    case PrivateKey.new(:binary.decode_unsigned(key)) do
+      {:ok, %PrivateKey{d: 0}} -> false
+      {:ok, _} -> true
+      {:error, _} -> false
+    end
+  end
+
+  defp check_private_key(_), do: false
 
   @doc """
     serialize_extended_key takes an extended key
