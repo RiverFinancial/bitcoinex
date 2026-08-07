@@ -7,7 +7,6 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
 
   alias Bitcoinex.{Bech32, Network, Segwit}
   alias Bitcoinex.LightningNetwork.HopHint
-  alias Decimal, as: D
 
   import Bitwise
   # consider using https://github.com/ejpcmac/typed_struct
@@ -51,6 +50,14 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
   @valid_multipliers ~w(m u n p)
   # TODO move it to bitcoin asset?
   @milli_satoshi_per_bitcoin 100_000_000_000
+  # The BOLT#11 multipliers, as the exact number of millisatoshi in one unit of
+  # `amount`. `p` (pico-bitcoin) is 0.1 msat, so it has no whole-msat entry
+  # here and is handled separately in to_milli_satoshi/2.
+  @milli_satoshi_per_multiplier %{
+    "m" => div(@milli_satoshi_per_bitcoin, 1_000),
+    "u" => div(@milli_satoshi_per_bitcoin, 1_000_000),
+    "n" => div(@milli_satoshi_per_bitcoin, 1_000_000_000)
+  }
   # the 512 bit signature + 8 bit recovery ID.
   @signature_base32_length 104
   @timestamp_base32_length 7
@@ -581,68 +588,60 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
     end
   end
 
+  # Converts the amount in the human-readable part into millisatoshi, per the
+  # BOLT#11 requirements on `amount`:
+  #
+  #   - it "MUST encode `amount` as a positive decimal integer with no leading
+  #     0s", and a reader "MUST fail the payment" if `amount` "contains a
+  #     non-digit OR is followed by anything except a `multiplier`"
+  #   - if the `multiplier` is present, a reader "MUST multiply `amount` by the
+  #     `multiplier` value to derive the amount required for payment"
+  #   - "if the `multiplier` is `p` and the last decimal of `amount` is not 0:
+  #     MUST fail the payment"
+  #
+  # Note that the `p` rule is a rule about the final *decimal digit* of the
+  # amount string, not about the rounding of some computed value: it exists
+  # because one pico-bitcoin is 0.1 msat, and HTLCs cannot carry sub-msat
+  # amounts. Every other multiplier maps a whole unit onto a whole number of
+  # millisatoshi, so all conversion here is exact integer arithmetic — no
+  # floats, no rounding, and therefore no precision to lose.
   defp calculate_milli_satoshi(amount_str) do
     if String.length(amount_str) > 1 and String.starts_with?(amount_str, "0") do
       {:error, :amount_with_leading_zero}
     else
-      result =
-        case Regex.run(~r/[munp]$/, amount_str) do
-          [multiplier] when multiplier in @valid_multipliers ->
-            case Integer.parse(String.slice(amount_str, 0..-2//1)) do
-              {amount, ""} ->
-                {:ok, to_bitcoin(amount, multiplier)}
+      {amount, multiplier} = split_multiplier(amount_str)
 
-              _ ->
-                {:error, :invalid_amount}
-            end
+      cond do
+        !decimal_digits?(amount) ->
+          {:error, :invalid_amount}
 
-          _ ->
-            case Integer.parse(amount_str) do
-              {amount_in_bitcoin, ""} ->
-                {:ok, amount_in_bitcoin}
+        multiplier == "p" and !String.ends_with?(amount, "0") ->
+          {:error, :sub_msat_precision_amount}
 
-              _ ->
-                {:error, :invalid_amount}
-            end
-        end
-
-      case result do
-        {:ok, amount_in_bitcoin} ->
-          amount_msat_dec = D.mult(amount_in_bitcoin, @milli_satoshi_per_bitcoin)
-          rounded_amount_msat_dec = D.round(amount_msat_dec)
-
-          case D.equal?(rounded_amount_msat_dec, amount_msat_dec) do
-            true ->
-              {:ok, D.to_integer(rounded_amount_msat_dec)}
-
-            false ->
-              {:error, :sub_msat_precision_amount}
-          end
-
-        {:error, error} ->
-          {:error, error}
+        true ->
+          {:ok, to_milli_satoshi(String.to_integer(amount), multiplier)}
       end
     end
   end
 
-  defp to_bitcoin(amount, multiplier_str) when is_integer(amount) do
-    multiplier =
-      case multiplier_str do
-        "m" ->
-          0.001
-
-        "u" ->
-          0.000001
-
-        "n" ->
-          0.000000001
-
-        "p" ->
-          0.000000000001
-      end
-
-    D.mult(amount, D.from_float(multiplier))
+  defp split_multiplier(amount_str) do
+    case String.split_at(amount_str, -1) do
+      {amount, multiplier} when multiplier in @valid_multipliers -> {amount, multiplier}
+      _ -> {amount_str, nil}
+    end
   end
+
+  # \A and \z (rather than ^ and $) so that a trailing newline is not a digit
+  defp decimal_digits?(str), do: String.match?(str, ~r/\A[0-9]+\z/)
+
+  defp to_milli_satoshi(amount, nil), do: amount * @milli_satoshi_per_bitcoin
+
+  # one pico-bitcoin is 0.1 msat; the last decimal of `amount` has already been
+  # checked to be 0, so this division is exact
+  defp to_milli_satoshi(amount, "p"), do: div(amount, 10)
+
+  defp to_milli_satoshi(amount, multiplier),
+    do: amount * Map.fetch!(@milli_satoshi_per_multiplier, multiplier)
 
   defp bytes_to_hex_string(bytes) when is_list(bytes) do
     bytes |> :binary.list_to_bin() |> Base.encode16(case: :lower)
