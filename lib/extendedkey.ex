@@ -126,6 +126,15 @@ defmodule Bitcoinex.ExtendedKey do
       do: %__MODULE__{child_nums: path1 ++ path2}
   end
 
+  # BIP32 depth is a single byte, so a key at depth 255 cannot have children.
+  # depth is stored as a binary, so anything longer than one byte is already
+  # above the max (incr/1 grows the binary once it passes 255).
+  defguard next_depth_valid(depth)
+           when is_binary(depth) and byte_size(depth) == 1 and depth != <<0xFF>>
+
+  # returns true if idx is a valid child index. (0 <= idx < 2^32)
+  defguard idx_valid(idx) when is_integer(idx) and idx >= 0 and idx >>> 32 == 0
+
   @type t :: %__MODULE__{
           prefix: binary,
           depth: binary,
@@ -172,9 +181,6 @@ defmodule Bitcoinex.ExtendedKey do
   ]
 
   @all_prefixes @prv_prefixes ++ @pub_prefixes
-
-  # BIP32 depth is a single byte; a depth-255 key cannot have children
-  @max_depth <<255>>
 
   defp pfx_atom_to_bin(pfx) do
     case pfx do
@@ -438,11 +444,14 @@ defmodule Bitcoinex.ExtendedKey do
     derive the public key at index idx
   """
   @spec derive_public_child(t(), non_neg_integer) :: {:ok, t()} | {:error, String.t()}
+  def derive_public_child(_, idx) when not idx_valid(idx),
+    do: {:error, "idx must be in 0..2**32-1"}
+
+  def derive_public_child(%{depth: depth}, _) when not next_depth_valid(depth),
+    do: {:error, "cannot derive child: parent is at or above max depth (255)"}
+
   def derive_public_child(xkey, idx) do
     cond do
-      xkey.depth == @max_depth ->
-        {:error, "cannot derive child: parent is at max depth (255)"}
-
       xkey.prefix in @prv_prefixes ->
         {:ok, child_xprv} = derive_private_child(xkey, idx)
         to_extended_public_key(child_xprv)
@@ -499,13 +508,14 @@ defmodule Bitcoinex.ExtendedKey do
     derive the private key at index idx
   """
   @spec derive_private_child(t(), non_neg_integer()) :: {:ok, t()} | {:error, String.t()}
-  def derive_private_child(_, idx) when idx >>> 32 != 0, do: {:error, "idx must be in 0..2**32-1"}
+  def derive_private_child(_, idx) when not idx_valid(idx),
+    do: {:error, "idx must be in 0..2**32-1"}
 
   def derive_private_child(%{prefix: prefix}, _) when prefix not in @prv_prefixes,
     do: {:error, "public key cannot derive private child"}
 
-  def derive_private_child(%{depth: @max_depth}, _),
-    do: {:error, "cannot derive child: parent is at max depth (255)"}
+  def derive_private_child(%{depth: depth}, _) when not next_depth_valid(depth),
+    do: {:error, "cannot derive child: parent is at or above max depth (255)"}
 
   def derive_private_child(xkey, idx) do
     child_depth = incr(xkey.depth)

@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The dead `.travis.yml`, which pinned Elixir 1.8 / OTP 21.3 and has been superseded by the GitHub Actions workflow.
 
 ### Fixed
-- `ExtendedKey.derive_private_child/2` and `derive_public_child/2` return `{:error, "cannot derive child: parent is at max depth (255)"}` when deriving from a depth-255 key. Previously the child's depth byte overflowed into a 2-byte encoding, producing an unparseable serialization and the misleading error `"error parsing key"`.
+- `ExtendedKey.derive_private_child/2` and `derive_public_child/2` return `{:error, "cannot derive child: parent is at or above max depth (255)"}` when the parent is at or above the max BIP32 depth. Previously the child's depth byte overflowed into a 2-byte encoding, producing an unparseable serialization and the misleading error `"error parsing key"`.
 
 ## [0.3.0] - 2026-08-04
 ### Added
