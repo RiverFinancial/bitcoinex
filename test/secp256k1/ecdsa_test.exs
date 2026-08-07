@@ -1,9 +1,67 @@
+defmodule Bitcoinex.Secp256k1.Rfc6979Reference do
+  @moduledoc false
+  # An independent implementation of RFC 6979 section 3.2, transcribed directly
+  # from the RFC and specialized to secp256k1 + SHA-256 (so qlen == hlen == 256
+  # and bits2int is the identity on a 32-byte hash). It shares no code with
+  # Bitcoinex.Secp256k1.Ecdsa, so it can be used to cross-check
+  # deterministic_k/2 rather than merely restating it.
+  #
+  # The one deliberate omission is the "r != 0" half of step h.3: the RFC allows
+  # rejecting a candidate that produces r == 0, which Ecdsa.deterministic_k/2
+  # does. No known input reaches it, and finding one would mean finding a
+  # multiple of n on the x-axis of the curve.
+
+  @n Bitcoinex.Secp256k1.Params.curve().n
+
+  @spec deterministic_k(pos_integer(), non_neg_integer()) :: pos_integer()
+  def deterministic_k(d, h1) do
+    # 2.3.4 bits2octets: z1 = bits2int(h1), z2 = z1 - q if z1 >= q else z1
+    z2 = if h1 >= @n, do: h1 - @n, else: h1
+    m = int2octets(d) <> int2octets(z2)
+    # 3.2(b) V = 0x01 repeated hlen/8 times
+    v = :binary.copy(<<0x01>>, 32)
+    # 3.2(c) K = 0x00 repeated hlen/8 times
+    k = :binary.copy(<<0x00>>, 32)
+    # 3.2(d) K = HMAC_K(V || 0x00 || int2octets(x) || bits2octets(h1))
+    k = hmac(k, v <> <<0x00>> <> m)
+    # 3.2(e) V = HMAC_K(V)
+    v = hmac(k, v)
+    # 3.2(f) K = HMAC_K(V || 0x01 || int2octets(x) || bits2octets(h1))
+    k = hmac(k, v <> <<0x01>> <> m)
+    # 3.2(g) V = HMAC_K(V)
+    v = hmac(k, v)
+    # 3.2(h)
+    generate(k, v)
+  end
+
+  # 3.2(h): T = HMAC_K(V) (a single iteration, since hlen == qlen); accept
+  # bits2int(T) if it lands in [1, q-1], otherwise reseed and retry.
+  defp generate(k, v) do
+    t = hmac(k, v)
+    candidate = :binary.decode_unsigned(t)
+
+    if candidate >= 1 and candidate < @n do
+      candidate
+    else
+      k = hmac(k, t <> <<0x00>>)
+      generate(k, hmac(k, t))
+    end
+  end
+
+  # 2.3.3 int2octets, with rlen == 256 bits
+  defp int2octets(i), do: <<i::unsigned-big-integer-size(256)>>
+
+  defp hmac(k, data), do: :crypto.mac(:hmac, :sha256, k, data)
+end
+
 defmodule Bitcoinex.Secp256k1.EcdsaTest do
   use ExUnit.Case
 
   doctest Bitcoinex.Secp256k1.Ecdsa
 
-  alias Bitcoinex.Secp256k1.{Ecdsa, Point, PrivateKey, Signature}
+  alias Bitcoinex.Secp256k1.{Ecdsa, Params, Point, PrivateKey, Rfc6979Reference, Signature}
+
+  @n Params.curve().n
 
   @valid_signatures_for_public_key_recovery [
     %{
@@ -144,6 +202,33 @@ defmodule Bitcoinex.Secp256k1.EcdsaTest do
     }
   ]
 
+  # Boundary values of z, in particular the ones around the bits2octets
+  # reduction at z == n. A 32-byte hash can take any of these values.
+  @z_boundaries [
+    0,
+    1,
+    @n - 1,
+    @n,
+    @n + 1,
+    @n + 12_345,
+    Bitwise.bsl(1, 256) - 1
+  ]
+
+  defp random_secret do
+    d =
+      32
+      |> :crypto.strong_rand_bytes()
+      |> :binary.decode_unsigned()
+
+    if d >= 1 and d < @n, do: d, else: random_secret()
+  end
+
+  defp random_z do
+    32
+    |> :crypto.strong_rand_bytes()
+    |> :binary.decode_unsigned()
+  end
+
   describe "test deterministic k calculation" do
     test "successfully derive correct k value" do
       for t <- @rfc6979_test_cases do
@@ -151,6 +236,125 @@ defmodule Bitcoinex.Secp256k1.EcdsaTest do
         z = :binary.decode_unsigned(:crypto.hash(:sha256, t.m))
         assert Ecdsa.deterministic_k(p, z) == %PrivateKey{d: t.k}
       end
+    end
+
+    test "matches an independent from-spec RFC6979 implementation at boundary values of z" do
+      for t <- @rfc6979_test_cases, z <- @z_boundaries do
+        assert Ecdsa.deterministic_k(%PrivateKey{d: t.d}, z) == %PrivateKey{
+                 d: Rfc6979Reference.deterministic_k(t.d, z)
+               },
+               "deterministic_k diverged from the RFC at d=#{t.d}, z=#{z}"
+      end
+    end
+
+    test "matches an independent from-spec RFC6979 implementation on random inputs" do
+      for _ <- 1..200 do
+        d = random_secret()
+
+        # half the cases draw z uniformly from [0, 2^256), which lands above n
+        # only with negligible probability; the other half force z >= n so the
+        # bits2octets reduction is actually exercised.
+        z =
+          case rem(random_z(), 2) do
+            0 -> random_z()
+            1 -> @n + rem(random_z(), Bitwise.bsl(1, 256) - @n)
+          end
+
+        assert Ecdsa.deterministic_k(%PrivateKey{d: d}, z) == %PrivateKey{
+                 d: Rfc6979Reference.deterministic_k(d, z)
+               },
+               "deterministic_k diverged from the RFC at d=#{d}, z=#{z}"
+      end
+    end
+
+    test "reduces z by n exactly as bits2octets does, so k(n + x) == k(x)" do
+      # RFC 6979 2.3.4 subtracts q from z when z >= q. z == n (x == 0) is the
+      # only input where a strict > comparison differs, and it is the case a
+      # naive implementation gets wrong.
+      for t <- @rfc6979_test_cases, x <- [0, 1, 2, 12_345, Bitwise.bsl(1, 128)] do
+        p = %PrivateKey{d: t.d}
+        assert Ecdsa.deterministic_k(p, @n + x) == Ecdsa.deterministic_k(p, x)
+      end
+    end
+
+    test "always returns a k in [1, n-1]" do
+      for _ <- 1..100 do
+        %PrivateKey{d: k} = Ecdsa.deterministic_k(%PrivateKey{d: random_secret()}, random_z())
+        assert k >= 1 and k < @n
+      end
+
+      for t <- @rfc6979_test_cases, z <- @z_boundaries do
+        %PrivateKey{d: k} = Ecdsa.deterministic_k(%PrivateKey{d: t.d}, z)
+        assert k >= 1 and k < @n
+      end
+    end
+
+    test "k depends on both the private key and the message hash" do
+      z = random_z()
+      d1 = random_secret()
+      d2 = random_secret()
+
+      k1 = Ecdsa.deterministic_k(%PrivateKey{d: d1}, z)
+      # same inputs, same k
+      assert k1 == Ecdsa.deterministic_k(%PrivateKey{d: d1}, z)
+      # different key, different k
+      assert k1 != Ecdsa.deterministic_k(%PrivateKey{d: d2}, z)
+      # different message, different k
+      assert k1 != Ecdsa.deterministic_k(%PrivateKey{d: d1}, z + 1)
+    end
+  end
+
+  describe "interoperability with OpenSSL (:crypto)" do
+    test "signatures produced by sign/2 verify under :crypto" do
+      for _ <- 1..50 do
+        privkey = %PrivateKey{d: random_secret()}
+        pubkey = PrivateKey.to_point(privkey)
+
+        digest = :crypto.strong_rand_bytes(32)
+        z = :binary.decode_unsigned(digest)
+
+        der =
+          privkey
+          |> Ecdsa.sign(z)
+          |> Signature.der_serialize_signature()
+
+        pubkey_bytes = pubkey |> Point.serialize_public_key() |> Base.decode16!(case: :lower)
+
+        assert :crypto.verify(:ecdsa, :sha256, {:digest, digest}, der, [
+                 pubkey_bytes,
+                 :secp256k1
+               ])
+      end
+    end
+
+    test "signatures produced by :crypto verify under verify_signature/3" do
+      for _ <- 1..50 do
+        d = random_secret()
+        privkey = %PrivateKey{d: d}
+        pubkey = PrivateKey.to_point(privkey)
+
+        digest = :crypto.strong_rand_bytes(32)
+        z = :binary.decode_unsigned(digest)
+        secret_bytes = Bitcoinex.Utils.pad(:binary.encode_unsigned(d), 32, :leading)
+
+        der = :crypto.sign(:ecdsa, :sha256, {:digest, digest}, [secret_bytes, :secp256k1])
+
+        assert {:ok, sig} = Signature.der_parse_signature(der)
+        assert Ecdsa.verify_signature(pubkey, z, sig)
+      end
+    end
+
+    test "verify_signature/3 rejects a signature over a different message" do
+      privkey = %PrivateKey{d: random_secret()}
+      pubkey = PrivateKey.to_point(privkey)
+      z = random_z()
+      sig = Ecdsa.sign(privkey, z)
+
+      assert Ecdsa.verify_signature(pubkey, z, sig)
+      refute Ecdsa.verify_signature(pubkey, z - 1, sig)
+      refute Ecdsa.verify_signature(pubkey, z, %Signature{sig | r: sig.r + 1})
+      refute Ecdsa.verify_signature(pubkey, z, %Signature{sig | s: sig.s + 1})
+      refute Ecdsa.verify_signature(PrivateKey.to_point(%PrivateKey{d: random_secret()}), z, sig)
     end
   end
 
