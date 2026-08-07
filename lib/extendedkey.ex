@@ -305,8 +305,10 @@ defmodule Bitcoinex.ExtendedKey do
 
   # verify if point is valid on secp256k1
   defp check_point(key) do
-    {:ok, pubkey} = Point.parse_public_key(key)
-    Bitcoinex.Secp256k1.verify_point(pubkey)
+    case Point.parse_public_key(key) do
+      {:ok, pubkey} -> Bitcoinex.Secp256k1.verify_point(pubkey)
+      {:error, _msg} -> false
+    end
   end
 
   @doc """
@@ -597,9 +599,11 @@ defmodule Bitcoinex.ExtendedKey do
   defp rderive_extended_key(xkey = %__MODULE__{}, [p | rest]) do
     try do
       case p do
-        # if asterisk (:any) is in path, return the immediate parent xkey
-        :any ->
-          {:ok, xkey}
+        # a wildcard has no single child index, so there is no key to derive.
+        # both wildcards error rather than silently returning the parent key
+        # and discarding the rest of the path.
+        w when w in [:any, :anyh] ->
+          {:error, "wildcard cannot be derived"}
 
         # otherwise it is an integer, so derive child at that index.
         _ ->
