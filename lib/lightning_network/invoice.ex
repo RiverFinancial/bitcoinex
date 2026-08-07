@@ -47,16 +47,22 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
         }
 
   @prefix "ln"
-  @valid_multipliers ~w(m u n p)
   # TODO move it to bitcoin asset?
   @milli_satoshi_per_bitcoin 100_000_000_000
-  # The BOLT#11 multipliers, as the exact number of millisatoshi in one unit of
-  # `amount`. `p` (pico-bitcoin) is 0.1 msat, so it has no whole-msat entry
-  # here and is handled separately in to_milli_satoshi/2.
-  @milli_satoshi_per_multiplier %{
-    "m" => div(@milli_satoshi_per_bitcoin, 1_000),
-    "u" => div(@milli_satoshi_per_bitcoin, 1_000_000),
-    "n" => div(@milli_satoshi_per_bitcoin, 1_000_000_000)
+  # The BOLT#11 multipliers, as the exact number of *deci*-millisatoshi (0.1
+  # msat) in one unit of `amount`, keyed by the multiplier character — `nil`
+  # meaning no multiplier, i.e. whole bitcoin. One pico-bitcoin is 0.1 msat, so
+  # counting in deci-millisatoshi is what gives every multiplier a whole-number
+  # entry in one table; core lightning's common/bolt11.c scales by ten for the
+  # same reason. This map is the only place a multiplier is named — it is also
+  # what split_multiplier/1 tests to decide which characters are multipliers at
+  # all, so the set of valid multipliers and their values cannot drift apart.
+  @deci_milli_satoshi_per_multiplier %{
+    nil => 10 * @milli_satoshi_per_bitcoin,
+    "m" => div(10 * @milli_satoshi_per_bitcoin, 1_000),
+    "u" => div(10 * @milli_satoshi_per_bitcoin, 1_000_000),
+    "n" => div(10 * @milli_satoshi_per_bitcoin, 1_000_000_000),
+    "p" => div(10 * @milli_satoshi_per_bitcoin, 1_000_000_000_000)
   }
   # the 512 bit signature + 8 bit recovery ID.
   @signature_base32_length 104
@@ -605,9 +611,9 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
   # Note that the `p` rule is a rule about the final *decimal digit* of the
   # amount string, not about the rounding of some computed value: it exists
   # because one pico-bitcoin is 0.1 msat, and HTLCs cannot carry sub-msat
-  # amounts. Every other multiplier maps a whole unit onto a whole number of
-  # millisatoshi, so all conversion here is exact integer arithmetic — no
-  # floats, no rounding, and therefore no precision to lose.
+  # amounts. Once it has been applied, every amount converts exactly, so all
+  # arithmetic here is on integers — no floats, no rounding, and therefore no
+  # precision to lose.
   defp calculate_milli_satoshi(amount_str) do
     if String.length(amount_str) > 1 and String.starts_with?(amount_str, "0") do
       {:error, :amount_with_leading_zero}
@@ -629,22 +635,26 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
 
   defp split_multiplier(amount_str) do
     case String.split_at(amount_str, -1) do
-      {amount, multiplier} when multiplier in @valid_multipliers -> {amount, multiplier}
-      _ -> {amount_str, nil}
+      {amount, multiplier}
+      when is_map_key(@deci_milli_satoshi_per_multiplier, multiplier) ->
+        {amount, multiplier}
+
+      _ ->
+        {amount_str, nil}
     end
   end
 
   # \A and \z (rather than ^ and $) so that a trailing newline is not a digit
   defp decimal_digits?(str), do: String.match?(str, ~r/\A[0-9]+\z/)
 
-  defp to_milli_satoshi(amount, nil), do: amount * @milli_satoshi_per_bitcoin
-
-  # one pico-bitcoin is 0.1 msat; the last decimal of `amount` has already been
-  # checked to be 0, so this division is exact
-  defp to_milli_satoshi(amount, "p"), do: div(amount, 10)
-
-  defp to_milli_satoshi(amount, multiplier),
-    do: amount * Map.fetch!(@milli_satoshi_per_multiplier, multiplier)
+  # The table counts deci-millisatoshi, so every multiplier — `p` included — is
+  # one multiplication and one division by ten. That division is exact: every
+  # entry but `p`'s is a multiple of ten, and a `p` amount has already been
+  # required to end in a 0. split_multiplier/1 only yields keys of the table, so
+  # the fetch cannot fail.
+  defp to_milli_satoshi(amount, multiplier) do
+    div(amount * Map.fetch!(@deci_milli_satoshi_per_multiplier, multiplier), 10)
+  end
 
   defp bytes_to_hex_string(bytes) when is_list(bytes) do
     bytes |> :binary.list_to_bin() |> Base.encode16(case: :lower)

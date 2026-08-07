@@ -16,21 +16,21 @@ defmodule Bitcoinex.LightningNetwork.InvoiceAmountTest do
   not a restatement of `Invoice`:
 
     * `lnd` — the `TestDecodeAmount` table in `zpay32/invoice_internal_test.go`
-      (github.com/lightningnetwork/lnd), reproduced case for case below.
+      (github.com/lightningnetwork/lnd), reproduced case for case below, and
+      the `toMSat` conversions in `zpay32/amountunits.go`, used as the
+      reference the property tests compare against. lnd gives each multiplier
+      its own whole-millisatoshi factor and special-cases `p` (`p < 10` and
+      `p % 10 != 0` are errors, otherwise `p / 10`). `Invoice` instead follows
+      core lightning and counts in tenths of a millisatoshi so that one table
+      covers every multiplier, so this is a genuinely different decomposition
+      and a real cross-check rather than the same arithmetic written twice.
     * BOLT#11 — the signed example invoices in `11-payment-encoding.md`
       (github.com/lightning/bolts), used verbatim with the amounts the spec
       annotates them with.
-    * Core Lightning — the amount algorithm in `common/bolt11.c`
-      (github.com/ElementsProject/lightning), used as the reference the
-      property tests compare against. CLN scales every multiplier by ten
-      ("We can't represent p postfix to msat, so we multiply this by 10") and
-      then computes `amount * m10 / 10`, which is a different decomposition
-      from ours and so is a real cross-check rather than the same arithmetic
-      written twice.
 
   On top of those, `describe "precision"` covers amounts that exceed what a
-  float64 or a `uint64` can hold. lnd and CLN both carry the amount in a
-  `uint64`, so no vector from either can reach that range; Elixir integers
+  float64 or a `uint64` can hold. lnd and core lightning both carry the amount
+  in a `uint64`, so no vector from either can reach that range; Elixir integers
   are arbitrary precision, and the reference there is exact rational math.
 
   The amount lives in the signed human-readable part, so it cannot be tested
@@ -51,15 +51,14 @@ defmodule Bitcoinex.LightningNetwork.InvoiceAmountTest do
 
   @milli_satoshi_per_bitcoin 100_000_000_000
 
-  # core lightning's multiplier table (common/bolt11.c), which is the msat per
-  # unit scaled by ten so that `p` also has an integer entry. `m10` for a
-  # missing multiplier is `10 * MSAT_PER_BTC`.
-  @cln_m10 %{
-    nil => 10 * @milli_satoshi_per_bitcoin,
-    "m" => div(10 * @milli_satoshi_per_bitcoin, 1_000),
-    "u" => div(10 * @milli_satoshi_per_bitcoin, 1_000_000),
-    "n" => div(10 * @milli_satoshi_per_bitcoin, 1_000_000_000),
-    "p" => div(10 * @milli_satoshi_per_bitcoin, 1_000_000_000_000)
+  # lnd's toMSat table (zpay32/amountunits.go): a whole-millisatoshi factor per
+  # multiplier. `p` has no entry — it is not expressible in whole millisatoshi,
+  # so lnd special-cases it in lnd_to_msat/2 below.
+  @lnd_to_msat %{
+    nil => @milli_satoshi_per_bitcoin,
+    "m" => 100_000_000,
+    "u" => 100_000,
+    "n" => 100
   }
 
   describe "decode/1 amount: lnd zpay32 TestDecodeAmount vectors" do
@@ -257,23 +256,25 @@ defmodule Bitcoinex.LightningNetwork.InvoiceAmountTest do
       end
     end
 
-    property "decoded amount matches core lightning's algorithm, for every multiplier" do
+    property "decoded amount matches lnd's conversion, for every multiplier" do
       check all(
               amount <- integer(1..1_000_000_000_000_000_000_000),
               multiplier <- member_of([nil, "m", "u", "n", "p"]),
               max_runs: 300
             ) do
-        # keep the pico amount valid per BOLT#11 without biasing the digits
-        amount = if multiplier == "p", do: amount * 10, else: amount
+        result = decode_with_amount("#{amount}#{multiplier}")
 
-        # bolt11.c: `if (amount * m10 % 10 != 0) fail;`
-        #           `*b11->msat = amount_msat(amount * m10 / 10);`
-        scaled = amount * @cln_m10[multiplier]
-        assert rem(scaled, 10) == 0
-        expected_msat = div(scaled, 10)
+        # lnd accepts and rejects here, so both branches are exercised: `p`
+        # amounts are generated unbiased, and roughly nine in ten of them are
+        # the sub-millisatoshi amounts lnd's pBtcToMSat refuses
+        case lnd_to_msat(amount, multiplier) do
+          {:ok, expected_msat} ->
+            assert {:ok, invoice} = result
+            assert invoice.amount_msat == expected_msat
 
-        assert {:ok, invoice} = decode_with_amount("#{amount}#{multiplier}")
-        assert invoice.amount_msat == expected_msat
+          :error ->
+            assert {:error, :sub_msat_precision_amount} = result
+        end
       end
     end
 
@@ -380,6 +381,17 @@ defmodule Bitcoinex.LightningNetwork.InvoiceAmountTest do
       assert invoice.amount_msat == 0
     end
   end
+
+  # lnd's conversion, from zpay32/amountunits.go: mBtcToMSat and friends are a
+  # single multiplication by the @lnd_to_msat factor, and pBtcToMSat rejects
+  # `p < 10` ("minimum amount is 10p") and `p % 10 != 0` ("not expressible in
+  # msat"). Returns {:ok, msat} or :error. Elixir integers are unbounded, so
+  # this is lnd's arithmetic without lnd's uint64 ceiling.
+  defp lnd_to_msat(amount, "p") do
+    if amount < 10 or rem(amount, 10) != 0, do: :error, else: {:ok, div(amount, 10)}
+  end
+
+  defp lnd_to_msat(amount, multiplier), do: {:ok, amount * @lnd_to_msat[multiplier]}
 
   # Builds and signs an invoice whose human-readable part carries `amount_str`,
   # then decodes it. The amount is covered by the invoice signature, so it

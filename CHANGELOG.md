@@ -5,12 +5,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
-### Fixed
-- `LightningNetwork.Invoice.decode/1` returned a double-wrapped `{:error, {:error, :invalid_network}}` for an invoice whose human-readable part names no supported network, contradicting the module's `@type error :: atom`. It now returns `{:error, :invalid_network}`.
-
 ### Changed
-- Removed the `decimal` dependency: bitcoinex now has no runtime dependencies. `LightningNetwork.Invoice` was the only user, for BOLT#11 amount parsing, which now converts the human-readable-part amount to millisatoshi with exact integer arithmetic. Behavior is unchanged, but the rejection of sub-millisatoshi amounts now follows BOLT#11 literally — "if the `multiplier` is `p` and the last decimal of `amount` is not 0: MUST fail the payment" is a check on the amount's last decimal digit, not on whether a computed value survives rounding.
+- Removed the `decimal` dependency: bitcoinex now has no runtime dependencies. `LightningNetwork.Invoice` was its only user, for BOLT#11 amount parsing, which now converts the human-readable-part amount to millisatoshi with exact integer arithmetic. Decoded amounts are unchanged, but the rejection of sub-millisatoshi amounts now follows BOLT#11 literally — "if the `multiplier` is `p` and the last decimal of `amount` is not 0: MUST fail the payment" is a check on the amount's last decimal digit, not on whether a computed value survives rounding.
 - Bumped the test-only `excoveralls` dependency to `~> 0.18` (0.15.1 → 0.18.5), which drops the `hackney` HTTP client — `hackney` 1.18.1 carries 6 advisories including EEF-CVE-2026-47071 (HIGH). It was never runtime-reachable (test-only, and CI runs no coverage upload). Pruned the lock entries left unused by the bump (`hackney`, `certifi`, `idna`, `metrics`, `mimerl`, `parse_trans`, `ssl_verify_fun`, `unicode_util_compat`) along with pre-existing stale ones (`combine`, `dialyxir`, `erlex`, `gettext`).
+
+### Fixed
+- `LightningNetwork.Invoice.decode/1` returned a double-wrapped `{:error, {:error, :invalid_network}}` for an invoice whose human-readable part names no supported network, contradicting the module's `@type error :: atom`. **Breaking:** it now returns `{:error, :invalid_network}`, so callers matching the nested tuple must match the flat one.
 
 ### Removed
 - The dead `.travis.yml`, which pinned Elixir 1.8 / OTP 21.3 and has been superseded by the GitHub Actions workflow.
