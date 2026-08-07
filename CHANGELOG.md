@@ -18,7 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - `ExtendedKey.derive_private_child/2` now pads the child private key to 32 bytes (BIP32 `ser256`). Previously, when the derived key had a leading zero byte (~1 in 256 derivations), the minimal encoding produced a 77-byte serialization that failed to parse, so the derivation returned `{:error, "error parsing key"}` — and every descendant of that path was unreachable. BIP32 test vector 4 ("retention of leading zeros") now passes and is in the test suite.
 - `ExtendedKey.derive_public_child/2` returns `{:error, reason}` instead of raising `MatchError` when the underlying private-child derivation fails.
-- `ExtendedKey.derive_private_child/2` and `derive_public_child/2` return `{:error, "cannot derive child: parent is at max depth (255)"}` when deriving from a depth-255 key. Previously the child's depth byte overflowed into a 2-byte encoding, producing an unparseable serialization and the misleading error `"error parsing key"`.
+- `ExtendedKey.derive_private_child/2` and `derive_public_child/2` return `{:error, "cannot derive child: parent is at or above max depth (255)"}` when the parent is at or above the max BIP32 depth. Previously the child's depth byte overflowed into a 2-byte encoding, producing an unparseable serialization and the misleading error `"error parsing key"`.
 
 ## [0.3.0] - 2026-08-04
 ### Added
