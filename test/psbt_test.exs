@@ -336,16 +336,13 @@ defmodule Bitcoinex.PSBTTest do
       assert {:error, :non_witness_utxo_mismatch} = PSBT.decode(bad_vout)
     end
 
-    test "partial_sig stores the public key as a Point and the signature as raw DER bytes" do
+    test "partial_sig stores the public key as a Point and the signature as a Signature" do
       {:ok, psbt} = PSBT.decode(valid_vector(@p2sh_p2wsh_vector_index))
 
       assert [%{public_key: %Point{} = public_key, signature: signature, sighash_flag: 1}] =
                hd(psbt.inputs).partial_sig
 
-      # The signature is kept as raw bytes (not a parsed Signature struct) so it
-      # round-trips verbatim; it is still well-formed DER.
-      assert is_binary(signature)
-      assert {:ok, %Signature{}} = Signature.der_parse_signature(signature)
+      assert %Signature{} = signature
 
       assert Point.sec(public_key) ==
                Base.decode16!(
@@ -359,23 +356,27 @@ defmodule Bitcoinex.PSBTTest do
       [%{public_key: public_key, sighash_flag: sighash_flag} | _] = hd(psbt.inputs).partial_sig
 
       # Canonical DER whose r needs a leading 0x00 (high bit set) and whose s is
-      # only 31 bytes. Signatures are stored as raw bytes rather than a parsed
-      # Signature struct, so these lengths survive decode |> encode_b64 exactly.
+      # only 31 bytes. der_parse_signature/1 accepts only canonical DER and
+      # der_serialize_signature/1 reproduces it exactly, so storing the parsed
+      # Signature still reproduces these lengths across decode |> encode_b64.
       der =
         Base.decode16!(
           "3044022100" <> String.duplicate("dd", 32) <> "021f" <> String.duplicate("22", 31),
           case: :lower
         )
 
-      record = %{public_key: public_key, signature: der, sighash_flag: sighash_flag}
+      {:ok, input} =
+        PSBT.In.add_field(%In{hd(psbt.inputs) | partial_sig: nil}, :partial_sig, %{
+          public_key: public_key,
+          signature: der,
+          sighash_flag: sighash_flag
+        })
 
-      psbt = %PSBT{
-        psbt
-        | inputs: [%{hd(psbt.inputs) | partial_sig: [record]} | tl(psbt.inputs)]
-      }
+      psbt = %PSBT{psbt | inputs: [input | tl(psbt.inputs)]}
 
       assert {:ok, decoded} = PSBT.decode(encoded!(psbt))
-      assert [%{signature: ^der}] = hd(decoded.inputs).partial_sig
+      assert [%{signature: signature}] = hd(decoded.inputs).partial_sig
+      assert Signature.der_serialize_signature(signature) == der
     end
 
     test "rejects a partial_sig whose DER is well-formed but non-canonical" do
@@ -399,6 +400,41 @@ defmodule Bitcoinex.PSBTTest do
 
       assert {:error, :invalid_partial_sig} =
                PSBT.In.add_field(hd(psbt.inputs), :partial_sig, record)
+    end
+
+    test "add_field accepts a partial_sig as a Signature or as raw DER, storing a Signature" do
+      {:ok, psbt} = PSBT.decode(valid_vector(@p2sh_p2wsh_vector_index))
+      [%{public_key: public_key, sighash_flag: sighash_flag} | _] = hd(psbt.inputs).partial_sig
+      empty = %In{hd(psbt.inputs) | partial_sig: nil}
+
+      der =
+        Base.decode16!(
+          "3044022100" <> String.duplicate("dd", 32) <> "021f" <> String.duplicate("22", 31),
+          case: :lower
+        )
+
+      {:ok, signature} = Signature.der_parse_signature(der)
+
+      for supplied <- [der, signature] do
+        record = %{public_key: public_key, signature: supplied, sighash_flag: sighash_flag}
+        assert {:ok, input} = PSBT.In.add_field(empty, :partial_sig, record)
+        assert [%{signature: ^signature}] = input.partial_sig
+      end
+    end
+
+    test "rejects a partial_sig Signature whose scalars are out of range" do
+      {:ok, psbt} = PSBT.decode(valid_vector(@p2sh_p2wsh_vector_index))
+      [%{public_key: public_key, sighash_flag: sighash_flag} | _] = hd(psbt.inputs).partial_sig
+      n = Bitcoinex.Secp256k1.Params.curve().n
+
+      # A hand-built struct bypasses the parsers; der_serialize_signature/1
+      # could not encode these, so add_field must reject them up front.
+      for scalars <- [%Signature{r: 0, s: 1}, %Signature{r: 1, s: n}] do
+        record = %{public_key: public_key, signature: scalars, sighash_flag: sighash_flag}
+
+        assert {:error, :invalid_partial_sig} =
+                 PSBT.In.add_field(psbt.inputs |> hd(), :partial_sig, record)
+      end
     end
 
     test "round-trips a redeem_script that is not a finalizer-recognized template" do
@@ -885,7 +921,7 @@ defmodule Bitcoinex.PSBTTest do
 
       [input | rest] = a.inputs
       [sig | more_sigs] = input.partial_sig
-      tampered = %{sig | signature: sig.signature <> <<0>>}
+      tampered = %{sig | signature: %Signature{sig.signature | s: sig.signature.s - 1}}
       b = %PSBT{a | inputs: [%In{input | partial_sig: [tampered | more_sigs]} | rest]}
 
       assert {:error, :conflicting_field} = PSBT.combine(a, b)

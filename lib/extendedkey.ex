@@ -303,10 +303,13 @@ defmodule Bitcoinex.ExtendedKey do
     end
   end
 
-  # verify if point is valid on secp256k1
+  # verify if point is valid on secp256k1. An unparseable key is simply not a
+  # valid point: this runs on caller-supplied xpub bytes, so it must never raise.
   defp check_point(key) do
-    {:ok, pubkey} = Point.parse_public_key(key)
-    Bitcoinex.Secp256k1.verify_point(pubkey)
+    case Point.parse_public_key(key) do
+      {:ok, pubkey} -> Bitcoinex.Secp256k1.verify_point(pubkey)
+      {:error, _msg} -> false
+    end
   end
 
   @doc """
