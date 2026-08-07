@@ -602,11 +602,41 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
     end
   end
 
+  # rebuild a checksum-valid extended key with its 33-byte key field replaced
+  defp xkey_with_key_field(xkey_str, key_field) when byte_size(key_field) == 33 do
+    {:ok, <<prefix_and_meta::binary-size(45), _old_key::binary-size(33)>>} =
+      Bitcoinex.Base58.decode(xkey_str)
+
+    Bitcoinex.Base58.encode(prefix_and_meta <> key_field)
+  end
+
   describe "Invalid Key testing" do
     test "invalid key testing" do
       for t <- @invalid_xkeys do
         {err, _} = ExtendedKey.parse_extended_key(t)
         assert err == :error
+      end
+    end
+
+    test "malformed xpub key bytes return an error rather than crashing" do
+      xpub = @bip32_test_case_1.xpub_m
+      x = 0x8FDC3D8944CC8D8FE6C666C41A8ED42E60AA399861A756707E127A80B383D178
+
+      # a checksum-valid xpub whose key field has a prefix that is neither
+      # 0x02 nor 0x03 must not raise a MatchError (reachable from PSBT parsing)
+      for prefix <- [0x00, 0x01, 0x04, 0x05, 0xFF] do
+        bad = xkey_with_key_field(xpub, <<prefix, x::big-size(256)>>)
+        assert {:error, "invalid public key"} = ExtendedKey.parse_extended_key(bad)
+      end
+    end
+
+    test "xpub with non-canonical x >= p is rejected" do
+      xpub = @bip32_test_case_1.xpub_m
+      p = Bitcoinex.Secp256k1.Params.curve().p
+
+      for k <- [0, 1, 2] do
+        bad = xkey_with_key_field(xpub, <<0x02, p + k::big-size(256)>>)
+        assert {:error, "invalid public key"} = ExtendedKey.parse_extended_key(bad)
       end
     end
   end
@@ -705,6 +735,32 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
 
       assert ExtendedKey.parse_extended_key(t.xprv_m_0_2147483647h_1_2147483646h_2) ==
                {:ok, child_key}
+    end
+
+    # A wildcard names a set of children, not one child. Returning the parent
+    # key (and silently dropping the rest of the path) reuses one key across
+    # every logical sub-account, so both wildcards must error instead.
+    test "wildcards in a derivation path cannot be derived" do
+      {:ok, m} = ExtendedKey.parse_extended_key(@bip32_test_case_1.xprv_m)
+
+      wildcard_paths = ["m/*", "m/*'", "m/*h", "m/0/*", "m/0/*'", "m/0/1/*/2", "m/0'/*'/3"]
+
+      for path_str <- wildcard_paths do
+        {:ok, path} = ExtendedKey.DerivationPath.from_string(path_str)
+
+        assert ExtendedKey.derive_extended_key(m, path) ==
+                 {:error, "wildcard cannot be derived"},
+               "expected #{path_str} to be underivable"
+      end
+    end
+
+    test "wildcard does not silently return the parent key" do
+      {:ok, m} = ExtendedKey.parse_extended_key(@bip32_test_case_1.xprv_m)
+      {:ok, star_path} = ExtendedKey.DerivationPath.from_string("m/0/*")
+      {:ok, parent_path} = ExtendedKey.DerivationPath.from_string("m/0")
+
+      assert {:ok, _parent} = ExtendedKey.derive_extended_key(m, parent_path)
+      assert {:error, _} = ExtendedKey.derive_extended_key(m, star_path)
     end
   end
 

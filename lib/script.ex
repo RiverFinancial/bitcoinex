@@ -766,43 +766,36 @@ defmodule Bitcoinex.Script do
   end
 
   @doc """
-  	to_address converts a script object into the proper address type
+  	to_address converts a script object into the proper address type.
+
+  	The script must match a standard template exactly. A script that merely
+  	begins with a template's opcodes (but carries extra or wrong trailing items)
+  	is non-standard and returns an error rather than the address of the
+  	canonical template script, which does not encumber the same coins.
   """
   @spec to_address(t(), Network.network_name()) ::
           {:ok, String.t()} | {:error, String.t()}
-  def to_address(script = %__MODULE__{}, network) do
-    {:ok, head, script} = pop(script)
+  def to_address(%__MODULE__{items: items}, network) do
+    case items do
+      # p2pkh: OP_DUP OP_HASH160 OP_PUSHBYTES_20 <20-byte hash> OP_EQUALVERIFY OP_CHECKSIG
+      [0x76, 0xA9, @h160_length, <<pkh::binary-size(@h160_length)>>, 0x88, 0xAC] ->
+        {:ok, Address.encode(pkh, network, :p2pkh)}
 
-    case head do
-      # segwit 0
-      0x00 ->
-        {:ok, len, script} = pop(script)
-        {:ok, <<res::binary-size(len)>>, _script} = pop(script)
+      # p2sh: OP_HASH160 OP_PUSHBYTES_20 <20-byte hash> OP_EQUAL
+      [0xA9, @h160_length, <<sh::binary-size(@h160_length)>>, 0x87] ->
+        {:ok, Address.encode(sh, network, :p2sh)}
 
-        if len in [@h160_length, @wsh_length] do
-          Segwit.encode_address(network, 0, :binary.bin_to_list(res))
-        else
-          {:error, "invalid witness program length. Must be in [#{@h160_length}, #{@wsh_length}]"}
-        end
+      # p2wpkh: OP_0 OP_PUSHBYTES_20 <20-byte hash>
+      [0x00, @h160_length, <<pkh::binary-size(@h160_length)>>] ->
+        Segwit.encode_address(network, 0, :binary.bin_to_list(pkh))
 
-      # segwit 1 (taproot)
-      0x51 ->
-        {:ok, @tapkey_length, script} = pop(script)
-        {:ok, <<res::binary-size(@tapkey_length)>>, _script} = pop(script)
-        Segwit.encode_address(network, 1, :binary.bin_to_list(res))
+      # p2wsh: OP_0 OP_PUSHBYTES_32 <32-byte hash>
+      [0x00, @wsh_length, <<sh::binary-size(@wsh_length)>>] ->
+        Segwit.encode_address(network, 0, :binary.bin_to_list(sh))
 
-      # p2sh
-      0xA9 ->
-        {:ok, @h160_length, script} = pop(script)
-        {:ok, <<res::binary-size(@h160_length)>>, _script} = pop(script)
-        {:ok, Address.encode(res, network, :p2sh)}
-
-      # p2pkh
-      0x76 ->
-        {:ok, 0xA9, script} = pop(script)
-        {:ok, @h160_length, script} = pop(script)
-        {:ok, <<res::binary-size(@h160_length)>>, _script} = pop(script)
-        {:ok, Address.encode(res, network, :p2pkh)}
+      # p2tr: OP_1 OP_PUSHBYTES_32 <32-byte x-only pubkey>
+      [0x51, @tapkey_length, <<key::binary-size(@tapkey_length)>>] ->
+        Segwit.encode_address(network, 1, :binary.bin_to_list(key))
 
       _ ->
         {:error, "non standard script type"}

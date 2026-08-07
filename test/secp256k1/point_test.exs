@@ -71,6 +71,48 @@ defmodule Bitcoinex.Secp256k1.PointTest do
       assert Point.parse_public_key(sec) == {:ok, pk}
       assert Point.serialize_public_key(pk) == sec
     end
+
+    test "reject compressed key with non-canonical x >= p" do
+      p = Bitcoinex.Secp256k1.Params.curve().p
+
+      # x = p + k for a small k is congruent to k mod p, so without an explicit
+      # bound check these encode a second, non-canonical form of the same point.
+      for k <- [0, 1, 2, 7] do
+        x_bytes = <<p + k::big-size(256)>>
+
+        assert Point.parse_public_key(<<0x02>> <> x_bytes) == {:error, "invalid public key"}
+        assert Point.parse_public_key(<<0x03>> <> x_bytes) == {:error, "invalid public key"}
+      end
+    end
+
+    test "reject uncompressed key with non-canonical coordinates >= p" do
+      p = Bitcoinex.Secp256k1.Params.curve().p
+      valid_y = 0xEDFBF94DDA0487F7910D130F2A37A0647BE9335EAB5B8D3AA5242445E1604024
+      valid_x = 0x8FDC3D8944CC8D8FE6C666C41A8ED42E60AA399861A756707E127A80B383D178
+
+      assert Point.parse_public_key(<<0x04, p::big-size(256), valid_y::big-size(256)>>) ==
+               {:error, "invalid public key"}
+
+      assert Point.parse_public_key(<<0x04, valid_x::big-size(256), p::big-size(256)>>) ==
+               {:error, "invalid public key"}
+    end
+
+    test "return error rather than raising on malformed key bytes" do
+      x = 0x8FDC3D8944CC8D8FE6C666C41A8ED42E60AA399861A756707E127A80B383D178
+
+      # 33 bytes with a prefix that is neither 0x02 nor 0x03
+      for prefix <- [0x00, 0x01, 0x04, 0x05, 0xFF] do
+        assert Point.parse_public_key(<<prefix, x::big-size(256)>>) ==
+                 {:error, "invalid public key"}
+      end
+
+      # wrong lengths and non-hex strings must not raise
+      assert Point.parse_public_key(<<>>) == {:error, "invalid public key"}
+      assert Point.parse_public_key(<<0x02, 0x03>>) == {:error, "invalid public key"}
+      assert Point.parse_public_key("not a public key") == {:error, "invalid public key"}
+      assert Point.parse_public_key(String.duplicate("z", 66)) == {:error, "invalid public key"}
+      assert Point.parse_public_key(<<0xFF, 0xFE, 0xFD>>) == {:error, "invalid public key"}
+    end
   end
 
   describe "sec/1" do

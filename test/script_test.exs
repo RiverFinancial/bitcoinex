@@ -1223,6 +1223,73 @@ defmodule Bitcoinex.ScriptTest do
         assert {:error, _} = Script.parse_script(t)
       end
     end
+
+    # A script that merely shares a prefix with a standard template must not be
+    # encoded to the address of the canonical template script: coins sent there
+    # land on a different scriptPubKey than the one that was inspected.
+    test "test non-standard scripts sharing a template prefix are rejected" do
+      h160 = "7c8b1a4b0c1a9d2f3e4b5a6c7d8e9f0a1b2c3d4e"
+      h256 = String.duplicate("ab", 32)
+
+      non_standard = [
+        # p2pkh missing OP_EQUALVERIFY OP_CHECKSIG entirely
+        "76a914" <> h160,
+        # p2pkh with OP_EQUALVERIFY but no OP_CHECKSIG
+        "76a914" <> h160 <> "88",
+        # p2pkh with OP_EQUAL instead of OP_CHECKSIG
+        "76a914" <> h160 <> "8887",
+        # p2pkh with trailing OP_1
+        "76a914" <> h160 <> "88ac51",
+        # p2pkh with OP_HASH256 in place of OP_HASH160
+        "76aa14" <> h160 <> "88ac",
+        # p2sh missing OP_EQUAL
+        "a914" <> h160,
+        # p2sh with OP_1 instead of OP_EQUAL
+        "a914" <> h160 <> "51",
+        # p2sh with trailing OP_1
+        "a914" <> h160 <> "8751",
+        # p2wpkh with a trailing item
+        "0014" <> h160 <> "51",
+        # p2wsh with a trailing item
+        "0020" <> h256 <> "51",
+        # p2tr with a trailing item
+        "5120" <> h256 <> "51",
+        # witness v0 with an invalid program length
+        "0015" <> h160 <> "ff"
+      ]
+
+      for hex <- non_standard do
+        {:ok, s} = Script.parse_script(hex)
+
+        assert Script.get_script_type(s) == :non_standard,
+               "expected #{hex} to be classified non_standard"
+
+        assert Script.to_address(s, :mainnet) == {:error, "non standard script type"},
+               "expected #{hex} to have no address"
+
+        assert Script.to_address(s, :testnet) == {:error, "non standard script type"}
+      end
+    end
+
+    test "test standard scripts still round-trip through to_address" do
+      h160 = "7c8b1a4b0c1a9d2f3e4b5a6c7d8e9f0a1b2c3d4e"
+      h256 = String.duplicate("ab", 32)
+
+      standard = [
+        {"76a914" <> h160 <> "88ac", :p2pkh},
+        {"a914" <> h160 <> "87", :p2sh},
+        {"0014" <> h160, :p2wpkh},
+        {"0020" <> h256, :p2wsh},
+        {"5120" <> h256, :p2tr}
+      ]
+
+      for {hex, type} <- standard do
+        {:ok, s} = Script.parse_script(hex)
+        assert Script.get_script_type(s) == type
+        assert {:ok, addr} = Script.to_address(s, :mainnet)
+        assert {:ok, ^s, :mainnet} = Script.from_address(addr)
+      end
+    end
   end
 
   describe "test from_address" do
