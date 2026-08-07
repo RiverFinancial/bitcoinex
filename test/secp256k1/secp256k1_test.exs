@@ -1,9 +1,10 @@
 defmodule Bitcoinex.Secp256k1.Secp256k1Test do
   use ExUnit.Case
+  use ExUnitProperties
   doctest Bitcoinex.Secp256k1
 
   alias Bitcoinex.Secp256k1
-  alias Bitcoinex.Secp256k1.{Signature}
+  alias Bitcoinex.Secp256k1.{Params, Signature}
 
   @valid_der_signatures [
     %{
@@ -126,6 +127,58 @@ defmodule Bitcoinex.Secp256k1.Secp256k1Test do
         assert {:error, _error} = Secp256k1.Signature.der_parse_signature(t.der_signature)
       end
     end
+
+    test "reject DER INTEGERs that are empty, non-minimal, negative, or out of range" do
+      n = Params.curve().n
+
+      cases = [
+        # empty INTEGERs: `30 04 02 00 02 00` decodes to the forbidden (0, 0)
+        {"empty integers", <<0x30, 0x04, 0x02, 0x00, 0x02, 0x00>>},
+        # explicit zero scalars: the (0, 0) forgery encoding
+        {"zero r and s", <<0x30, 0x06, 0x02, 0x01, 0x00, 0x02, 0x01, 0x00>>},
+        {"zero r", <<0x30, 0x06, 0x02, 0x01, 0x00, 0x02, 0x01, 0x01>>},
+        {"zero s", <<0x30, 0x06, 0x02, 0x01, 0x01, 0x02, 0x01, 0x00>>},
+        # unnecessary leading 0x00: a second encoding of r = 1
+        {"non-minimal r", <<0x30, 0x26, 0x02, 0x21, 0x00>> <> <<1::256>> <> <<0x02, 0x01, 0x01>>},
+        {"non-minimal s", <<0x30, 0x26, 0x02, 0x01, 0x01, 0x02, 0x21, 0x00>> <> <<1::256>>},
+        # high bit set: a DER INTEGER whose two's complement value is negative
+        {"negative r", <<0x30, 0x06, 0x02, 0x01, 0x80, 0x02, 0x01, 0x01>>},
+        {"negative s", <<0x30, 0x06, 0x02, 0x01, 0x01, 0x02, 0x01, 0x80>>},
+        # scalars must be in [1, n-1]
+        {"r = 2^256", <<0x30, 0x26, 0x02, 0x21, 0x01>> <> <<0::256>> <> <<0x02, 0x01, 0x01>>},
+        {"r = n", <<0x30, 0x26, 0x02, 0x21, 0x00>> <> <<n::256>> <> <<0x02, 0x01, 0x01>>},
+        {"s = n", <<0x30, 0x26, 0x02, 0x01, 0x01, 0x02, 0x21, 0x00>> <> <<n::256>>}
+      ]
+
+      for {label, der} <- cases do
+        assert {:error, _} = Secp256k1.Signature.der_parse_signature(der),
+               "expected #{label} to be rejected"
+      end
+    end
+
+    test "accept the boundary scalars 1 and n-1" do
+      max_scalar = Params.curve().n - 1
+
+      assert {:ok, %Signature{r: 1, s: 1}} ==
+               Secp256k1.Signature.der_parse_signature(
+                 <<0x30, 0x06, 0x02, 0x01, 0x01, 0x02, 0x01, 0x01>>
+               )
+
+      max_der =
+        <<0x30, 0x46, 0x02, 0x21, 0x00>> <>
+          <<max_scalar::256>> <> <<0x02, 0x21, 0x00>> <> <<max_scalar::256>>
+
+      assert {:ok, %Signature{r: max_scalar, s: max_scalar}} ==
+               Secp256k1.Signature.der_parse_signature(max_der)
+    end
+
+    test "der_serialize_signature emits canonical DER that the strict parser accepts" do
+      for t <- @valid_der_signatures do
+        der = Secp256k1.Signature.der_serialize_signature(t.obj_signature)
+        assert der == t.der_signature
+        assert {:ok, t.obj_signature} == Secp256k1.Signature.der_parse_signature(der)
+      end
+    end
   end
 
   describe "parse_signature/1" do
@@ -163,6 +216,78 @@ defmodule Bitcoinex.Secp256k1.Secp256k1Test do
 
         assert sig1 == sig2
       end
+    end
+
+    test "return error on empty, odd-length hex, and undersized inputs without hanging" do
+      # timeout guarded: a regression here hangs forever rather than failing
+      inputs = [<<>>, "", "abc", <<1, 2, 3>>, String.duplicate("zx", 64)]
+
+      for input <- inputs do
+        assert {:error, _} = call_with_timeout(fn -> Signature.parse_signature(input) end)
+      end
+    end
+  end
+
+  describe "serialize_signature/1" do
+    # BIP340 test vector 4: r has ten leading zero bytes
+    @bip340_vector_4_sig "00000000000000000000003b78ce563f89a0ed9414f5aa28ad0d96d6795f9c6376afb1548af603b3eb45c9f8207dee1060cb71c04e80f593060b07d28308d7f4"
+
+    test "serialize BIP340 test vector 4 signature to exactly 64 bytes" do
+      sig_bytes = Base.decode16!(@bip340_vector_4_sig, case: :lower)
+
+      {:ok, sig} = Signature.parse_signature(sig_bytes)
+      serialized = Signature.serialize_signature(sig)
+
+      assert byte_size(serialized) == 64
+      assert serialized == sig_bytes
+    end
+
+    test "raise for a scalar that is out of range" do
+      oversized_scalar = :binary.decode_unsigned(<<1, 0::size(256)>>)
+
+      for sig <- [
+            %Signature{r: oversized_scalar, s: 1},
+            %Signature{r: 1, s: oversized_scalar},
+            %Signature{r: 0, s: 1},
+            %Signature{r: 1, s: 0}
+          ] do
+        assert_raise ArgumentError, fn -> Signature.serialize_signature(sig) end
+      end
+    end
+
+    property "serialization is always 64 bytes and round-trips" do
+      n = Params.curve().n
+
+      # includes values below 2^248, whose minimal encodings are under 32 bytes
+      scalar_gen =
+        StreamData.one_of([
+          StreamData.integer(1..0xFFFFFF),
+          StreamData.map(StreamData.integer(), fn i -> rem(abs(i), n - 1) + 1 end),
+          StreamData.map(StreamData.binary(length: 32), fn b ->
+            rem(:binary.decode_unsigned(b), n - 1) + 1
+          end)
+        ])
+
+      check all(r <- scalar_gen, s <- scalar_gen) do
+        sig = %Signature{r: r, s: s}
+        serialized = Signature.serialize_signature(sig)
+
+        assert byte_size(serialized) == 64
+        assert Signature.parse_signature(serialized) == {:ok, sig}
+      end
+    end
+  end
+
+  defp call_with_timeout(fun) do
+    task = Task.async(fun)
+
+    case Task.yield(task, 5_000) do
+      {:ok, result} ->
+        result
+
+      nil ->
+        Task.shutdown(task, :brutal_kill)
+        flunk("call did not terminate within 5 seconds")
     end
   end
 end

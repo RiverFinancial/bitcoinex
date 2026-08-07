@@ -74,6 +74,7 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
   def decode(invoice) when is_binary(invoice) do
     with {:ok, {_encoding_type, hrp, data}} <- Bech32.decode(invoice, @max_invoice_length),
          {:ok, {network, amount_msat}} <- parse_hrp(hrp),
+         :ok <- validate_data_length(data),
          {invoice_data, signature_data} = split_at(data, -@signature_base32_length),
          {:ok, parsed_data} <-
            parse_invoice_data(invoice_data, network),
@@ -107,6 +108,13 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
     expiry = invoice.expiry
     DateTime.from_unix!(invoice.timestamp + expiry)
   end
+
+  # a shorter data part would leave an empty or truncated signature
+  defp validate_data_length(data)
+       when length(data) >= @timestamp_base32_length + @signature_base32_length,
+       do: :ok
+
+  defp validate_data_length(_), do: {:error, :invoice_data_too_short}
 
   # checking some invariant for invoice
   # TODO Could we use ecto(without SQL) for this?

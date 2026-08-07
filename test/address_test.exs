@@ -249,5 +249,43 @@ defmodule Bitcoinex.AddressTest do
       script_hash = Base.decode16!("6d77fa9de297e9c536c6b23cfda1a8450bb5f765", case: :lower)
       assert "3BfqJjn7H2jsbKd2NVHGP4sQWQ2bQWBRLv" == Address.encode(script_hash, :mainnet, :p2sh)
     end
+
+    test "raise when encoding a hash that is not 20 bytes" do
+      sha256 = :crypto.hash(:sha256, "x")
+
+      pubkey =
+        Base.decode16!("033b15e1b8c51bb947a134d17addc3eb6abbda551ad02137699636f907ad7e0f1a",
+          case: :lower
+        )
+
+      for hash <- [sha256, pubkey, <<>>, <<0, 1, 2, 3>>, :binary.copy(<<0>>, 21)],
+          network <- [:mainnet, :testnet],
+          address_type <- [:p2pkh, :p2sh] do
+        assert_raise ArgumentError, fn -> Address.encode(hash, network, address_type) end
+      end
+    end
+
+    test "still encode and validate genuine 20-byte hashes across networks and types" do
+      hash = Base.decode16!("6dcd022b3c5e6439238eb333ec1d6ddd1973b5ba", case: :lower)
+
+      for network <- [:mainnet, :testnet],
+          address_type <- [:p2pkh, :p2sh] do
+        address = Address.encode(hash, network, address_type)
+        assert is_binary(address)
+        assert Address.is_valid?(address, network, address_type)
+      end
+    end
+  end
+
+  describe "is_valid?/2 payload length" do
+    test "return false for a base58check address whose payload is not 20 bytes" do
+      # valid checksum and version byte, 3 and 21 payload bytes
+      for payload <- [<<0, 1, 2, 3>>, <<0>> <> :binary.copy(<<1>>, 21)] do
+        address = Bitcoinex.Base58.encode(payload)
+
+        refute Address.is_valid?(address, :mainnet)
+        refute Address.is_valid?(address, :mainnet, :p2pkh)
+      end
+    end
   end
 end

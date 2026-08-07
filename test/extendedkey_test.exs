@@ -262,6 +262,28 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
       assert ExtendedKey.parse_extended_key(t.xpub_m) == {:ok, t.xpub_m_obj}
       assert ExtendedKey.display_extended_key(t.xpub_m_obj) == t.xpub_m
     end
+
+    test "return an error, rather than raising, for an xpub whose key is unparseable" do
+      p = Bitcoinex.Secp256k1.Params.curve().p
+      xpub_prefix = <<0x04, 0x88, 0xB2, 0x1E>>
+
+      # BIP32 says to validate the public key on import, so each of these must
+      # be a clean error: x >= p, an invalid SEC prefix, and the identity point.
+      keys = [
+        <<0x02>> <> Bitcoinex.Utils.int_to_big(p + 1, 32),
+        <<0x05>> <> :binary.copy(<<0x01>>, 32),
+        <<0x02>> <> :binary.copy(<<0x00>>, 32)
+      ]
+
+      for key <- keys do
+        xkey =
+          xpub_prefix <>
+            <<0>> <> <<0, 0, 0, 0>> <> <<0, 0, 0, 0>> <> :binary.copy(<<0>>, 32) <> key
+
+        assert {:error, _} =
+                 ExtendedKey.parse_extended_key(Bitcoinex.Base58.append_checksum(xkey))
+      end
+    end
   end
 
   describe "to_extended_public_key/1" do

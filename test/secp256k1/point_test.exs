@@ -71,6 +71,84 @@ defmodule Bitcoinex.Secp256k1.PointTest do
       assert Point.parse_public_key(sec) == {:ok, pk}
       assert Point.serialize_public_key(pk) == sec
     end
+
+    test "return error for an uncompressed key that is not on the curve" do
+      # (1, 1) does not satisfy y^2 = x^3 + 7
+      off_curve = <<0x04>> <> <<1::256>> <> <<1::256>>
+      assert {:error, _} = Point.parse_public_key(off_curve)
+    end
+
+    test "return error for an uncompressed key with out-of-range coordinates" do
+      p = Bitcoinex.Secp256k1.Params.curve().p
+      x_ge_p = <<0x04>> <> Bitcoinex.Utils.int_to_big(p + 1, 32) <> <<1::256>>
+      assert {:error, _} = Point.parse_public_key(x_ge_p)
+
+      {:ok, pk} =
+        Point.parse_public_key(
+          Base.decode16!(
+            "048fdc3d8944cc8d8fe6c666c41a8ed42e60aa399861a756707e127a80b383d178edfbf94dda0487f7910d130f2a37a0647be9335eab5b8d3aa5242445e1604024",
+            case: :lower
+          )
+        )
+
+      y_ge_p =
+        <<0x04>> <> Bitcoinex.Utils.int_to_big(pk.x, 32) <> Bitcoinex.Utils.int_to_big(p, 32)
+
+      assert {:error, _} = Point.parse_public_key(y_ge_p)
+    end
+
+    test "return error for a compressed key with x >= p" do
+      p = Bitcoinex.Secp256k1.Params.curve().p
+
+      for prefix <- [<<0x02>>, <<0x03>>] do
+        assert {:error, _} =
+                 Point.parse_public_key(prefix <> Bitcoinex.Utils.int_to_big(p + 1, 32))
+      end
+    end
+
+    test "sec round-trips through parse_public_key for compressed and uncompressed keys" do
+      uncompressed =
+        Base.decode16!(
+          "048fdc3d8944cc8d8fe6c666c41a8ed42e60aa399861a756707e127a80b383d178edfbf94dda0487f7910d130f2a37a0647be9335eab5b8d3aa5242445e1604024",
+          case: :lower
+        )
+
+      {:ok, pk} = Point.parse_public_key(uncompressed)
+
+      rebuilt =
+        <<0x04>> <> Bitcoinex.Utils.int_to_big(pk.x, 32) <> Bitcoinex.Utils.int_to_big(pk.y, 32)
+
+      assert rebuilt == uncompressed
+      assert Point.parse_public_key(rebuilt) == {:ok, pk}
+
+      assert pk |> Point.sec() |> Point.parse_public_key() == {:ok, pk}
+    end
+
+    test "return an error, rather than raising, for binaries that are not SEC keys" do
+      # Reached with caller-supplied script bytes (Script.is_multi?/1 pushes
+      # 33- and 65-byte items straight into parse_public_key/1), so a non-hex
+      # or wrong-length binary must never raise.
+      inputs = [
+        <<>>,
+        "not hex",
+        <<0x05>> <> :binary.copy(<<0xFF>>, 64),
+        :binary.copy(<<0xFF>>, 64),
+        String.duplicate("zz", 33)
+      ]
+
+      for input <- inputs do
+        assert {:error, _} = Point.parse_public_key(input)
+      end
+    end
+
+    test "still parse compressed and uncompressed keys given as hex" do
+      uncompressed_hex =
+        "048fdc3d8944cc8d8fe6c666c41a8ed42e60aa399861a756707e127a80b383d178edfbf94dda0487f7910d130f2a37a0647be9335eab5b8d3aa5242445e1604024"
+
+      assert {:ok, pk} = Point.parse_public_key(uncompressed_hex)
+      assert {:ok, ^pk} = Point.parse_public_key(String.upcase(uncompressed_hex))
+      assert {:ok, ^pk} = Point.parse_public_key(Base.encode16(Point.sec(pk), case: :lower))
+    end
   end
 
   describe "sec/1" do

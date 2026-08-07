@@ -721,6 +721,22 @@ defmodule Bitcoinex.LightningNetwork.InvoiceTest do
                Invoice.decode("bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4")
     end
 
+    test "fail to decode an invoice whose data part is too short to hold a signature" do
+      # timeout guarded: a regression here hangs forever rather than failing
+      for invoice <- ["lnbc1qh65qct", "lnbc1w4pnfm"] do
+        task = Task.async(fn -> Invoice.decode(invoice) end)
+
+        case Task.yield(task, 5_000) do
+          {:ok, result} ->
+            assert {:error, _} = result
+
+          nil ->
+            Task.shutdown(task, :brutal_kill)
+            flunk("Invoice.decode(#{inspect(invoice)}) did not terminate within 5 seconds")
+        end
+      end
+    end
+
     test "fail to decode with invalid segwit addresses in mainnet", %{
       invalid_encoded_invoices: invalid_encoded_invoices
     } do
