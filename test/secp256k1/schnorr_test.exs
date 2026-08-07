@@ -153,6 +153,21 @@ defmodule Bitcoinex.Secp256k1.SchnorrTest do
                                      }
                                    ]
 
+  defp random_secret do
+    d =
+      32
+      |> :crypto.strong_rand_bytes()
+      |> :binary.decode_unsigned()
+
+    if d >= 1 and d < Secp256k1.Params.curve().n, do: d, else: random_secret()
+  end
+
+  defp random_z do
+    32
+    |> :crypto.strong_rand_bytes()
+    |> :binary.decode_unsigned()
+  end
+
   describe "sign/3" do
     test "sign" do
       for t <- @schnorr_signatures_with_secrets do
@@ -176,7 +191,95 @@ defmodule Bitcoinex.Secp256k1.SchnorrTest do
     end
   end
 
+  describe "sign/2" do
+    test "produces a valid signature for random keys and messages" do
+      for _ <- 1..100 do
+        {:ok, sk} = PrivateKey.new(random_secret())
+        pubkey = sk |> Secp256k1.force_even_y() |> PrivateKey.to_point()
+        z = random_z()
+
+        assert {:ok, sig} = Schnorr.sign(sk, z)
+        assert Schnorr.verify_signature(pubkey, z, sig)
+        assert sig.r < Secp256k1.Params.curve().p
+        assert sig.s < Secp256k1.Params.curve().n
+      end
+    end
+
+    test "draws fresh aux randomness on every call, so repeated signatures differ" do
+      {:ok, sk} = PrivateKey.new(random_secret())
+      pubkey = sk |> Secp256k1.force_even_y() |> PrivateKey.to_point()
+      z = random_z()
+
+      sigs =
+        for _ <- 1..50 do
+          assert {:ok, sig} = Schnorr.sign(sk, z)
+          assert Schnorr.verify_signature(pubkey, z, sig)
+          sig
+        end
+
+      # Every nonce is drawn from 256 bits of CSPRNG output; a collision here
+      # means sign/2 is not randomizing at all.
+      assert sigs |> Enum.uniq() |> length() == 50
+    end
+
+    test "rejects an invalid private key" do
+      assert {:error, _} = Schnorr.sign(%PrivateKey{d: 0}, random_z())
+      assert {:error, _} = Schnorr.sign(%PrivateKey{d: Secp256k1.Params.curve().n}, random_z())
+    end
+  end
+
+  describe "sign/3 aux randomness" do
+    setup do
+      {:ok, sk} = PrivateKey.new(random_secret())
+      pubkey = sk |> Secp256k1.force_even_y() |> PrivateKey.to_point()
+      {:ok, privkey: sk, pubkey: pubkey, z: random_z()}
+    end
+
+    test "is deterministic for a fixed aux", %{privkey: sk, z: z} do
+      # BIP340 permits deterministic signing with a constant aux, and the
+      # official test vectors rely on it. Signing twice with the same aux must
+      # give bit-identical signatures.
+      for aux <- [0, 1, random_z()] do
+        assert {:ok, sig1} = Schnorr.sign(sk, z, aux)
+        assert {:ok, sig2} = Schnorr.sign(sk, z, aux)
+        assert sig1 == sig2
+      end
+    end
+
+    test "changes the nonce when aux changes", %{privkey: sk, pubkey: pubkey, z: z} do
+      assert {:ok, sig1} = Schnorr.sign(sk, z, 0)
+      assert {:ok, sig2} = Schnorr.sign(sk, z, 1)
+
+      assert sig1.r != sig2.r
+      assert sig1.s != sig2.s
+      assert Schnorr.verify_signature(pubkey, z, sig1)
+      assert Schnorr.verify_signature(pubkey, z, sig2)
+    end
+
+    test "changes the nonce when the message changes, at a fixed aux", %{privkey: sk, z: z} do
+      assert {:ok, sig1} = Schnorr.sign(sk, z, 0)
+      assert {:ok, sig2} = Schnorr.sign(sk, z + 1, 0)
+      assert sig1.r != sig2.r
+    end
+  end
+
   describe "verify_signature/3" do
+    test "rejects a signature over a different message or from a different key" do
+      {:ok, sk} = PrivateKey.new(random_secret())
+      pubkey = sk |> Secp256k1.force_even_y() |> PrivateKey.to_point()
+      z = random_z()
+
+      assert {:ok, sig} = Schnorr.sign(sk, z)
+      assert Schnorr.verify_signature(pubkey, z, sig)
+
+      refute Schnorr.verify_signature(pubkey, z - 1, sig)
+      refute Schnorr.verify_signature(pubkey, z, %Signature{sig | s: sig.s - 1})
+
+      {:ok, other} = PrivateKey.new(random_secret())
+      other_pubkey = other |> Secp256k1.force_even_y() |> PrivateKey.to_point()
+      refute Schnorr.verify_signature(other_pubkey, z, sig)
+    end
+
     test "verify_signature" do
       for t <- @schnorr_signatures_no_secrets do
         pk_res =

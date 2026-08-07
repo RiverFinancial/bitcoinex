@@ -5,6 +5,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Added
+- `Secp256k1.Schnorr.sign/2`, which generates the BIP340 auxiliary randomness from `:crypto.strong_rand_bytes/1` instead of requiring the caller to supply it. `sign/3` is now documented: aux must be either fresh CSPRNG output (randomized signing) or a fixed constant such as 0 (deterministic signing, as the BIP340 test vectors use).
+
 ### Changed
 - Removed the `decimal` dependency: bitcoinex now has no runtime dependencies. `LightningNetwork.Invoice` was its only user, for BOLT#11 amount parsing, which now converts the human-readable-part amount to millisatoshi with exact integer arithmetic. Decoded amounts are unchanged, but the rejection of sub-millisatoshi amounts now follows BOLT#11 literally — "if the `multiplier` is `p` and the last decimal of `amount` is not 0: MUST fail the payment" is a check on the amount's last decimal digit, not on whether a computed value survives rounding.
 - Bumped the test-only `excoveralls` dependency to `~> 0.18` (0.15.1 → 0.18.5), which drops the `hackney` HTTP client — `hackney` 1.18.1 carries 6 advisories including EEF-CVE-2026-47071 (HIGH). It was never runtime-reachable (test-only, and CI runs no coverage upload). Pruned the lock entries left unused by the bump (`hackney`, `certifi`, `idna`, `metrics`, `mimerl`, `parse_trans`, `ssl_verify_fun`, `unicode_util_compat`) along with pre-existing stale ones (`combine`, `dialyxir`, `erlex`, `gettext`).
@@ -18,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - `ExtendedKey.derive_private_child/2` now pads the child private key to 32 bytes (BIP32 `ser256`). Previously, when the derived key had a leading zero byte (~1 in 256 derivations), the minimal encoding produced a 77-byte serialization that failed to parse, so the derivation returned `{:error, "error parsing key"}` — and every descendant of that path was unreachable. BIP32 test vector 4 ("retention of leading zeros") now passes and is in the test suite.
 - `ExtendedKey.derive_public_child/2` returns `{:error, reason}` instead of raising `MatchError` when the underlying private-child derivation fails.
+- `Secp256k1.Ecdsa.deterministic_k/2` now reduces the message hash at `z == n`, as RFC 6979 section 2.3.4 (bits2octets) requires — the comparison was `z > n` rather than `z >= n`. Only that single input diverged, and the `k` it produced was still uniform and unpredictable in `[1, n-1]`, so no key or signature was ever at risk; the nonce simply did not match other RFC6979 implementations. Reaching it requires a message hash equal to the curve order.
 
 ## [0.3.0] - 2026-08-04
 ### Added
