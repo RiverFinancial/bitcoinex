@@ -127,6 +127,58 @@ defmodule Bitcoinex.Secp256k1.Secp256k1Test do
         assert {:error, _error} = Secp256k1.Signature.der_parse_signature(t.der_signature)
       end
     end
+
+    test "reject DER INTEGERs that are empty, non-minimal, negative, or out of range" do
+      n = Params.curve().n
+
+      cases = [
+        # empty INTEGERs: `30 04 02 00 02 00` decodes to the forbidden (0, 0)
+        {"empty integers", <<0x30, 0x04, 0x02, 0x00, 0x02, 0x00>>},
+        # explicit zero scalars: the (0, 0) forgery encoding
+        {"zero r and s", <<0x30, 0x06, 0x02, 0x01, 0x00, 0x02, 0x01, 0x00>>},
+        {"zero r", <<0x30, 0x06, 0x02, 0x01, 0x00, 0x02, 0x01, 0x01>>},
+        {"zero s", <<0x30, 0x06, 0x02, 0x01, 0x01, 0x02, 0x01, 0x00>>},
+        # unnecessary leading 0x00: a second encoding of r = 1
+        {"non-minimal r", <<0x30, 0x26, 0x02, 0x21, 0x00>> <> <<1::256>> <> <<0x02, 0x01, 0x01>>},
+        {"non-minimal s", <<0x30, 0x26, 0x02, 0x01, 0x01, 0x02, 0x21, 0x00>> <> <<1::256>>},
+        # high bit set: a DER INTEGER whose two's complement value is negative
+        {"negative r", <<0x30, 0x06, 0x02, 0x01, 0x80, 0x02, 0x01, 0x01>>},
+        {"negative s", <<0x30, 0x06, 0x02, 0x01, 0x01, 0x02, 0x01, 0x80>>},
+        # scalars must be in [1, n-1]
+        {"r = 2^256", <<0x30, 0x26, 0x02, 0x21, 0x01>> <> <<0::256>> <> <<0x02, 0x01, 0x01>>},
+        {"r = n", <<0x30, 0x26, 0x02, 0x21, 0x00>> <> <<n::256>> <> <<0x02, 0x01, 0x01>>},
+        {"s = n", <<0x30, 0x26, 0x02, 0x01, 0x01, 0x02, 0x21, 0x00>> <> <<n::256>>}
+      ]
+
+      for {label, der} <- cases do
+        assert {:error, _} = Secp256k1.Signature.der_parse_signature(der),
+               "expected #{label} to be rejected"
+      end
+    end
+
+    test "accept the boundary scalars 1 and n-1" do
+      max_scalar = Params.curve().n - 1
+
+      assert {:ok, %Signature{r: 1, s: 1}} ==
+               Secp256k1.Signature.der_parse_signature(
+                 <<0x30, 0x06, 0x02, 0x01, 0x01, 0x02, 0x01, 0x01>>
+               )
+
+      max_der =
+        <<0x30, 0x46, 0x02, 0x21, 0x00>> <>
+          <<max_scalar::256>> <> <<0x02, 0x21, 0x00>> <> <<max_scalar::256>>
+
+      assert {:ok, %Signature{r: max_scalar, s: max_scalar}} ==
+               Secp256k1.Signature.der_parse_signature(max_der)
+    end
+
+    test "der_serialize_signature emits canonical DER that the strict parser accepts" do
+      for t <- @valid_der_signatures do
+        der = Secp256k1.Signature.der_serialize_signature(t.obj_signature)
+        assert der == t.der_signature
+        assert {:ok, t.obj_signature} == Secp256k1.Signature.der_parse_signature(der)
+      end
+    end
   end
 
   describe "parse_signature/1" do

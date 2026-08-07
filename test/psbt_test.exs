@@ -354,21 +354,20 @@ defmodule Bitcoinex.PSBTTest do
                )
     end
 
-    test "preserves the exact partial_sig bytes on round-trip, including non-canonical DER" do
+    test "preserves the exact partial_sig bytes on round-trip, including variable-length r,s" do
       {:ok, psbt} = PSBT.decode(valid_vector(@p2sh_p2wsh_vector_index))
       [%{public_key: public_key, sighash_flag: sighash_flag} | _] = hd(psbt.inputs).partial_sig
 
-      # A DER signature carrying an unnecessary leading 0x00 on r: parseable, but
-      # non-canonical. Parsing it into (r, s) and re-serializing would silently
-      # rewrite it to canonical DER; storing the raw bytes preserves it exactly
-      # across decode |> encode_b64.
-      noncanonical_der =
+      # Canonical DER whose r needs a leading 0x00 (high bit set) and whose s is
+      # only 31 bytes. Signatures are stored as raw bytes rather than a parsed
+      # Signature struct, so these lengths survive decode |> encode_b64 exactly.
+      der =
         Base.decode16!(
-          "3045022100" <> String.duplicate("11", 32) <> "0220" <> String.duplicate("22", 32),
+          "3044022100" <> String.duplicate("dd", 32) <> "021f" <> String.duplicate("22", 31),
           case: :lower
         )
 
-      record = %{public_key: public_key, signature: noncanonical_der, sighash_flag: sighash_flag}
+      record = %{public_key: public_key, signature: der, sighash_flag: sighash_flag}
 
       psbt = %PSBT{
         psbt
@@ -376,7 +375,30 @@ defmodule Bitcoinex.PSBTTest do
       }
 
       assert {:ok, decoded} = PSBT.decode(encoded!(psbt))
-      assert [%{signature: ^noncanonical_der}] = hd(decoded.inputs).partial_sig
+      assert [%{signature: ^der}] = hd(decoded.inputs).partial_sig
+    end
+
+    test "rejects a partial_sig whose DER is well-formed but non-canonical" do
+      {:ok, psbt} = PSBT.decode(valid_vector(@p2sh_p2wsh_vector_index))
+      [%{public_key: public_key, sighash_flag: sighash_flag} | _] = hd(psbt.inputs).partial_sig
+
+      # BIP66 requires minimally-encoded DER INTEGERs: an unnecessary leading
+      # 0x00 on r yields a second byte encoding of the same (r, s), which is
+      # signature malleability at the encoding layer.
+      noncanonical_der =
+        Base.decode16!(
+          "3045022100" <> String.duplicate("11", 32) <> "0220" <> String.duplicate("22", 32),
+          case: :lower
+        )
+
+      record = %{
+        public_key: public_key,
+        signature: noncanonical_der,
+        sighash_flag: sighash_flag
+      }
+
+      assert {:error, :invalid_partial_sig} =
+               PSBT.In.add_field(hd(psbt.inputs), :partial_sig, record)
     end
 
     test "round-trips a redeem_script that is not a finalizer-recognized template" do

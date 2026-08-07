@@ -39,23 +39,7 @@ defmodule Bitcoinex.Secp256k1 do
       r = :binary.decode_unsigned(r)
       s = :binary.decode_unsigned(s)
 
-      # Verify that r,s are integers in [1, n-1] where n is the integer order of G.
-      cond do
-        r < 1 ->
-          {:error, "invalid signature"}
-
-        r > Params.curve().n - 1 ->
-          {:error, "invalid signature"}
-
-        s < 1 ->
-          {:error, "invalid signature"}
-
-        s > Params.curve().n - 1 ->
-          {:error, "invalid signature"}
-
-        true ->
-          {:ok, %Signature{r: r, s: s}}
-      end
+      new_signature(r, s)
     end
 
     # a 64-byte compact signature is 128 hex characters. The length guard matters:
@@ -84,7 +68,7 @@ defmodule Bitcoinex.Secp256k1 do
         with {:ok, r, rest} <- parse_sig_key(body),
              {:ok, s, rest} <- parse_sig_key(rest) do
           if rest == <<>> do
-            {:ok, %Signature{r: r, s: s}}
+            new_signature(r, s)
           else
             {:error, "invalid signature: signature is too long"}
           end
@@ -98,7 +82,9 @@ defmodule Bitcoinex.Secp256k1 do
     # past the end of the signature) is a clean error, never a raise: this is
     # reached from PSBT partial_sig validation with caller-supplied bytes.
     defp parse_sig_key(<<0x02, k_len, k::binary-size(k_len), rest::binary>>) do
-      {:ok, :binary.decode_unsigned(k), rest}
+      with :ok <- validate_der_integer(k) do
+        {:ok, :binary.decode_unsigned(k), rest}
+      end
     end
 
     defp parse_sig_key(<<0x02, _rest::binary>>) do
@@ -106,6 +92,33 @@ defmodule Bitcoinex.Secp256k1 do
     end
 
     defp parse_sig_key(_data), do: {:error, "invalid signature key marker"}
+
+    # DER INTEGERs are big-endian two's complement and must use the shortest
+    # possible encoding. Without these checks a single (r,s) has many valid
+    # byte encodings, and `<<0x02, 0x00>>` decodes to the forbidden scalar 0.
+    defp validate_der_integer(<<>>), do: {:error, "invalid signature: empty integer"}
+
+    defp validate_der_integer(<<first, _::binary>>) when (first &&& 0x80) != 0,
+      do: {:error, "invalid signature: negative integer"}
+
+    defp validate_der_integer(<<0x00, second, _::binary>>) when (second &&& 0x80) == 0,
+      do: {:error, "invalid signature: non-minimally encoded integer"}
+
+    defp validate_der_integer(k) when byte_size(k) > 33,
+      do: {:error, "invalid signature: integer too large"}
+
+    defp validate_der_integer(_k), do: :ok
+
+    # r and s must both be scalars in [1, n-1], where n is the order of G.
+    defp new_signature(r, s) do
+      n = Params.curve().n
+
+      if r >= 1 and r <= n - 1 and s >= 1 and s <= n - 1 do
+        {:ok, %Signature{r: r, s: s}}
+      else
+        {:error, "invalid signature"}
+      end
+    end
 
     @spec serialize_signature(t()) :: binary | {:error, String.t()}
     def serialize_signature(%__MODULE__{r: r, s: s})
