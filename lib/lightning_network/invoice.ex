@@ -583,7 +583,10 @@ defmodule Bitcoinex.LightningNetwork.Invoice do
       {:strip_prefix, _} ->
         {:error, :no_ln_prefix}
 
-      {:parse_network, error} ->
+      # parse_network/1 already returns an {:error, atom} tuple; re-wrapping it
+      # produced {:error, {:error, :invalid_network}}, which contradicts this
+      # module's `@type error :: atom`
+      {:parse_network, {:error, error}} ->
         {:error, error}
     end
   end

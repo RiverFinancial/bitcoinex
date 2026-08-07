@@ -11,15 +11,32 @@ defmodule Bitcoinex.LightningNetwork.InvoiceAmountTest do
   @moduledoc """
   Exercises BOLT#11 human-readable-part amount parsing.
 
-  The amount is parsed with exact integer arithmetic, so these tests focus on
-  the cases where an implementation built on floats (or on any fixed-precision
-  decimal) would go wrong: amounts beyond a float's 53-bit integer range,
-  multipliers whose value is not representable in binary floating point
-  (0.001, 0.000001, ...), and the BOLT#11 rule governing the `p` multiplier.
+  The vectors here are taken from other implementations rather than computed
+  from our own reading of the spec, so that this is a differential test and
+  not a restatement of `Invoice`:
 
-  Since the amount lives in the signed human-readable part, every case is
-  driven through `Invoice.decode/1` on a freshly-signed invoice rather than
-  against the (private) parsing function.
+    * `lnd` — the `TestDecodeAmount` table in `zpay32/invoice_internal_test.go`
+      (github.com/lightningnetwork/lnd), reproduced case for case below.
+    * BOLT#11 — the signed example invoices in `11-payment-encoding.md`
+      (github.com/lightning/bolts), used verbatim with the amounts the spec
+      annotates them with.
+    * Core Lightning — the amount algorithm in `common/bolt11.c`
+      (github.com/ElementsProject/lightning), used as the reference the
+      property tests compare against. CLN scales every multiplier by ten
+      ("We can't represent p postfix to msat, so we multiply this by 10") and
+      then computes `amount * m10 / 10`, which is a different decomposition
+      from ours and so is a real cross-check rather than the same arithmetic
+      written twice.
+
+  On top of those, `describe "precision"` covers amounts that exceed what a
+  float64 or a `uint64` can hold. lnd and CLN both carry the amount in a
+  `uint64`, so no vector from either can reach that range; Elixir integers
+  are arbitrary precision, and the reference there is exact rational math.
+
+  The amount lives in the signed human-readable part, so it cannot be tested
+  by patching the hrp of an existing invoice. Cases that are not spec vectors
+  are therefore driven through `Invoice.decode/1` on an invoice this module
+  builds and signs.
   """
 
   # BOLT#11 test key
@@ -34,41 +51,48 @@ defmodule Bitcoinex.LightningNetwork.InvoiceAmountTest do
 
   @milli_satoshi_per_bitcoin 100_000_000_000
 
-  # The multiplier values as BOLT#11 states them, expressed exactly as
-  # 1 / divisor so that the reference math below never touches a float.
-  @multiplier_divisors %{
-    nil => 1,
-    # 0.001
-    "m" => 1_000,
-    # 0.000001
-    "u" => 1_000_000,
-    # 0.000000001
-    "n" => 1_000_000_000,
-    # 0.000000000001
-    "p" => 1_000_000_000_000
+  # core lightning's multiplier table (common/bolt11.c), which is the msat per
+  # unit scaled by ten so that `p` also has an integer entry. `m10` for a
+  # missing multiplier is `10 * MSAT_PER_BTC`.
+  @cln_m10 %{
+    nil => 10 * @milli_satoshi_per_bitcoin,
+    "m" => div(10 * @milli_satoshi_per_bitcoin, 1_000),
+    "u" => div(10 * @milli_satoshi_per_bitcoin, 1_000_000),
+    "n" => div(10 * @milli_satoshi_per_bitcoin, 1_000_000_000),
+    "p" => div(10 * @milli_satoshi_per_bitcoin, 1_000_000_000_000)
   }
 
-  describe "decode/1 amount: BOLT#11 test vectors" do
-    test "each multiplier converts to the amount BOLT#11 specifies" do
-      # {amount string in the hrp, expected amount_msat}
+  describe "decode/1 amount: lnd zpay32 TestDecodeAmount vectors" do
+    test "every amount lnd accepts decodes to the millisatoshi lnd expects" do
+      # {amount string in the hrp, expected msat} — the `valid: true` rows of
+      # lnd's TestDecodeAmount, in order, with lnd's own comments.
       vectors = [
-        {"1", 100_000_000_000},
-        {"2", 200_000_000_000},
-        {"21000000", 2_100_000_000_000_000_000},
-        {"1m", 100_000_000},
-        {"20m", 2_000_000_000},
-        {"25m", 2_500_000_000},
-        {"24", 2_400_000_000_000},
-        {"1u", 100_000},
-        {"2500u", 250_000_000},
-        {"320u", 32_000_000},
-        {"1n", 100},
-        {"10n", 1_000},
-        {"24000000n", 2_400_000_000},
-        {"9678785340n", 967_878_534_000},
+        # pBTC
         {"10p", 1},
-        {"1230p", 123},
-        {"9678785340p", 967_878_534}
+        # pBTC
+        {"1000p", 100},
+        # nBTC
+        {"1n", 100},
+        # nBTC
+        {"9000n", 900_000},
+        # uBTC
+        {"9u", 900_000},
+        # uBTC
+        {"2000u", 200_000_000},
+        # mBTC
+        {"2m", 200_000_000},
+        # mBTC
+        {"2000m", 200_000_000_000},
+        # BTC
+        {"2", 200_000_000_000},
+        # BTC
+        {"2000", 200_000_000_000_000},
+        # BTC
+        {"2009", 200_900_000_000_000},
+        # BTC
+        {"1234", 123_400_000_000_000},
+        # BTC
+        {"21000000", 2_100_000_000_000_000_000}
       ]
 
       for {amount_str, expected_msat} <- vectors do
@@ -79,35 +103,131 @@ defmodule Bitcoinex.LightningNetwork.InvoiceAmountTest do
       end
     end
 
-    test "an omitted amount leaves amount_msat nil" do
+    test "every amount lnd rejects is rejected" do
+      # the `valid: false` rows of lnd's TestDecodeAmount. lnd reports a single
+      # error per row; bitcoinex distinguishes which check failed, so the atom
+      # is pinned here alongside lnd's reason.
+      vectors = [
+        # lnd: trailing digits after the multiplier
+        {"20n00", :invalid_amount},
+        # lnd: unknown multiplier
+        {"2000y", :invalid_amount},
+        # lnd: two multipliers
+        {"2000mm", :invalid_amount},
+        # lnd: two multipliers
+        {"2000nm", :invalid_amount},
+        # lnd: multiplier with no amount. rejected earlier here, when resolving
+        # the network: BOLT#11 requires a digit to follow the network prefix
+        {"m", :invalid_network},
+        # lnd: "too small". 1p is 0.1 msat, so its last decimal is not 0
+        {"1p", :sub_msat_precision_amount},
+        # lnd: "not divisible by 10"
+        {"1109p", :sub_msat_precision_amount},
+        # lnd: negative amount. also rejected when resolving the network, since
+        # "-" is not a digit
+        {"-10p", :invalid_network}
+      ]
+
+      for {amount_str, expected_error} <- vectors do
+        assert {:error, ^expected_error} = decode_with_amount(amount_str),
+               "#{amount_str} should have been rejected with #{expected_error}"
+      end
+    end
+
+    test "an empty amount is no amount, rather than an error" do
+      # lnd's table has `{amount: "", valid: false}`, but lnd only reaches
+      # decodeAmount when the hrp carries an amount at all. BOLT#11: "if the
+      # `amount` is empty: SHOULD indicate to the payer that amount is
+      # unspecified" — so an hrp of just "lnbc" is a valid amountless invoice.
       assert {:ok, invoice} = decode_with_amount("")
       assert invoice.amount_msat == nil
     end
+  end
 
-    test "an explicit zero amount is 0 msat, not nil" do
-      assert {:ok, invoice} = decode_with_amount("0")
-      assert invoice.amount_msat == 0
+  describe "decode/1 amount: BOLT#11 example invoices" do
+    test "each signed example decodes to the amount the spec annotates" do
+      # verbatim from the Examples section of 11-payment-encoding.md, with the
+      # amounts the spec states in the field-by-field breakdown under each
+      vectors = [
+        # no amount (11-payment-encoding.md line 372)
+        {"lnbc1pvjluezsp5zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zygspp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqdpl2pkx2ctnv5sxxmmwwd5kgetjypeh2ursdae8g6twvus8g6rfwvs8qun0dfjkxaq9qrsgq357wnc5r2ueh7ck6q93dj32dlqnls087fxdwk8qakdyafkq3yap9us6v52vjjsrvywa6rt52cm9r9zqt8r2t7mlcwspyetp5h2tztugp9lfyql",
+         nil},
+        # 2500u = 2500 micro-bitcoin (11-payment-encoding.md line 400)
+        {"lnbc2500u1pvjluezsp5zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zygspp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqdq5xysxxatsyp3k7enxv4jsxqzpu9qrsgquk0rl77nj30yxdy8j9vdx85fkpmdla2087ne0xh8nhedh8w27kyke0lp53ut353s06fv3qfegext0eh0ymjpf39tuven09sam30g4vgpfna3rh",
+         250_000_000},
+        # 20m = 20 milli-bitcoin (11-payment-encoding.md line 456)
+        {"lnbc20m1pvjluezsp5zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zygspp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqhp58yjmdan79s6qqdhdzgynm4zwqd5d7xmw5fk98klysy043l2ahrqs9qrsgq7ea976txfraylvgzuxs8kgcw23ezlrszfnh8r6qtfpr6cxga50aj6txm9rxrydzd06dfeawfk6swupvz4erwnyutnjq7x39ymw6j38gp7ynn44",
+         2_000_000_000},
+        # 20m = 20 milli-bitcoin, on testnet (11-payment-encoding.md line 481)
+        {"lntb20m1pvjluezsp5zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zygshp58yjmdan79s6qqdhdzgynm4zwqd5d7xmw5fk98klysy043l2ahrqspp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqfpp3x9et2e20v6pu37c5d9vax37wxq72un989qrsgqdj545axuxtnfemtpwkc45hx9d2ft7x04mt8q7y6t0k2dge9e7h8kpy9p34ytyslj3yu569aalz2xdk8xkd7ltxqld94u8h2esmsmacgpghe9k8",
+         2_000_000_000},
+        # 9678785340p = 9678785340 pico-bitcoin (11-payment-encoding.md line 639)
+        {"lnbc9678785340p1pwmna7lpp5gc3xfm08u9qy06djf8dfflhugl6p7lgza6dsjxq454gxhj9t7a0sd8dgfkx7cmtwd68yetpd5s9xar0wfjn5gpc8qhrsdfq24f5ggrxdaezqsnvda3kkum5wfjkzmfqf3jkgem9wgsyuctwdus9xgrcyqcjcgpzgfskx6eqf9hzqnteypzxz7fzypfhg6trddjhygrcyqezcgpzfysywmm5ypxxjemgw3hxjmn8yptk7untd9hxwg3q2d6xjcmtv4ezq7pqxgsxzmnyyqcjqmt0wfjjq6t5v4khxsp5zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zygsxqyjw5qcqp2rzjq0gxwkzc8w6323m55m4jyxcjwmy7stt9hwkwe2qxmy8zpsgg7jcuwz87fcqqeuqqqyqqqqlgqqqqn3qq9q9qrsgqrvgkpnmps664wgkp43l22qsgdw4ve24aca4nymnxddlnp8vh9v2sdxlu5ywdxefsfvm0fq3sesf08uf6q9a2ke0hc9j6z6wlxg5z5kqpu2v9wz",
+         967_878_534},
+        # 25m = 25 milli-bitcoin (11-payment-encoding.md line 673)
+        {"lnbc25m1pvjluezpp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqdq5vdhkven9v5sxyetpdeessp5zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zygs9q5sqqqqqqqqqqqqqqqqsgq2a25dxl5hrntdtn6zvydt7d66hyzsyhqs4wdynavys42xgl6sgx9c4g7me86a27t07mdtfry458rtjr0v92cnmswpsjscgt2vcse3sgpz3uapa",
+         2_500_000_000},
+        # 10m = 10 milli-bitcoin (11-payment-encoding.md line 750)
+        {"lnbc10m1pvjluezpp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqdp9wpshjmt9de6zqmt9w3skgct5vysxjmnnd9jx2mq8q8a04uqsp5zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zygs9q2gqqqqqqsgq7hf8he7ecf7n4ffphs6awl9t6676rrclv9ckg3d3ncn7fct63p6s365duk5wrk202cfy3aj5xnnp5gs3vrdvruverwwq7yzhkf5a3xqpd05wjc",
+         1_000_000_000}
+      ]
+
+      for {encoded, expected_msat} <- vectors do
+        assert {:ok, invoice} = Invoice.decode(encoded)
+
+        assert invoice.amount_msat == expected_msat,
+               "#{String.slice(encoded, 0..20)}... decoded to #{inspect(invoice.amount_msat)}, " <>
+                 "expected #{inspect(expected_msat)}"
+      end
+    end
+
+    test "the spec's two invalid-amount examples are rejected" do
+      # Invalid multiplier (11-payment-encoding.md line 844)
+      assert {:error, :invalid_amount} =
+               Invoice.decode(
+                 "lnbc2500x1pvjluezpp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqdq5xysxxatsyp3k7enxv4jsxqzpusp5zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zygs9qrsgqrrzc4cvfue4zp3hggxp47ag7xnrlr8vgcmkjxk3j5jqethnumgkpqp23z9jclu3v0a7e0aruz366e9wqdykw6dxhdzcjjhldxq0w6wgqcnu43j"
+               )
+
+      # Invalid sub-millisatoshi precision (11-payment-encoding.md line 847)
+      assert {:error, :sub_msat_precision_amount} =
+               Invoice.decode(
+                 "lnbc2500000001p1pvjluezpp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqdq5xysxxatsyp3k7enxv4jsxqzpusp5zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zygs9qrsgq0lzc236j96a95uv0m3umg28gclm5lqxtqqwk32uuk4k6673k6n5kfvx3d2h8s295fad45fdhmusm8sjudfhlf6dcsxmfvkeywmjdkxcp99202x"
+               )
     end
   end
 
   describe "decode/1 amount: precision" do
-    test "amounts above 2^53 are exact" do
-      # A float64 holds integers exactly only up to 2^53. Each of these is
-      # chosen so that a float round-trip would visibly perturb the result.
-      # {amount string, expected amount_msat}
+    # No vector in this block can come from lnd or core lightning: both carry
+    # the amount in a uint64, so neither can express these. The reference is
+    # exact rational arithmetic.
+
+    test "amounts beyond a float's exact integer range are exact" do
+      # a float64 holds integers exactly only up to 2^53
       vectors = [
         # 2^53 + 1 nano-bitcoin
         {"9007199254740993n", 900_719_925_474_099_300},
-        # 2^53 + 1 pico-bitcoin, last decimal 0 => 2^53*10 + 10
+        # 2^53 + 1 pico-bitcoin, rounded to a valid pico amount
         {"90071992547409930p", 9_007_199_254_740_993},
-        # 2^63 - 1, rounded down to a valid pico amount
-        {"9223372036854775800p", 922_337_203_685_477_580},
         # every decimal digit set, so any lost bit shows up
-        {"12345678901234567890p", 1_234_567_890_123_456_789},
-        # more than 2^64 pico-bitcoin
+        {"12345678901234567890p", 1_234_567_890_123_456_789}
+      ]
+
+      for {amount_str, expected_msat} <- vectors do
+        assert {:ok, invoice} = decode_with_amount(amount_str)
+
+        assert invoice.amount_msat == expected_msat,
+               "#{amount_str} decoded to #{invoice.amount_msat}, expected #{expected_msat}"
+      end
+    end
+
+    test "amounts beyond a uint64 are exact" do
+      # 2^64 - 1 msat is the largest lnd or core lightning can hold; BOLT#11
+      # itself places no bound on the amount, so decoding must not wrap
+      vectors = [
+        # 2^64 - 1 msat exactly, the last amount a uint64 implementation holds
         {"184467440737095516150p", 18_446_744_073_709_551_615},
-        # 21M BTC expressed in pico-bitcoin: the whole supply, exactly
-        {"21000000000000000000p", 2_100_000_000_000_000_000},
+        # one msat past it
+        {"184467440737095516160p", 18_446_744_073_709_551_616},
         {"21000000000000000000n", 2_100_000_000_000_000_000_000},
         {"999999999999999999999999999999m", 99_999_999_999_999_999_999_999_999_999_900_000_000}
       ]
@@ -123,7 +243,7 @@ defmodule Bitcoinex.LightningNetwork.InvoiceAmountTest do
     test "the smallest amount each multiplier can express is exact" do
       # 0.001, 0.000001, 0.000000001 and 0.000000000001 are all inexact as
       # float64, so `1 * multiplier * 100_000_000_000` computed in floating
-      # point does not land on a whole number of millisatoshi.
+      # point does not land on a whole number of millisatoshi
       assert {:ok, %{amount_msat: 100_000_000}} = decode_with_amount("1m")
       assert {:ok, %{amount_msat: 100_000}} = decode_with_amount("1u")
       assert {:ok, %{amount_msat: 100}} = decode_with_amount("1n")
@@ -137,7 +257,7 @@ defmodule Bitcoinex.LightningNetwork.InvoiceAmountTest do
       end
     end
 
-    property "decoded amount matches exact rational arithmetic, for every multiplier" do
+    property "decoded amount matches core lightning's algorithm, for every multiplier" do
       check all(
               amount <- integer(1..1_000_000_000_000_000_000_000),
               multiplier <- member_of([nil, "m", "u", "n", "p"]),
@@ -146,21 +266,18 @@ defmodule Bitcoinex.LightningNetwork.InvoiceAmountTest do
         # keep the pico amount valid per BOLT#11 without biasing the digits
         amount = if multiplier == "p", do: amount * 10, else: amount
 
-        amount_str = "#{amount}#{multiplier}"
+        # bolt11.c: `if (amount * m10 % 10 != 0) fail;`
+        #           `*b11->msat = amount_msat(amount * m10 / 10);`
+        scaled = amount * @cln_m10[multiplier]
+        assert rem(scaled, 10) == 0
+        expected_msat = div(scaled, 10)
 
-        # the definition straight from the spec: amount * multiplier bitcoin,
-        # converted to msat, in exact integer arithmetic
-        numerator = amount * @milli_satoshi_per_bitcoin
-        divisor = @multiplier_divisors[multiplier]
-        assert rem(numerator, divisor) == 0
-        expected_msat = div(numerator, divisor)
-
-        assert {:ok, invoice} = decode_with_amount(amount_str)
+        assert {:ok, invoice} = decode_with_amount("#{amount}#{multiplier}")
         assert invoice.amount_msat == expected_msat
       end
     end
 
-    property "amounts are monotonic and unit conversions agree" do
+    property "unit conversions agree across every multiplier" do
       check all(amount <- integer(1..10_000_000_000), max_runs: 100) do
         # 1 unit = 1000 of the next-smaller unit, exactly, at every scale
         assert {:ok, %{amount_msat: btc}} = decode_with_amount("#{amount}")
@@ -200,6 +317,7 @@ defmodule Bitcoinex.LightningNetwork.InvoiceAmountTest do
     end
 
     test "the single-digit pico amounts below 1 msat all fail" do
+      # lnd rejects these as "minimum amount is 10p"
       for amount <- 1..9 do
         assert {:error, :sub_msat_precision_amount} = decode_with_amount("#{amount}p")
       end
@@ -251,15 +369,15 @@ defmodule Bitcoinex.LightningNetwork.InvoiceAmountTest do
       end
     end
 
-    test "two multipliers fail" do
-      assert {:error, :invalid_amount} = decode_with_amount("2500mm")
-      assert {:error, :invalid_amount} = decode_with_amount("2500um")
-    end
-
     test "a leading zero fails" do
       for amount_str <- ["01", "0100", "010m", "00", "0m", "0p"] do
         assert {:error, :amount_with_leading_zero} = decode_with_amount(amount_str)
       end
+    end
+
+    test "an explicit zero amount is 0 msat, not nil" do
+      assert {:ok, invoice} = decode_with_amount("0")
+      assert invoice.amount_msat == 0
     end
   end
 
@@ -274,10 +392,10 @@ defmodule Bitcoinex.LightningNetwork.InvoiceAmountTest do
         tagged_field(1, bytes_to_base32(@payment_hash)) ++
         tagged_field(13, bytes_to_base32("test"))
 
-    {:ok, encoded} =
-      Bech32.encode(hrp, data ++ signature_base32(hrp, data), :bech32, :infinity)
-
-    Invoice.decode(encoded)
+    case Bech32.encode(hrp, data ++ signature_base32(hrp, data), :bech32, :infinity) do
+      {:ok, encoded} -> Invoice.decode(encoded)
+      {:error, error} -> flunk("could not encode an invoice for #{inspect(hrp)}: #{error}")
+    end
   end
 
   # a tagged field is type (1) + big-endian length (2) + data, all base32
