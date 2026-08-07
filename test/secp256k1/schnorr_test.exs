@@ -153,19 +153,15 @@ defmodule Bitcoinex.Secp256k1.SchnorrTest do
                                      }
                                    ]
 
-  defp random_secret do
-    d =
-      32
-      |> :crypto.strong_rand_bytes()
-      |> :binary.decode_unsigned()
-
-    if d >= 1 and d < Secp256k1.Params.curve().n, do: d, else: random_secret()
-  end
-
   defp random_z do
     32
     |> :crypto.strong_rand_bytes()
     |> :binary.decode_unsigned()
+  end
+
+  defp random_secret do
+    d = random_z()
+    if d >= 1 and d < Secp256k1.Params.curve().n, do: d, else: random_secret()
   end
 
   describe "sign/3" do
