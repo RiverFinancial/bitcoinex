@@ -262,6 +262,30 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
       assert ExtendedKey.parse_extended_key(t.xpub_m) == {:ok, t.xpub_m_obj}
       assert ExtendedKey.display_extended_key(t.xpub_m_obj) == t.xpub_m
     end
+
+    test "rejects invalid extended private keys" do
+      t = @bip32_test_case_1
+
+      for key <- [<<0::size(264)>>, <<1, 0::size(256)>>] do
+        invalid_xprv =
+          t.xprv_m_obj
+          |> Map.put(:key, key)
+          |> ExtendedKey.display_extended_key()
+
+        assert {:error, "invalid private key"} = ExtendedKey.parse_extended_key(invalid_xprv)
+      end
+    end
+
+    test "rejects invalid extended public keys" do
+      t = @bip32_test_case_1
+
+      invalid_xpub =
+        t.xpub_m_obj
+        |> Map.put(:key, <<4, 0::size(256)>>)
+        |> ExtendedKey.display_extended_key()
+
+      assert {:error, "invalid public key"} = ExtendedKey.parse_extended_key(invalid_xpub)
+    end
   end
 
   describe "to_extended_public_key/1" do

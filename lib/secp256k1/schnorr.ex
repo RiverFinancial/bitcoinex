@@ -14,6 +14,46 @@ defmodule Bitcoinex.Secp256k1.Schnorr do
     y: Params.curve().g_y
   }
 
+  @doc """
+    sign returns a BIP340 Schnorr signature over the message hash z using
+    privkey and 32 bytes of fresh randomness from the system CSPRNG as the
+    auxiliary randomness.
+
+    This is the recommended entry point. BIP340 mixes the auxiliary randomness
+    into the nonce derivation, which hedges the signature against fault and
+    side-channel attacks that can recover the private key from a purely
+    deterministic nonce. Reach for `sign/3` only when a specific aux value is
+    required, e.g. to reproduce a test vector or to sign deterministically.
+  """
+  @spec sign(PrivateKey.t(), non_neg_integer()) ::
+          {:ok, Signature.t()} | {:error, String.t()}
+  def sign(privkey, z) do
+    aux =
+      32
+      |> :crypto.strong_rand_bytes()
+      |> :binary.decode_unsigned()
+
+    sign(privkey, z, aux)
+  end
+
+  @doc """
+    sign returns a BIP340 Schnorr signature over the message hash z using
+    privkey and the caller-supplied auxiliary randomness aux, an integer
+    serialized as 32 big-endian bytes.
+
+    aux MUST be either
+
+      * 32 bytes of fresh CSPRNG output, for randomized (hedged) signing --
+        prefer `sign/2`, which generates it for you, or
+      * a fixed constant, conventionally 0, for deterministic signing. This is
+        what the BIP340 test vectors use. Deterministic signing is secure, but
+        it gives up the fault- and side-channel-resistance that the synthetic
+        nonce exists to provide.
+
+    Anything in between -- a counter, a timestamp, any low-entropy value --
+    gets you the drawbacks of both. aux is not secret and does not leak the
+    private key, so it is safe to reuse; reusing it only forfeits hedging.
+  """
   @spec sign(PrivateKey.t(), non_neg_integer(), non_neg_integer()) ::
           {:ok, Signature.t()} | {:error, String.t()}
   def sign(privkey, z, aux) do

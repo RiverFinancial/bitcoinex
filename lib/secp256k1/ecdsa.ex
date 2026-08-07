@@ -65,8 +65,13 @@ defmodule Bitcoinex.Secp256k1.Ecdsa do
     find_candidate(k, v, n)
   end
 
+  # RFC 6979 section 2.3.4 (bits2octets): z2 = z1 - q when z1 >= q, else z1.
+  # The comparison must be >=, not >: at z == n the reduced value is 0, and a
+  # strict > leaves it at n, deriving a k that differs from every other
+  # RFC6979 implementation. One subtraction suffices because z is at most
+  # 2^256 - 1 < 2n.
   defp lower_z(z, n) do
-    if z > n, do: z - n, else: z
+    if z >= n, do: z - n, else: z
   end
 
   @doc """

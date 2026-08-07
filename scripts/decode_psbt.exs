@@ -12,10 +12,9 @@ defmodule DecodePSBT do
   @spec run(list(String.t())) :: :ok
   def run(args) do
     psbt_path = List.first(args)
-    hash = calculate_sha256(psbt_path)
     data = decode_psbt(psbt_path)
 
-    print_results(hash, data)
+    print_results(data)
 
     :ok
   end
@@ -23,9 +22,9 @@ defmodule DecodePSBT do
   @doc """
   Print the results to the console.
   """
-  @spec print_results(String.t(), map()) :: :ok
-  def print_results(hash, %{inputs: inputs, outputs: outputs, fee: fee}) do
-    IO.puts("SHA256: #{hash}")
+  @spec print_results(map()) :: :ok
+  def print_results(%{txid: txid, inputs: inputs, outputs: outputs, fee: fee}) do
+    IO.puts("TXID: #{txid}")
 
     IO.puts("\nInputs:")
     Enum.each(inputs, fn input ->
@@ -74,7 +73,10 @@ defmodule DecodePSBT do
 
     fee = sum_values(inputs) - sum_values(outputs)
 
+    {:ok, txid} = PSBT.txid(psbt)
+
     %{
+      txid: txid,
       inputs: inputs,
       outputs: outputs,
       fee: fee
@@ -99,13 +101,6 @@ defmodule DecodePSBT do
 
       {:ok, script} = Script.parse_script(script_pub_key)
       {:ok, address} = Script.to_address(script, :mainnet)
-
-      sighash_type =
-        if sighash_type != nil do
-          Bitcoinex.Utils.little_to_int(sighash_type)
-        else
-          nil
-        end
 
       note =
         if sighash_type != nil and sighash_type != 0x01 do
