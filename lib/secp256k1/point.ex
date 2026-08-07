@@ -78,13 +78,17 @@ defmodule Bitcoinex.Secp256k1.Point do
     end
   end
 
-  # Allow parse_public_key to parse SEC strings
-  def parse_public_key(key) do
-    key
-    |> String.downcase()
-    |> Base.decode16!(case: :lower)
-    |> parse_public_key()
+  # Allow parse_public_key to parse SEC strings. Only the two lengths that can
+  # hex-decode to a SEC key are accepted: an unguarded clause would raise on any
+  # non-hex binary, and this is reached with caller-supplied script bytes.
+  def parse_public_key(key) when is_binary(key) and byte_size(key) in [66, 130] do
+    case Utils.hex_to_bin(key) do
+      {:error, msg} -> {:error, msg}
+      key_bytes -> parse_public_key(key_bytes)
+    end
   end
+
+  def parse_public_key(_key), do: {:error, "invalid public key"}
 
   defp on_curve?(x, y) do
     rem(y * y, @p) == rem(x * x * x + 7, @p)

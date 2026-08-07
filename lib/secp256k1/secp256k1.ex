@@ -16,7 +16,9 @@ defmodule Bitcoinex.Secp256k1 do
     """
     alias Bitcoinex.Utils
 
-    @compact_signature_scalar_limit :erlang.bsl(1, 256)
+    # A signature scalar is serialized as at most 32 bytes (compact) or a 33-byte
+    # DER INTEGER, so both serializers are bounded by 2^256.
+    @scalar_encoding_limit :erlang.bsl(1, 256)
 
     @type t :: %__MODULE__{
             r: pos_integer(),
@@ -39,7 +41,7 @@ defmodule Bitcoinex.Secp256k1 do
       r = :binary.decode_unsigned(r)
       s = :binary.decode_unsigned(s)
 
-      new_signature(r, s)
+      new(r, s)
     end
 
     # a 64-byte compact signature is 128 hex characters. The length guard matters:
@@ -68,7 +70,7 @@ defmodule Bitcoinex.Secp256k1 do
         with {:ok, r, rest} <- parse_sig_key(body),
              {:ok, s, rest} <- parse_sig_key(rest) do
           if rest == <<>> do
-            new_signature(r, s)
+            new(r, s)
           else
             {:error, "invalid signature: signature is too long"}
           end
@@ -109,8 +111,12 @@ defmodule Bitcoinex.Secp256k1 do
 
     defp validate_der_integer(_k), do: :ok
 
-    # r and s must both be scalars in [1, n-1], where n is the order of G.
-    defp new_signature(r, s) do
+    @doc """
+    new builds a Signature from r and s, which must both be scalars in
+    [1, n-1], where n is the integer order of G.
+    """
+    @spec new(integer, integer) :: {:ok, t()} | {:error, String.t()}
+    def new(r, s) when is_integer(r) and is_integer(s) do
       n = Params.curve().n
 
       if r >= 1 and r <= n - 1 and s >= 1 and s <= n - 1 do
@@ -120,28 +126,37 @@ defmodule Bitcoinex.Secp256k1 do
       end
     end
 
-    @spec serialize_signature(t()) :: binary | {:error, String.t()}
+    def new(_r, _s), do: {:error, "invalid signature"}
+
+    @spec serialize_signature(t()) :: binary
     def serialize_signature(%__MODULE__{r: r, s: s})
-        when is_integer(r) and is_integer(s) and r >= 0 and s >= 0 and
-               r < @compact_signature_scalar_limit and s < @compact_signature_scalar_limit do
+        when is_integer(r) and is_integer(s) and r >= 1 and s >= 1 and
+               r < @scalar_encoding_limit and s < @scalar_encoding_limit do
       # each scalar must occupy exactly 32 bytes
       Utils.int_to_big(r, 32) <> Utils.int_to_big(s, 32)
     end
 
-    def serialize_signature(%__MODULE__{}),
-      do: {:error, "signature scalars must be non-negative 32-byte integers"}
+    def serialize_signature(%__MODULE__{r: r, s: s}) do
+      raise ArgumentError,
+            "signature scalars must be integers in [1, 2^256): got r=#{inspect(r)}, s=#{inspect(s)}"
+    end
 
     @doc """
     der_serialize_signature returns the DER serialization of an ecdsa signature
     """
-    @spec der_serialize_signature(Signature.t()) :: binary
-    def der_serialize_signature(%Signature{r: r, s: s}) do
+    @spec der_serialize_signature(t()) :: binary
+    def der_serialize_signature(%Signature{r: r, s: s})
+        when is_integer(r) and is_integer(s) and r >= 1 and s >= 1 and
+               r < @scalar_encoding_limit and s < @scalar_encoding_limit do
       r_bytes = serialize_sig_key(r)
       s_bytes = serialize_sig_key(s)
       <<0x30>> <> len_as_bytes(r_bytes <> s_bytes) <> r_bytes <> s_bytes
     end
 
-    def der_serialize_signature(_), do: {:error, "Signature object required"}
+    def der_serialize_signature(signature) do
+      raise ArgumentError,
+            "Signature with scalars in [1, 2^256) required, got #{inspect(signature)}"
+    end
 
     defp serialize_sig_key(k) do
       k

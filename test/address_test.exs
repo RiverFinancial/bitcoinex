@@ -250,7 +250,7 @@ defmodule Bitcoinex.AddressTest do
       assert "3BfqJjn7H2jsbKd2NVHGP4sQWQ2bQWBRLv" == Address.encode(script_hash, :mainnet, :p2sh)
     end
 
-    test "return error when encoding a hash that is not 20 bytes" do
+    test "raise when encoding a hash that is not 20 bytes" do
       sha256 = :crypto.hash(:sha256, "x")
 
       pubkey =
@@ -258,10 +258,10 @@ defmodule Bitcoinex.AddressTest do
           case: :lower
         )
 
-      for hash <- [sha256, pubkey, <<>>, <<0, 1, 2, 3>>],
+      for hash <- [sha256, pubkey, <<>>, <<0, 1, 2, 3>>, :binary.copy(<<0>>, 21)],
           network <- [:mainnet, :testnet],
           address_type <- [:p2pkh, :p2sh] do
-        assert {:error, _} = Address.encode(hash, network, address_type)
+        assert_raise ArgumentError, fn -> Address.encode(hash, network, address_type) end
       end
     end
 
@@ -279,11 +279,13 @@ defmodule Bitcoinex.AddressTest do
 
   describe "is_valid?/2 payload length" do
     test "return false for a base58check address whose payload is not 20 bytes" do
-      # valid checksum and version byte, 3 payload bytes
-      short_address = Bitcoinex.Base58.encode(<<0, 1, 2, 3>>)
+      # valid checksum and version byte, 3 and 21 payload bytes
+      for payload <- [<<0, 1, 2, 3>>, <<0>> <> :binary.copy(<<1>>, 21)] do
+        address = Bitcoinex.Base58.encode(payload)
 
-      refute Address.is_valid?(short_address, :mainnet)
-      refute Address.is_valid?(short_address, :mainnet, :p2pkh)
+        refute Address.is_valid?(address, :mainnet)
+        refute Address.is_valid?(address, :mainnet, :p2pkh)
+      end
     end
   end
 end
