@@ -249,5 +249,14 @@ defmodule Bitcoinex.AddressTest do
       script_hash = Base.decode16!("6d77fa9de297e9c536c6b23cfda1a8450bb5f765", case: :lower)
       assert "3BfqJjn7H2jsbKd2NVHGP4sQWQ2bQWBRLv" == Address.encode(script_hash, :mainnet, :p2sh)
     end
+
+    test "return true for encoding p2wpkh" do
+      script_hash = "751e76e8199196d454941c45d1b3a323f1433bd6"
+
+      script_hash = Base.decode16!(script_hash, case: :lower)
+
+      assert "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4" ==
+               Address.encode(script_hash, :mainnet, :p2wpkh)
+    end
   end
 end
