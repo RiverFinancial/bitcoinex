@@ -612,6 +612,29 @@ defmodule Bitcoinex.ScriptTest do
       assert {:error, _msg} = Script.create_p2wsh_multi(2, pubkeys)
     end
 
+    test "create_p2sh_multi accepts 15 keys, whose redeemScript fits a 520-byte push" do
+      pubkeys = make_points(15)
+      {:ok, p2sh, multi} = Script.create_p2sh_multi(2, pubkeys)
+      assert Script.is_p2sh?(p2sh)
+      assert Script.is_multi?(multi)
+      # OP_2 + 15 * (push byte + 33-byte compressed key) + OP_15 + OP_CHECKMULTISIG
+      assert multi |> Script.serialize_script() |> byte_size() == 513
+    end
+
+    test "create_p2sh_multi rejects 16 keys: the 547-byte redeemScript exceeds the 520-byte element limit" do
+      pubkeys = make_points(16)
+      assert {:error, msg} = Script.create_p2sh_multi(2, pubkeys)
+      assert msg =~ "at most 15"
+    end
+
+    test "create_p2wsh_multi accepts 16 keys: the witnessScript limit is 3600 bytes" do
+      pubkeys = make_points(16)
+      {:ok, p2wsh, multi} = Script.create_p2wsh_multi(2, pubkeys)
+      assert Script.is_p2wsh?(p2wsh)
+      assert Script.is_multi?(multi)
+      assert multi |> Script.serialize_script() |> byte_size() == 547
+    end
+
     test "is_multi? rejects a 17-key script whose key count byte is OP_NOP" do
       # hand-built rather than via create_multi, to model a script already in the wild
       key_items =
