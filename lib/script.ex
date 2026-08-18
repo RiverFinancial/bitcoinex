@@ -424,7 +424,8 @@ defmodule Bitcoinex.Script do
 
   def is_multi?(_), do: false
 
-  defp test_multi([op_n, 0xAE], n, m) when op_n == 0x50 + n and m <= op_n, do: true
+  defp test_multi([op_n, 0xAE], n, m) when op_n == 0x50 + n and m <= op_n and op_n <= 0x60,
+    do: true
 
   defp test_multi([op_push | [pk | rest]], n, m) when op_push in @pubkey_lengths do
     case Point.parse_public_key(pk) do
@@ -529,9 +530,12 @@ defmodule Bitcoinex.Script do
 
   @doc """
     create_multi creates a raw multisig script using m and the list of public keys.
+    m and the number of public keys must each be at most 16: both are encoded as
+    OP_1..OP_16. Larger counts would have to be pushed as data, which is unsupported.
   """
   @spec create_multi(non_neg_integer(), list(Point.t())) :: {:ok, t()} | {:error, String.t()}
-  def create_multi(m, pubkeys) when is_valid_multi(m, pubkeys) do
+  def create_multi(m, pubkeys)
+      when is_valid_multi(m, pubkeys) and m <= 16 and length(pubkeys) <= 16 do
     try do
       # checkmultisig
       {:ok, s} = push_op(new(), 0xAE)
@@ -542,6 +546,9 @@ defmodule Bitcoinex.Script do
       _ -> {:error, "invalid public key."}
     end
   end
+
+  def create_multi(m, pubkeys) when is_valid_multi(m, pubkeys),
+    do: {:error, "invalid multisig: m and number of public keys must each be at most 16"}
 
   def create_multi(_, _), do: {:error, "invalid multisig: must be of form: (int, list(%Point)"}
 
@@ -554,40 +561,61 @@ defmodule Bitcoinex.Script do
 
   defp fill_multi_keys(_, _), do: raise(ArgumentError)
 
+  # BIP16 requires the redeemScript to be pushed as a single stack element,
+  # which consensus caps at MAX_SCRIPT_ELEMENT_SIZE (520 bytes). Point.sec/1
+  # always emits 33-byte compressed keys, so 15 keys (513 bytes) is the most
+  # a P2SH multisig redeemScript can hold; 16 keys (547 bytes) is unspendable.
+  @max_p2sh_multi_keys 15
+  @max_p2sh_redeem_script_size 520
+  # Relay policy caps a P2WSH witnessScript at MAX_STANDARD_P2WSH_SCRIPT_SIZE.
+  @max_p2wsh_witness_script_size 3600
+
   @doc """
     create_p2sh_multi returns both a P2SH-wrapped multisig script
     and the underlying raw multisig script using m and the list of public keys.
+    At most #{@max_p2sh_multi_keys} public keys are allowed: the redeemScript is
+    pushed as a single stack element when spending, which consensus caps at
+    #{@max_p2sh_redeem_script_size} bytes.
   """
   @spec create_p2sh_multi(non_neg_integer(), list(Point.t())) ::
           {:ok, t(), t()} | {:error, String.t()}
-  def create_p2sh_multi(m, pubkeys) do
-    case create_multi(m, pubkeys) do
-      {:ok, multi} ->
-        h160 = hash160(multi)
-        {:ok, p2sh} = create_p2sh(h160)
-        {:ok, p2sh, multi}
+  def create_p2sh_multi(_, pubkeys)
+      when is_list(pubkeys) and length(pubkeys) > @max_p2sh_multi_keys,
+      do:
+        {:error,
+         "invalid multisig: p2sh multisig supports at most #{@max_p2sh_multi_keys} public keys"}
 
-      {:error, msg} ->
-        {:error, msg}
+  def create_p2sh_multi(m, pubkeys) do
+    with {:ok, multi} <- create_multi(m, pubkeys),
+         :ok <- check_wrapped_script_size(multi, @max_p2sh_redeem_script_size, "redeemScript") do
+      {:ok, p2sh} = create_p2sh(hash160(multi))
+      {:ok, p2sh, multi}
     end
   end
 
   @doc """
     create_p2wsh_multi returns both a P2WSH-wrapped multisig script
     and the underlying raw multisig script using m and the list of public keys.
+    The witnessScript must not exceed #{@max_p2wsh_witness_script_size} bytes
+    (the standardness limit on P2WSH scripts).
   """
   @spec create_p2wsh_multi(non_neg_integer(), list(Point.t())) ::
           {:ok, t(), t()} | {:error, String.t()}
   def create_p2wsh_multi(m, pubkeys) do
-    case create_multi(m, pubkeys) do
-      {:ok, multi} ->
-        h256 = sha256(multi)
-        {:ok, p2wsh} = create_p2wsh(h256)
-        {:ok, p2wsh, multi}
-
-      {:error, msg} ->
-        {:error, msg}
+    with {:ok, multi} <- create_multi(m, pubkeys),
+         :ok <-
+           check_wrapped_script_size(multi, @max_p2wsh_witness_script_size, "witnessScript") do
+      {:ok, p2wsh} = create_p2wsh(sha256(multi))
+      {:ok, p2wsh, multi}
     end
+  end
+
+  defp check_wrapped_script_size(script, max_size, name) do
+    size = script |> serialize_script() |> byte_size()
+
+    if size <= max_size,
+      do: :ok,
+      else: {:error, "#{name} is #{size} bytes, above the #{max_size}-byte limit"}
   end
 
   @doc """
