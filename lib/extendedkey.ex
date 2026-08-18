@@ -438,8 +438,10 @@ defmodule Bitcoinex.ExtendedKey do
   def derive_public_child(xkey, idx) do
     cond do
       xkey.prefix in @prv_prefixes ->
-        {:ok, child_xprv} = derive_private_child(xkey, idx)
-        to_extended_public_key(child_xprv)
+        case derive_private_child(xkey, idx) do
+          {:ok, child_xprv} -> to_extended_public_key(child_xprv)
+          {:error, msg} -> {:error, msg}
+        end
 
       idx >= DerivationPath.min_hardened_child_num() or idx < 0 ->
         {:error, "idx must be in 0..2**31-1"}
@@ -530,6 +532,7 @@ defmodule Bitcoinex.ExtendedKey do
         |> Kernel.+(key_secret)
         |> Bitcoinex.Secp256k1.Math.modulo(Params.curve().n)
         |> :binary.encode_unsigned()
+        |> Bitcoinex.Utils.pad(32, :leading)
 
       (xkey.prefix <> child_depth <> fingerprint <> i <> child_chaincode <> <<0>> <> child_key)
       |> Base58.append_checksum()

@@ -122,6 +122,23 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
       "xprv9uPDJpEQgRQfDcW7BkF7eTya6RPxXeJCqCJGHuCJ4GiRVLzkTXBAJMu2qaMWPrS7AANYqdq6vcBcBUdJCVVFceUvJFjaPdGZ2y9WACViL4L"
   }
 
+  @bip32_test_case_4 %{
+    # retention of leading zeros: the m/0' child key 00d948e9... needs ser256 padding
+    seed: "3ddd5602285899a946114506157c7997e5444528f3003f6134712147db19b678",
+    xpub_m:
+      "xpub661MyMwAqRbcGczjuMoRm6dXaLDEhW1u34gKenbeYqAix21mdUKJyuyu5F1rzYGVxyL6tmgBUAEPrEz92mBXjByMRiJdba9wpnN37RLLAXa",
+    xprv_m:
+      "xprv9s21ZrQH143K48vGoLGRPxgo2JNkJ3J3fqkirQC2zVdk5Dgd5w14S7fRDyHH4dWNHUgkvsvNDCkvAwcSHNAQwhwgNMgZhLtQC63zxwhQmRv",
+    xpub_m_0h:
+      "xpub69AUMk3qDBi3uW1sXgjCmVjJ2G6WQoYSnNHyzkmdCHEhSZ4tBok37xfFEqHd2AddP56Tqp4o56AePAgCjYdvpW2PU2jbUPFKsav5ut6Ch1m",
+    xprv_m_0h:
+      "xprv9vB7xEWwNp9kh1wQRfCCQMnZUEG21LpbR9NPCNN1dwhiZkjjeGRnaALmPXCX7SgjFTiCTT6bXes17boXtjq3xLpcDjzEuGLQBM5ohqkao9G",
+    xpub_m_0h_1h:
+      "xpub6BJA1jSqiukeaesWfxe6sNK9CCGaujFFSJLomWHprUL9DePQ4JDkM5d88n49sMGJxrhpjazuXYWdMf17C9T5XnxkopaeS7jGk1GyyVziaMt",
+    xprv_m_0h_1h:
+      "xprv9xJocDuwtYCMNAo3Zw76WENQeAS6WGXQ55RCy7tDJ8oALr4FWkuVoHJeHVAcAqiZLE7Je3vZJHxspZdFHfnBEjHqU5hG1Jaj32dVoS6XLT1"
+  }
+
   @derivation_paths_to_strings [
     %{
       str: "84/0/0/2/1/",
@@ -599,6 +616,151 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
         |> ExtendedKey.derive_extended_key(deriv)
 
       assert xprv_m_0h == s_xprv_m_0h
+    end
+
+    # Test 4
+
+    test "BIP32 tests 4: derive master prv key from seed" do
+      t = @bip32_test_case_4
+
+      {:ok, xprv} = ExtendedKey.parse_extended_key(t.xprv_m)
+
+      {:ok, s_xprv} =
+        t.seed
+        |> Base.decode16!(case: :lower)
+        |> ExtendedKey.seed_to_master_private_key()
+
+      assert xprv == s_xprv
+    end
+
+    test "BIP32 tests 4: derive public key from private key" do
+      t = @bip32_test_case_4
+
+      {:ok, xprv} = ExtendedKey.parse_extended_key(t.xprv_m)
+      {:ok, xpub} = ExtendedKey.parse_extended_key(t.xpub_m)
+      assert ExtendedKey.to_extended_public_key(xprv) == {:ok, xpub}
+    end
+
+    test "BIP32 tests 4: derive prv and pub children step by step" do
+      t = @bip32_test_case_4
+
+      {:ok, xprv} = ExtendedKey.parse_extended_key(t.xprv_m)
+
+      {:ok, xprv_m_0h} = ExtendedKey.derive_private_child(xprv, @min_hardened_child_num)
+      assert ExtendedKey.display_extended_key(xprv_m_0h) == t.xprv_m_0h
+
+      {:ok, xpub_m_0h} = ExtendedKey.derive_public_child(xprv, @min_hardened_child_num)
+      assert ExtendedKey.display_extended_key(xpub_m_0h) == t.xpub_m_0h
+
+      {:ok, xprv_m_0h_1h} =
+        ExtendedKey.derive_private_child(xprv_m_0h, @min_hardened_child_num + 1)
+
+      assert ExtendedKey.display_extended_key(xprv_m_0h_1h) == t.xprv_m_0h_1h
+
+      {:ok, xpub_m_0h_1h} =
+        ExtendedKey.derive_public_child(xprv_m_0h, @min_hardened_child_num + 1)
+
+      assert ExtendedKey.display_extended_key(xpub_m_0h_1h) == t.xpub_m_0h_1h
+    end
+
+    test "BIP32 tests 4: derive child prv key from seed with deriv path" do
+      t = @bip32_test_case_4
+
+      {:ok, xprv_m_0h_1h} = ExtendedKey.parse_extended_key(t.xprv_m_0h_1h)
+
+      deriv = %ExtendedKey.DerivationPath{
+        child_nums: [@min_hardened_child_num, @min_hardened_child_num + 1]
+      }
+
+      {:ok, s_xprv_m_0h_1h} =
+        t.seed
+        |> Base.decode16!(case: :lower)
+        |> ExtendedKey.derive_extended_key(deriv)
+
+      assert xprv_m_0h_1h == s_xprv_m_0h_1h
+    end
+  end
+
+  describe "child private key padding regression" do
+    test "non-hardened child key with leading zero byte is padded to 32 bytes" do
+      # this seed's m/0 child key has a leading zero byte
+      seed = :crypto.hash(:sha256, <<137::32>>)
+      {:ok, master} = ExtendedKey.seed_to_master_private_key(seed)
+
+      {:ok, child} = ExtendedKey.derive_private_child(master, 0)
+
+      assert byte_size(child.key) == 33
+      assert <<0, 0, _rest::binary-size(31)>> = child.key
+
+      assert ExtendedKey.display_extended_key(child) ==
+               "xprv9ujV8ERc8kArqnVgVXdQYhJb4JEpF8WZQivduiViL7NBYvx1vDFhxiEpFVe6o4yTsdiWi8MtE3exPcjEvYy64rtnfNnHfB3MDB71DKFxVvs"
+    end
+
+    test "xprv with an explicitly zero-leading private key roundtrips and derives children" do
+      # private key 0x00...01: the maximal leading-zeros case, valid since 1 < n
+      key = Bitcoinex.Utils.pad(<<1>>, 32, :leading)
+      chaincode = :crypto.hash(:sha256, "leading-zero key chaincode")
+      xprv_pfx = <<0x04, 0x88, 0xAD, 0xE4>>
+      depth_fingerprint_childnum = <<0, 0, 0, 0, 0, 0, 0, 0, 0>>
+
+      {:ok, master} =
+        (xprv_pfx <> depth_fingerprint_childnum <> chaincode <> <<0>> <> key)
+        |> Bitcoinex.Base58.append_checksum()
+        |> ExtendedKey.parse_extended_key()
+
+      assert master.key == <<0>> <> key
+
+      assert {:ok, ^master} =
+               master
+               |> ExtendedKey.display_extended_key()
+               |> ExtendedKey.parse_extended_key()
+
+      {:ok, child} = ExtendedKey.derive_private_child(master, 0)
+      {:ok, child_h} = ExtendedKey.derive_private_child(master, @min_hardened_child_num)
+      assert byte_size(child.key) == 33
+      assert byte_size(child_h.key) == 33
+
+      # CKDpub(N(m), 0) must equal N(CKDpriv(m, 0))
+      {:ok, xpub} = ExtendedKey.to_extended_public_key(master)
+      assert ExtendedKey.derive_public_child(xpub, 0) == ExtendedKey.to_extended_public_key(child)
+    end
+  end
+
+  describe "derive_public_child/2 error handling" do
+    test "returns ok tuple when child private key has leading zero byte" do
+      t = @bip32_test_case_4
+
+      {:ok, xprv} = ExtendedKey.parse_extended_key(t.xprv_m)
+
+      assert {:ok, _xpub} = ExtendedKey.derive_public_child(xprv, @min_hardened_child_num)
+    end
+
+    test "returns error tuple instead of raising on invalid derivations" do
+      t = @bip32_test_case_4
+
+      {:ok, xprv} = ExtendedKey.parse_extended_key(t.xprv_m)
+      {:ok, xpub} = ExtendedKey.parse_extended_key(t.xpub_m)
+
+      assert {:error, _msg} = ExtendedKey.derive_public_child(xprv, @max_hardened_child_num)
+      assert {:error, _msg} = ExtendedKey.derive_public_child(xpub, @min_hardened_child_num)
+    end
+  end
+
+  describe "serialized extended key length invariant" do
+    test "every derived child serializes to a 78-byte payload" do
+      for s <- 0..5, idx <- 0..99 do
+        seed = :crypto.hash(:sha256, <<s::16, idx::32>>)
+        {:ok, master} = ExtendedKey.seed_to_master_private_key(seed)
+
+        assert {:ok, child} = ExtendedKey.derive_private_child(master, idx)
+
+        {:ok, payload} =
+          child
+          |> ExtendedKey.display_extended_key()
+          |> Bitcoinex.Base58.decode()
+
+        assert byte_size(payload) == 78
+      end
     end
   end
 
