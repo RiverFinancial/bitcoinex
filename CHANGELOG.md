@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 - The dead `.travis.yml`, which pinned Elixir 1.8 / OTP 21.3 and has been superseded by the GitHub Actions workflow.
 
+### Fixed
+- `ExtendedKey.derive_private_child/2` and `derive_public_child/2` return `{:error, "cannot derive child: parent is at or above max depth (255)"}` when the parent is at or above the max BIP32 depth. Previously the child's depth byte overflowed into a 2-byte encoding, producing an unparseable serialization and the misleading error `"error parsing key"`.
+
 ## [0.3.0] - 2026-08-04
 ### Added
 - `PSBT.finalize/1` and `PSBT.finalized?/1` (Input Finalizer): assembles `final_scriptsig`/`final_scriptwitness` from the collected signatures and scripts for p2pkh, p2wpkh, (nested) p2sh-p2wpkh, bare/p2sh/p2wsh multisig, and p2sh-p2wsh inputs, ordering multisig signatures by the script's pubkey order. Best-effort per input (matching Bitcoin Core): inputs it cannot finalize are left untouched — including any whose `redeem_script`/`witness_script` does not hash to the scriptPubKey/witness program or whose single-key signature's pubkey does not hash to the p2pkh/p2wpkh hash (the BIP-174 Signer script/key-hash checks), and any non-witness spend type (p2pkh, bare/p2sh legacy multisig) without a `non_witness_utxo` matching the input's outpoint — a `witness_utxo` alone cannot be verified and never steers a non-witness finalization. When an input specifies a `sighash_type`, only signatures carrying that flag are eligible for selection; signatures with other flags (e.g. contributed for unrelated keys by another signer) do not block finalization. `finalized?/1` is false for a PSBT with no inputs.

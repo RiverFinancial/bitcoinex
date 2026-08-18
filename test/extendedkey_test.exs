@@ -650,6 +650,91 @@ defmodule Bitcoinex.Secp256k1.ExtendedKeyTest do
     end
   end
 
+  describe "max depth derivation" do
+    # rewrite a real key's depth byte and reparse, so the key is otherwise valid
+    defp at_depth(xkey_str, depth) when depth <= 255 do
+      {:ok, xkey} = ExtendedKey.parse_extended_key(xkey_str)
+
+      {:ok, xkey} =
+        %{xkey | depth: <<depth>>}
+        |> ExtendedKey.serialize_extended_key()
+        |> ExtendedKey.parse_extended_key()
+
+      xkey
+    end
+
+    # a depth above 255 cannot round-trip through serialization (the depth field is
+    # a single byte), so set the multi-byte depth binary directly - the same shape
+    # incr/1 produces once it carries past 255.
+    defp at_raw_depth(xkey_str, depth) when depth > 255 do
+      {:ok, xkey} = ExtendedKey.parse_extended_key(xkey_str)
+      %{xkey | depth: :binary.encode_unsigned(depth)}
+    end
+
+    test "deriving a child of a depth-255 key returns an error" do
+      t = @bip32_test_case_1
+
+      xprv = at_depth(t.xprv_m, 255)
+      xpub = at_depth(t.xpub_m, 255)
+
+      assert {:error, "cannot derive child: parent is at or above max depth (255)"} =
+               ExtendedKey.derive_private_child(xprv, 0)
+
+      assert {:error, "cannot derive child: parent is at or above max depth (255)"} =
+               ExtendedKey.derive_public_child(xprv, 0)
+
+      assert {:error, "cannot derive child: parent is at or above max depth (255)"} =
+               ExtendedKey.derive_public_child(xpub, 0)
+
+      assert {:error, "cannot derive child: parent is at or above max depth (255)"} =
+               ExtendedKey.derive_child_key(xprv, @min_hardened_child_num)
+
+      deriv = %ExtendedKey.DerivationPath{child_nums: [0]}
+
+      assert {:error, "cannot derive child: parent is at or above max depth (255)"} =
+               ExtendedKey.derive_extended_key(xprv, deriv)
+    end
+
+    test "deriving a child of a key above max depth returns an error" do
+      t = @bip32_test_case_1
+
+      for depth <- [256, 4096, 0x10000] do
+        xprv = at_raw_depth(t.xprv_m, depth)
+        xpub = at_raw_depth(t.xpub_m, depth)
+
+        assert {:error, "cannot derive child: parent is at or above max depth (255)"} =
+                 ExtendedKey.derive_private_child(xprv, 0)
+
+        assert {:error, "cannot derive child: parent is at or above max depth (255)"} =
+                 ExtendedKey.derive_public_child(xprv, 0)
+
+        assert {:error, "cannot derive child: parent is at or above max depth (255)"} =
+                 ExtendedKey.derive_public_child(xpub, 0)
+
+        assert {:error, "cannot derive child: parent is at or above max depth (255)"} =
+                 ExtendedKey.derive_child_key(xprv, @min_hardened_child_num)
+
+        deriv = %ExtendedKey.DerivationPath{child_nums: [0]}
+
+        assert {:error, "cannot derive child: parent is at or above max depth (255)"} =
+                 ExtendedKey.derive_extended_key(xprv, deriv)
+      end
+    end
+
+    test "deriving a child of a depth-254 key succeeds with depth 255" do
+      t = @bip32_test_case_1
+
+      xprv = at_depth(t.xprv_m, 254)
+      xpub = at_depth(t.xpub_m, 254)
+
+      assert {:ok, child_prv} = ExtendedKey.derive_private_child(xprv, 0)
+      assert child_prv.depth == <<255>>
+
+      assert {:ok, child_pub} = ExtendedKey.derive_public_child(xpub, 0)
+      assert child_pub.depth == <<255>>
+    end
+  end
+
   # Derivation Path Testing
 
   describe "derive_extended_key/2 using BIP 32 test cases" do
