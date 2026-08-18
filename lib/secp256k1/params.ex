@@ -23,4 +23,11 @@ defmodule Bitcoinex.Secp256k1.Params do
       h: 0x01
     }
   end
+
+  @doc """
+  Checks that k is a valid scalar in [1, n-1], where n is the curve order.
+  Signature components r and s must be in this range.
+  """
+  @spec in_curve_order_range?(term()) :: boolean()
+  def in_curve_order_range?(k), do: is_integer(k) and k >= 1 and k <= curve().n - 1
 end

@@ -3,7 +3,9 @@ defmodule Bitcoinex.Secp256k1.Secp256k1Test do
   doctest Bitcoinex.Secp256k1
 
   alias Bitcoinex.Secp256k1
-  alias Bitcoinex.Secp256k1.{Signature}
+  alias Bitcoinex.Secp256k1.{Params, Signature}
+
+  @curve_order_hex "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141"
 
   @valid_der_signatures [
     %{
@@ -103,6 +105,30 @@ defmodule Bitcoinex.Secp256k1.Secp256k1Test do
     }
   ]
 
+  # well-formed DER whose r or s is outside [1, n-1]
+  @out_of_range_der_signatures [
+    %{
+      name: "r = 0, s = 0",
+      der_signature: Base.decode16!("3006020100020100", case: :upper)
+    },
+    %{
+      name: "r = 0",
+      der_signature: Base.decode16!("3006020100020101", case: :upper)
+    },
+    %{
+      name: "s = 0",
+      der_signature: Base.decode16!("3006020101020100", case: :upper)
+    },
+    %{
+      name: "r = n",
+      der_signature: Base.decode16!("3026022100" <> @curve_order_hex <> "020101", case: :upper)
+    },
+    %{
+      name: "s = n",
+      der_signature: Base.decode16!("3026020101022100" <> @curve_order_hex, case: :upper)
+    }
+  ]
+
   @valid_schnorr_signatures [
     "E907831F80848D1069A5371B402410364BDF1C5F8307B0084C55F1CE2DCA821525F66A4A85EA8B71E482A74F382D2CE5EBEEE8FDB2172F477DF4900D310536C0",
     "6896BD60EEAE296DB48A229FF71DFE071BDE413E6D43F917DC8DCF8C78DE33418906D11AC976ABCCB20B091292BFF4EA897EFCB639EA871CFA95F6DE339E4B0A",
@@ -125,6 +151,23 @@ defmodule Bitcoinex.Secp256k1.Secp256k1Test do
       for t <- @invalid_der_signatures do
         assert {:error, _error} = Secp256k1.Signature.der_parse_signature(t.der_signature)
       end
+    end
+
+    test "reject r or s outside [1, n-1]" do
+      assert :binary.decode_unsigned(Base.decode16!(@curve_order_hex, case: :upper)) ==
+               Params.curve().n
+
+      for t <- @out_of_range_der_signatures do
+        assert {:error, _error} = Secp256k1.Signature.der_parse_signature(t.der_signature),
+               "expected #{t.name} to be rejected"
+      end
+    end
+
+    test "reject the all-zero r,s forgery signature" do
+      assert {:error, _error} =
+               Secp256k1.Signature.der_parse_signature(
+                 <<0x30, 0x06, 0x02, 0x01, 0x00, 0x02, 0x01, 0x00>>
+               )
     end
   end
 
