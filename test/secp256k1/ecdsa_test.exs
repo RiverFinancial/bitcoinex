@@ -469,5 +469,43 @@ defmodule Bitcoinex.Secp256k1.EcdsaTest do
 
       assert Ecdsa.verify_message(pubkey, "m32", sig)
     end
+
+    test "returns false for out-of-range r or s instead of raising", %{
+      privkey: privkey,
+      pubkey: pubkey
+    } do
+      n = Bitcoinex.Secp256k1.Params.curve().n
+      msg = "hello"
+      sig = Ecdsa.sign_message(privkey, msg)
+
+      refute Ecdsa.verify_message(pubkey, msg, %Signature{r: 0, s: sig.s})
+      refute Ecdsa.verify_message(pubkey, msg, %Signature{r: sig.r, s: 0})
+      refute Ecdsa.verify_message(pubkey, msg, %Signature{r: n, s: sig.s})
+      refute Ecdsa.verify_message(pubkey, msg, %Signature{r: sig.r, s: n})
+      # scalars >= 2^256 previously crashed the 32-byte padding
+      refute Ecdsa.verify_message(pubkey, msg, %Signature{r: 2 ** 256, s: sig.s})
+      refute Ecdsa.verify_message(pubkey, msg, %Signature{r: sig.r, s: 2 ** 256})
+    end
+
+    test "returns false for a malicious signature with an oversized scalar", %{
+      pubkey: pubkey
+    } do
+      # a 33-byte r >= 2^256: der_parse_signature range-checks its INTEGERs and
+      # rejects it, and verify_message must also reject it (not crash the
+      # 32-byte padding) when the Signature is built directly
+      r = <<0x01>> <> :binary.copy(<<0xAB>>, 32)
+      s = <<0x02>>
+
+      der =
+        <<0x30, byte_size(r) + byte_size(s) + 4, 0x02, byte_size(r)>> <>
+          r <> <<0x02, byte_size(s)>> <> s
+
+      assert {:error, _} = Signature.der_parse_signature(der)
+
+      sig = %Signature{r: :binary.decode_unsigned(r), s: :binary.decode_unsigned(s)}
+      assert sig.r >= 2 ** 256
+
+      refute Ecdsa.verify_message(pubkey, "hello", sig)
+    end
   end
 end
