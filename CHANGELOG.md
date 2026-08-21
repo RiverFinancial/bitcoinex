@@ -5,6 +5,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Added
+- `Secp256k1.Signature.new/2`: public constructor that validates both scalars are in `[1, n-1]`, returning `{:ok, Signature.t()}` or `{:error, "invalid signature"}`. Both signature parsers now route through it.
+### Changed
+- **Breaking:** `Signature.der_parse_signature/1` is now BIP66-strict. It rejects DER INTEGERs that are empty, non-minimally encoded (unnecessary leading `0x00`), negative (high bit set), or longer than 33 bytes, and rejects scalars outside `[1, n-1]` — including the `(0, 0)` encoding, which `Ecdsa.verify_signature/3` verifies as true for any message and key. Previously all of these parsed successfully, so one `(r, s)` had many accepted byte encodings (encoding-layer malleability). As a consequence, decoding a PSBT whose `partial_sig` carries a non-canonical DER signature now fails, where it previously round-tripped the bytes verbatim.
+- **Breaking:** `PSBT.In.partial_sig` stores the signature as a parsed `Signature.t()` instead of the raw DER `binary()`. Strict parsing and `der_serialize_signature/1` are exact inverses, so the struct still round-trips byte-for-byte. `add_field(:partial_sig, ..)` accepts raw DER bytes or a `Signature.t()` (revalidated through `Signature.new/2`) and stores the parsed form.
+- **Breaking:** `Signature.serialize_signature/1` and `Signature.der_serialize_signature/1` raise `ArgumentError` for a signature whose scalars they cannot encode (outside `[1, 2^256)`), keeping their plain `binary()` return type. `der_serialize_signature/1` previously returned `{:error, "Signature object required"}` for non-struct input; `serialize_signature/1` previously mis-serialized (see Fixed).
+- **Breaking:** `Address.encode/3` raises `ArgumentError` for a p2pkh/p2sh hash that is not exactly 20 bytes. `OP_HASH160` always yields 20 bytes, so any other length (e.g. a SHA-256 digest or a raw pubkey) encoded a valid-looking but unspendable burn address.
+### Fixed
+- `Signature.serialize_signature/1` pads `r` and `s` to exactly 32 bytes each. It previously used `:binary.encode_unsigned/1`, which drops leading zero bytes, so any signature whose scalar has one (~0.8% of real signatures; BIP340 test vector 4 shrank to 53 bytes) serialized short and was rejected by the library's own `parse_signature/1`. It is now the exact inverse of `parse_signature/1`.
+- `Signature.parse_signature/1` terminates on all inputs. `Base.decode16("")` returns `{:ok, ""}`, so the hex fallback clause tail-called itself on `""` forever — reachable from untrusted input: `Invoice.decode/1` on a short invoice hung permanently. The hex clause now requires exactly 128 characters; other sizes return `{:error, "invalid signature size"}`.
+- `Invoice.decode/1` returns `{:error, :invoice_data_too_short}` for an invoice whose data part cannot hold the 7-word timestamp plus 104-word signature, instead of hanging or raising `MatchError`.
+- `Address.is_valid?/2,3` requires a base58check payload of exactly 21 bytes (version byte plus 20-byte hash). It previously accepted any payload length behind a valid checksum and version byte.
+- `Point.parse_public_key/1` validates uncompressed keys: `x < p`, `y < p`, and on-curve (`y^2 = x^3 + 7 mod p`). It previously accepted any 65-byte `04||x||y` input, letting off-curve points flow into EC arithmetic (invalid-curve attack surface) and addresses. The compressed branch rejects `x >= p` (previously reduced mod p, accepting `02||(p+1)` as `x = 1`), and the SEC-hex fallback is length-guarded and returns `{:error, _}` for non-hex or wrong-length binaries instead of raising `ArgumentError` (reachable from attacker script bytes via `Script.is_multi?/1`).
+- `ExtendedKey.parse_extended_key/1` returns `{:error, _}` for an xpub whose key bytes do not parse as a public key, instead of raising `MatchError`.
 
 ## [0.3.0] - 2026-08-04
 ### Added
