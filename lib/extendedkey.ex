@@ -129,11 +129,11 @@ defmodule Bitcoinex.ExtendedKey do
   # BIP32 depth is a single byte, so a key at depth 255 cannot have children.
   # depth is stored as a binary, so anything longer than one byte is already
   # above the max (incr/1 grows the binary once it passes 255).
-  defguard next_depth_valid(depth)
-           when is_binary(depth) and byte_size(depth) == 1 and depth != <<0xFF>>
+  defguardp next_depth_valid(depth)
+            when is_binary(depth) and byte_size(depth) == 1 and depth != <<0xFF>>
 
   # returns true if idx is a valid child index. (0 <= idx < 2^32)
-  defguard idx_valid(idx) when is_integer(idx) and idx >= 0 and idx >>> 32 == 0
+  defguardp idx_valid(idx) when is_integer(idx) and idx >= 0 and idx >>> 32 == 0
 
   @type t :: %__MODULE__{
           prefix: binary,
