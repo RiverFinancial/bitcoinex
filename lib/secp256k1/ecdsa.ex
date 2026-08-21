@@ -139,11 +139,11 @@ defmodule Bitcoinex.Secp256k1.Ecdsa do
   the public key and comparing it to pubkey.
   """
   @spec verify_message(Point.t(), binary, Signature.t()) :: boolean
-  def verify_message(%Point{} = pubkey, msg, %Signature{} = signature) do
+  def verify_message(%Point{} = pubkey, msg, %Signature{r: r, s: s})
+      when r >= 1 and r < @n and s >= 1 and s < @n do
     digest = message_digest(msg)
     # r and s must each occupy exactly 32 bytes for recovery to parse them
-    compact_sig =
-      Bitcoinex.Utils.int_to_big(signature.r, 32) <> Bitcoinex.Utils.int_to_big(signature.s, 32)
+    compact_sig = Bitcoinex.Utils.int_to_big(r, 32) <> Bitcoinex.Utils.int_to_big(s, 32)
 
     pubkey_hex = Point.serialize_public_key(pubkey)
 
@@ -154,6 +154,10 @@ defmodule Bitcoinex.Secp256k1.Ecdsa do
       end
     end)
   end
+
+  # scalars outside [1, n-1] can never verify; a value >= 2^256 would also
+  # crash the 32-byte padding above
+  def verify_message(%Point{}, msg, %Signature{}) when is_binary(msg), do: false
 
   @doc """
     verify whether the ecdsa signature is valid
