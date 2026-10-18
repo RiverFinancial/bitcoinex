@@ -74,7 +74,7 @@ defmodule Bitcoinex.Secp256k1.Ecdsa do
     where privkey is a PrivateKey object and z is an integer.
     The nonce is derived using RFC6979.
   """
-  @spec sign(PrivateKey.t(), integer) :: Signature.t()
+  @spec sign(PrivateKey.t(), integer) :: Signature.t() | {:error, String.t()}
   def sign(privkey, z) do
     case PrivateKey.validate(privkey) do
       {:error, msg} ->
@@ -107,7 +107,7 @@ defmodule Bitcoinex.Secp256k1.Ecdsa do
   The message is hashed using hash256 (double SHA256) and the nonce is derived
   using RFC6979.
   """
-  @spec sign_message(PrivateKey.t(), binary) :: Signature.t()
+  @spec sign_message(PrivateKey.t(), binary) :: Signature.t() | {:error, String.t()}
   def sign_message(privkey, msg) do
     z =
       ("Bitcoin Signed Message:\n" <> msg)

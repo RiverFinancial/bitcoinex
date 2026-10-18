@@ -622,7 +622,8 @@ defmodule Bitcoinex.Script do
   	create_witness_scriptpubkey creates any witness script from a witness version
   	and witness program. It performs no validity checks.
   """
-  @spec create_witness_scriptpubkey(non_neg_integer(), binary) :: {:ok, t()}
+  @spec create_witness_scriptpubkey(non_neg_integer(), binary) ::
+          {:ok, t()} | {:error, String.t()}
   def create_witness_scriptpubkey(version, witness_program) do
     wit_version_adjusted = if(version == 0, do: 0, else: version + 0x50)
     {:ok, s} = push_data(new(), witness_program)
@@ -632,7 +633,7 @@ defmodule Bitcoinex.Script do
   @doc """
   	create_p2wpkh creates a p2wpkh script using the passed 20-byte public key hash
   """
-  @spec create_p2wpkh(binary) :: {:ok, t()}
+  @spec create_p2wpkh(binary) :: {:ok, t()} | {:error, String.t()}
   def create_p2wpkh(<<pkh::binary-size(@h160_length)>>),
     do: create_witness_scriptpubkey(0, pkh)
 
@@ -641,7 +642,7 @@ defmodule Bitcoinex.Script do
   @doc """
   	create_p2wsh creates a p2wsh script using the passed 32-byte script hash
   """
-  @spec create_p2wsh(binary) :: {:ok, t()}
+  @spec create_p2wsh(binary) :: {:ok, t()} | {:error, String.t()}
   def create_p2wsh(<<sh::binary-size(@wsh_length)>>), do: create_witness_scriptpubkey(0, sh)
   def create_p2wsh(_), do: {:error, "script hash must be a #{@wsh_length}-byte hash"}
 
@@ -661,7 +662,7 @@ defmodule Bitcoinex.Script do
     or Point. If a point is passed, it's interpreted as q, the full witness
     program or taproot output key per BIP 341 rather than the keyspend pubkey.
   """
-  @spec create_p2tr(binary | Point.t()) :: {:ok, t()}
+  @spec create_p2tr(binary | Point.t()) :: {:ok, t()} | {:error, String.t()}
   def create_p2tr(<<pk::binary-size(@tapkey_length)>>), do: create_witness_scriptpubkey(1, pk)
   def create_p2tr(q = %Point{}), do: create_witness_scriptpubkey(1, Point.x_bytes(q))
   def create_p2tr(_), do: {:error, "public key must be #{@tapkey_length}-bytes"}
@@ -669,7 +670,7 @@ defmodule Bitcoinex.Script do
   @doc """
   	create_p2sh_p2wpkh creates a p2wsh script using the passed 20-byte public key hash
   """
-  @spec create_p2sh_p2wpkh(binary) :: {:ok, t(), t()}
+  @spec create_p2sh_p2wpkh(binary) :: {:ok, t(), t()} | {:error, String.t()}
   def create_p2sh_p2wpkh(<<pkh::binary-size(@h160_length)>>) do
     {:ok, p2wpkh} = create_p2wpkh(pkh)
 
@@ -702,7 +703,7 @@ defmodule Bitcoinex.Script do
   	public_key_to_p2pkh creates a p2pkh script from a public key.
   	All public keys are compressed.
   """
-  @spec public_key_to_p2pkh(Point.t()) :: {:ok, t()}
+  @spec public_key_to_p2pkh(Point.t()) :: {:ok, t()} | {:error, String.t()}
   def public_key_to_p2pkh(p = %Point{}) do
     p
     |> public_key_hash()
@@ -715,7 +716,7 @@ defmodule Bitcoinex.Script do
   	public_key_to_p2wpkh creates a p2wpkh script from a public key.
   	All public keys are compressed.
   """
-  @spec public_key_to_p2wpkh(Point.t()) :: {:ok, t()}
+  @spec public_key_to_p2wpkh(Point.t()) :: {:ok, t()} | {:error, String.t()}
   def public_key_to_p2wpkh(p = %Point{}) do
     p
     |> public_key_hash()
@@ -728,7 +729,7 @@ defmodule Bitcoinex.Script do
   	public_key_to_p2sh_p2wpkh creates a p2sh-p2wpkh script from a public key.
   	All public keys are compressed.
   """
-  @spec public_key_to_p2sh_p2wpkh(Point.t()) :: {:ok, t(), t()}
+  @spec public_key_to_p2sh_p2wpkh(Point.t()) :: {:ok, t(), t()} | {:error, String.t()}
   def public_key_to_p2sh_p2wpkh(p = %Point{}) do
     p
     |> public_key_hash()

@@ -14,7 +14,7 @@ defmodule Bitcoinex.Transaction do
           version: non_neg_integer(),
           inputs: list(In.t()),
           outputs: list(Out.t()),
-          witnesses: list(Witness.t()),
+          witnesses: list(Witness.t()) | nil,
           lock_time: non_neg_integer()
         }
 

@@ -106,7 +106,8 @@ defmodule Bitcoinex.Secp256k1.PrivateKey do
   returns the base58check encoded private key as a string
   assumes all keys are compressed
   """
-  @spec parse_wif(String.t()) :: {:ok, t(), atom, boolean}
+  @spec parse_wif(String.t()) ::
+          {:ok, t(), atom, boolean} | {:error, atom | String.t()}
   def parse_wif(wif_str) do
     {state, bin} = Base58.decode(wif_str)
 
@@ -117,7 +118,7 @@ defmodule Bitcoinex.Secp256k1.PrivateKey do
   end
 
   # parse compressed
-  @spec parse_wif_bin(binary) :: {:ok, t(), atom, boolean}
+  @spec parse_wif_bin(binary) :: {:ok, t(), atom, boolean} | {:error, String.t()}
   def parse_wif_bin(<<prefix::binary-size(1), wif::binary-size(32), 0x01>>) do
     {state, network_name} = wif_prefix(prefix)
 
