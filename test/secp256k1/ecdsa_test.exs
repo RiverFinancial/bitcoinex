@@ -487,6 +487,26 @@ defmodule Bitcoinex.Secp256k1.EcdsaTest do
       refute Ecdsa.verify_message(pubkey, msg, %Signature{r: sig.r, s: 2 ** 256})
     end
 
+    test "rejects a forged signature against the point at infinity" do
+      # with R = k*G and s = e/k, s*R == e*G, so recovery yields the point at
+      # infinity for a message of the forger's choosing without any private key
+      n = Bitcoinex.Secp256k1.Params.curve().n
+      msg = "hello"
+      e = msg |> Ecdsa.message_digest() |> :binary.decode_unsigned()
+      k = 0xDEADBEEF
+      point_r = PrivateKey.to_point(%PrivateKey{d: k})
+
+      forged = %Signature{
+        r: point_r.x,
+        s: Bitcoinex.Secp256k1.Math.modulo(e * Bitcoinex.Secp256k1.Math.inv(k, n), n)
+      }
+
+      infinity = %Point{x: 0, y: 0}
+      assert Point.is_inf(infinity)
+
+      refute Ecdsa.verify_message(infinity, msg, forged)
+    end
+
     test "returns false for a malicious signature with an oversized scalar", %{
       pubkey: pubkey
     } do

@@ -139,6 +139,10 @@ defmodule Bitcoinex.Secp256k1.Ecdsa do
   the public key and comparing it to pubkey.
   """
   @spec verify_message(Point.t(), binary, Signature.t()) :: boolean
+  # the point at infinity is not a public key. Recovery yields it for any
+  # message when s*R == e*G, which anyone can arrange, so it must never match.
+  def verify_message(%Point{x: 0, y: 0}, msg, %Signature{}) when is_binary(msg), do: false
+
   def verify_message(%Point{} = pubkey, msg, %Signature{r: r, s: s})
       when r >= 1 and r < @n and s >= 1 and s < @n do
     digest = message_digest(msg)
