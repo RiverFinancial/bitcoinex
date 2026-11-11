@@ -97,6 +97,24 @@ defmodule EntropyGenScriptTest do
     end
   end
 
+  describe "stdin_tty?/1" do
+    test "accepts a terminal stdin, even when stdout is redirected" do
+      assert EntropyGen.stdin_tty?(terminal: true, stdout: true, stdin: true)
+      assert EntropyGen.stdin_tty?(terminal: false, stdout: false, stdin: true)
+    end
+
+    test "rejects a piped stdin even when stdout is a terminal" do
+      refute EntropyGen.stdin_tty?(terminal: true, stdout: true, stdin: false)
+      refute EntropyGen.stdin_tty?(terminal: false, stdout: false, stdin: false)
+    end
+
+    test "falls back to :terminal when :stdin is not reported" do
+      assert EntropyGen.stdin_tty?(terminal: true)
+      refute EntropyGen.stdin_tty?(terminal: false)
+      refute EntropyGen.stdin_tty?([])
+    end
+  end
+
   describe "finalize_pool/1" do
     test "matches the Python reference construction" do
       # sha256d(<<0>> <> pool) <> sha256d(<<1>> <> pool) for pool "fixed test pool 123"

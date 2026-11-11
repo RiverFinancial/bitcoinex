@@ -105,12 +105,23 @@ defmodule EntropyGen do
   # Refuse to collect entropy without an interactive terminal: silently timing
   # reads from a pipe or closed stdin would produce low-entropy jitter.
   defp ensure_interactive! do
-    opts = :io.getopts(:standard_io)
-
-    stdin_tty? = Keyword.get(opts, :stdin, false) or Keyword.get(opts, :terminal, false)
-
-    if stdin_tty? != true do
+    if not stdin_tty?(:io.getopts(:standard_io)) do
       die("stdin is not a terminal; generate requires an interactive session")
+    end
+  end
+
+  @doc """
+  Whether `:io.getopts/1` options report stdin itself as a terminal.
+
+  `:terminal` is also true when only stdout is a terminal (e.g.
+  `cmd | mix run scripts/entropygen.exs`), so it is consulted only when the
+  runtime does not report `:stdin` at all.
+  """
+  @spec stdin_tty?(keyword()) :: boolean()
+  def stdin_tty?(opts) do
+    case Keyword.fetch(opts, :stdin) do
+      {:ok, stdin?} -> stdin? == true
+      :error -> Keyword.get(opts, :terminal, false) == true
     end
   end
 
