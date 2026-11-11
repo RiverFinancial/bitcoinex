@@ -353,10 +353,13 @@ defmodule Bitcoinex.Secp256k1.EcdsaTest do
     test "sign then recover pubkey from message digest", %{privkey: privkey, pubkey: pubkey} do
       pubkey_hex = Point.serialize_public_key(pubkey)
 
-      for msg <- ["", "hello", "hello world", String.duplicate("a", 300)] do
+      # "msg145" signs to a scalar with a leading zero byte under this key
+      for msg <- ["", "hello", "hello world", String.duplicate("a", 300), "msg145"] do
         sig = Ecdsa.sign_message(privkey, msg)
         digest = Ecdsa.message_digest(msg)
-        compact_sig = Signature.serialize_signature(sig)
+        # recovery needs r and s at exactly 32 bytes each
+        compact_sig =
+          Bitcoinex.Utils.int_to_big(sig.r, 32) <> Bitcoinex.Utils.int_to_big(sig.s, 32)
 
         recovered =
           Enum.find_value(0..3, fn recovery_id ->
