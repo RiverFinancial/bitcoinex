@@ -34,3 +34,6 @@ bitcoinex-*.tar
 
 # bitcoin related files
 **/*.psbt
+
+# local reference repos (LLM context, not tracked)
+/reference/
