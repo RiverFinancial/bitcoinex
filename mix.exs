@@ -10,6 +10,7 @@ defmodule Bitcoinex.MixProject do
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       aliases: aliases(),
+      dialyzer: dialyzer(),
       description: description(),
       source_url: "https://github.com/RiverFinancial/bitcoinex"
     ]
@@ -26,6 +27,8 @@ defmodule Bitcoinex.MixProject do
   defp deps do
     [
       {:credo, "~> 1.6", only: [:dev, :test], runtime: false},
+      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
+      {:mix_audit, "~> 2.1", only: [:dev, :test], runtime: false},
       {:excoveralls, "~> 0.18", only: :test},
       {:mix_test_watch, "~> 1.1", only: :dev, runtime: false},
       {:stream_data, "~> 0.1", only: :test},
@@ -41,6 +44,14 @@ defmodule Bitcoinex.MixProject do
         "credo --strict --only warning"
       ],
       compile: ["compile --warnings-as-errors"]
+    ]
+  end
+
+  defp dialyzer do
+    [
+      plt_local_path: "_plts",
+      plt_core_path: "_plts",
+      plt_add_apps: [:mix, :ex_unit]
     ]
   end
 

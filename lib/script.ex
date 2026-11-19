@@ -26,7 +26,7 @@ defmodule Bitcoinex.Script do
   defstruct [:items]
 
   defguard is_valid_multi(m, pubkeys)
-           when is_integer(m) and m > 0 and length(pubkeys) > 0 and length(pubkeys) >= m
+           when is_integer(m) and m > 0 and pubkeys != [] and length(pubkeys) >= m
 
   defp invalid_opcode_error(msg), do: {:error, "invalid opcode: #{msg}"}
 
