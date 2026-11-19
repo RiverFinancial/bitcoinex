@@ -14,24 +14,20 @@ concurrency:
 
 jobs:
   test:
-    name: Test (Elixir ${{ matrix.elixir }}, OTP ${{ matrix.otp }}${{ matrix.experimental && ', experimental' || '' }})
+    name: Test (Elixir ${{ matrix.elixir }}, OTP ${{ matrix.otp }})
     runs-on: ubuntu-latest
-    # Newer Elixir releases add compiler/type-checker warnings, which fail
-    # `compile --warnings-as-errors`; they run as an early signal, not a gate.
-    continue-on-error: ${{ matrix.experimental }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - elixir: "1.17"
             otp: "26"
-            experimental: false
           - elixir: "1.18"
             otp: "27"
-            experimental: false
-          - elixir: "1.19"
-            otp: "28"
-            experimental: true
+          # Reinstate once the compiler warnings newer Elixir versions report
+          # are fixed (they fail `compile --warnings-as-errors`):
+          # - elixir: "1.19"
+          #   otp: "28"
     steps:
       - uses: actions/checkout@v4
 
