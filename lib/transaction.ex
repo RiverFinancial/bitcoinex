@@ -163,7 +163,7 @@ defmodule Bitcoinex.Transaction.Utils do
 
   @spec serialize(Transaction.t()) :: binary()
   def serialize(%Transaction{witnesses: witness} = txn)
-      when is_list(witness) and length(witness) > 0 do
+      when is_list(witness) and witness != [] do
     version = <<txn.version::little-size(32)>>
     marker = <<0x00::big-size(8)>>
     flag = <<0x01::big-size(8)>>

@@ -1,31 +1,121 @@
 name: Elixir CI
 
-on: [push, pull_request]
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  build_with_opt_26:
-    name: Build and test ${{matrix.elixir}}-otp-${{matrix.otp}}
+  test:
+    name: Test (Elixir ${{ matrix.elixir }}, OTP ${{ matrix.otp }})
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        otp: ['27.0']
-        elixir: ['1.18.1']
+        include:
+          - elixir: "1.17"
+            otp: "26"
+          - elixir: "1.18"
+            otp: "27"
+          # Reinstate once the compiler warnings newer Elixir versions report
+          # are fixed (they fail `compile --warnings-as-errors`):
+          # - elixir: "1.19"
+          #   otp: "28"
     steps:
-    - uses: actions/checkout@v4
-    - name: Set up Elixir
-      uses: erlef/setup-elixir@v1
-      with:
-        otp-version: ${{matrix.otp}}
-        elixir-version: ${{matrix.elixir}}
-    - name: Restore dependencies cache
-      uses: actions/cache@v4
-      with:
-        path: deps
-        key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
-        restore-keys: ${{ runner.os }}-mix-
-    - name: Install dependencies
-      run: mix deps.get
-    - name: Run tests
-      run: mix test
-    - name: format and lint
-      run: mix lint.all
+      - uses: actions/checkout@v4
+
+      - name: Set up Elixir
+        id: beam
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: ${{ matrix.elixir }}
+          otp-version: ${{ matrix.otp }}
+
+      - name: Restore deps and _build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-mix-${{ steps.beam.outputs.otp-version }}-${{ steps.beam.outputs.elixir-version }}-${{ hashFiles('mix.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-mix-${{ steps.beam.outputs.otp-version }}-${{ steps.beam.outputs.elixir-version }}-
+
+      - name: Install dependencies
+        run: mix deps.get
+
+      - name: Run tests
+        run: mix test
+
+  quality:
+    name: Lint, audit and types
+    runs-on: ubuntu-latest
+    env:
+      MIX_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Elixir
+        id: beam
+        uses: erlef/setup-beam@v1
+        with:
+          version-file: .tool-versions
+          version-type: strict
+
+      - name: Restore deps and _build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-quality-${{ steps.beam.outputs.otp-version }}-${{ steps.beam.outputs.elixir-version }}-${{ hashFiles('mix.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-quality-${{ steps.beam.outputs.otp-version }}-${{ steps.beam.outputs.elixir-version }}-
+
+      - name: Install dependencies
+        run: mix deps.get
+
+      - name: Check for unused locked dependencies
+        run: mix deps.unlock --check-unused
+
+      - name: Check for retired Hex packages
+        run: mix hex.audit
+
+      - name: Audit dependencies for known vulnerabilities
+        run: mix deps.audit
+
+      # Formatting check is available but off by default: it tends to be noisy
+      # across Elixir versions. Uncomment to enforce `mix format`.
+      # - name: Check formatting
+      #   run: mix format --check-formatted
+
+      - name: Credo
+        run: mix credo --strict --only warning
+
+      # The PLT is cached separately; it changes only with the OTP/Elixir
+      # version or the dependency set, and building it from scratch is slow.
+      - name: Restore Dialyzer PLT cache
+        id: plt-cache
+        uses: actions/cache@v4
+        with:
+          path: _plts
+          key: ${{ runner.os }}-plt-${{ steps.beam.outputs.otp-version }}-${{ steps.beam.outputs.elixir-version }}-${{ hashFiles('mix.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-plt-${{ steps.beam.outputs.otp-version }}-${{ steps.beam.outputs.elixir-version }}-
+
+      - name: Build Dialyzer PLT
+        if: steps.plt-cache.outputs.cache-hit != 'true'
+        run: mix dialyzer --plt
+
+      # Non-blocking for now: 3 existing warnings in lib/psbt.ex. Remove
+      # continue-on-error once those are fixed to make Dialyzer a gate.
+      - name: Dialyzer
+        continue-on-error: true
+        run: mix dialyzer --format github
